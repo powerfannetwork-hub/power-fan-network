@@ -11,11 +11,11 @@ class PowerFanNetworkApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Power Fan Network',
       debugShowCheckedModeBanner: false,
+      title: 'Power Fan Network',
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B0F14),
+        scaffoldBackgroundColor: const Color(0xFF0F0B14),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFFFA726),
           brightness: Brightness.dark,
@@ -68,11 +68,12 @@ class _MainScreenState extends State<MainScreen> {
         return;
       }
 
-      if (miningTimeLeft.inSeconds <= 0) {
+      if (miningTimeLeft.inSeconds <= 1) {
         timer.cancel();
 
         setState(() {
           isMining = false;
+          miningTimeLeft = Duration.zero;
           balance += 2.4;
         });
 
@@ -82,71 +83,54 @@ class _MainScreenState extends State<MainScreen> {
 
       setState(() {
         miningTimeLeft -= const Duration(seconds: 1);
-        balance += miningRate / 3600;
       });
     });
 
-    showMessage('Mining started for 24 hours');
+    showMessage('Mining started!');
   }
 
-  void stopMining() {
-    miningTimer?.cancel();
-
-    setState(() {
-      isMining = false;
-    });
-
-    showMessage('Mining stopped');
-  }
-
-  void dailyCheckIn() {
+  void checkIn() {
     if (checkedInToday) {
-      showMessage('You already checked in today');
+      showMessage('You already checked in today.');
       return;
     }
 
     setState(() {
       checkedInToday = true;
-      balance += 0.50;
+      balance += 1.0;
     });
 
-    showMessage('Daily check-in claimed! +0.50 FAN');
+    showMessage('Daily check-in complete! +1.00 FAN');
   }
 
-  void watchAd() {
+  void addReferral() {
     setState(() {
-      miningRate += 0.10;
+      referrals.add('Fan User ${referrals.length + 1}');
+      balance += 5.0;
     });
 
-    showMessage('Mining boost activated! +0.10 FAN/H');
-  }
-
-  void claimReferral() {
-    setState(() {
-      balance += 50.0;
-      referrals.add('New referral #${referrals.length + 1}');
-    });
-
-    showMessage('Referral bonus claimed! +50 FAN');
+    showMessage('Referral added! +5.00 FAN');
   }
 
   void showMessage(String message) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   String formatTime(Duration duration) {
     final hours = duration.inHours.toString().padLeft(2, '0');
     final minutes =
-        (duration.inMinutes % 60).toString().padLeft(2, '0');
+        duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds =
-        (duration.inSeconds % 60).toString().padLeft(2, '0');
+        duration.inSeconds.remainder(60).toString().padLeft(2, '0');
 
     return '$hours:$minutes:$seconds';
   }
@@ -156,8 +140,7 @@ class _MainScreenState extends State<MainScreen> {
     final pages = [
       buildHome(),
       buildMining(),
-      buildReferral(),
-      buildRanking(),
+      buildReferralPage(),
       buildSettings(),
     ];
 
@@ -186,12 +169,7 @@ class _MainScreenState extends State<MainScreen> {
           NavigationDestination(
             icon: Icon(Icons.people_outline),
             selectedIcon: Icon(Icons.people),
-            label: 'Referral',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.emoji_events_outlined),
-            selectedIcon: Icon(Icons.emoji_events),
-            label: 'Ranking',
+            label: 'Referrals',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -209,86 +187,30 @@ class _MainScreenState extends State<MainScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 10),
+          const SizedBox(height: 15),
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'POWER FAN',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    'NETWORK',
-                    style: TextStyle(
-                      fontSize: 14,
-                      letterSpacing: 4,
-                      color: Colors.orange,
-                    ),
-                  ),
-                ],
-              ),
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: Colors.orange,
-                child: const Icon(
-                  Icons.bolt,
-                  color: Colors.black,
-                  size: 28,
-                ),
-              ),
-            ],
+          const Text(
+            'Power Fan Network',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 5),
+
+          Text(
+            'Welcome to your FAN dashboard',
+            style: TextStyle(
+              color: Colors.grey.shade400,
+            ),
           ),
 
           const SizedBox(height: 25),
 
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFFFF9800),
-                  Color(0xFFFF5722),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'YOUR FAN BALANCE',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${balance.toStringAsFixed(2)} FAN',
-                  style: const TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isMining
-                      ? 'Mining is active'
-                      : 'Mining is not active',
-                  style: const TextStyle(fontSize: 14),
-                ),
-              ],
-            ),
-          ),
+          balanceCard(),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
           Row(
             children: [
@@ -296,7 +218,7 @@ class _MainScreenState extends State<MainScreen> {
                 child: statCard(
                   Icons.bolt,
                   'Mining Rate',
-                  '${miningRate.toStringAsFixed(2)} FAN/H',
+                  '${miningRate.toStringAsFixed(2)} FAN/h',
                 ),
               ),
               const SizedBox(width: 12),
@@ -312,37 +234,27 @@ class _MainScreenState extends State<MainScreen> {
 
           const SizedBox(height: 20),
 
-          const Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
+          actionCard(
+            Icons.bolt,
+            'Start Mining',
+            isMining
+                ? 'Mining • ${formatTime(miningTimeLeft)}'
+                : 'Mine FAN every 24 hours',
+            startMining,
           ),
-
-          const SizedBox(height: 12),
 
           actionCard(
             Icons.calendar_today,
             'Daily Check-in',
-            checkedInToday
-                ? 'Already claimed'
-                : 'Claim +0.50 FAN',
-            checkedInToday ? null : dailyCheckIn,
+            checkedInToday ? 'Completed today' : 'Get your daily reward',
+            checkIn,
           ),
 
           actionCard(
-            Icons.play_circle_outline,
-            'Watch Ad',
-            'Increase mining rate',
-            watchAd,
-          ),
-
-          actionCard(
-            Icons.people_outline,
+            Icons.person_add,
             'Invite Friends',
-            '+50 FAN per referral',
-            claimReferral,
+            'Earn 5 FAN for each referral',
+            addReferral,
           ),
         ],
       ),
@@ -357,7 +269,7 @@ class _MainScreenState extends State<MainScreen> {
           const SizedBox(height: 15),
 
           const Text(
-            'Mining Center',
+            'Mining',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
@@ -366,9 +278,9 @@ class _MainScreenState extends State<MainScreen> {
 
           const SizedBox(height: 8),
 
-          const Text(
+          Text(
             'Mine FAN points every 24 hours',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: Colors.grey.shade400),
           ),
 
           const SizedBox(height: 35),
@@ -384,7 +296,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.orange.withOpacity(0.2),
+                  color: Colors.orange.withValues(alpha: 0.2),
                   blurRadius: 30,
                   spreadRadius: 5,
                 ),
@@ -396,23 +308,28 @@ class _MainScreenState extends State<MainScreen> {
                 children: [
                   const Icon(
                     Icons.bolt,
-                    size: 60,
+                    size: 65,
                     color: Colors.orange,
                   ),
-                  const SizedBox(height: 10),
+
+                  const SizedBox(height: 12),
+
                   Text(
-                    formatTime(miningTimeLeft),
+                    isMining ? formatTime(miningTimeLeft) : '24:00:00',
                     style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 5),
+
+                  const SizedBox(height: 8),
+
                   Text(
                     isMining ? 'MINING' : 'READY',
                     style: TextStyle(
-                      color:
-                          isMining ? Colors.green : Colors.orange,
+                      color: isMining
+                          ? Colors.orange
+                          : Colors.grey.shade400,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -423,177 +340,30 @@ class _MainScreenState extends State<MainScreen> {
 
           const SizedBox(height: 35),
 
-          Text(
-            'Balance: ${balance.toStringAsFixed(4)} FAN',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          Text(
-            'Mining rate: ${miningRate.toStringAsFixed(2)} FAN/H',
-            style: const TextStyle(color: Colors.grey),
-          ),
-
-          const SizedBox(height: 25),
-
           SizedBox(
             width: double.infinity,
             height: 55,
             child: ElevatedButton.icon(
-              onPressed: isMining ? stopMining : startMining,
-              icon: Icon(
-                isMining ? Icons.stop : Icons.play_arrow,
-              ),
+              onPressed: isMining ? null : startMining,
+              icon: const Icon(Icons.bolt),
               label: Text(
-                isMining ? 'STOP MINING' : 'START MINING',
+                isMining ? 'MINING...' : 'START MINING',
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildReferral() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 15),
-
-          const Text(
-            'Referral Program',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          const Text(
-            'Invite friends and earn FAN rewards.',
-            style: TextStyle(color: Colors.grey),
-          ),
-
-          const SizedBox(height: 25),
-
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: const Color(0xFF151B23),
-            ),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.card_giftcard,
-                  size: 55,
-                  color: Colors.orange,
-                ),
-                const SizedBox(height: 15),
-                const Text(
-                  '50 FAN',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Text(
-                  'Referral reward',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'PFN-2026-POWER',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      Icon(Icons.copy),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
 
           const SizedBox(height: 20),
 
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton(
-              onPressed: claimReferral,
-              child: const Text('ADD REFERRAL'),
-            ),
+          Text(
+            'Mining rate: ${miningRate.toStringAsFixed(2)} FAN per hour',
+            style: TextStyle(color: Colors.grey.shade400),
           ),
-
-          const SizedBox(height: 25),
-
-          const Text(
-            'Your Referrals',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          if (referrals.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  'No referrals yet',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            )
-          else
-            ...referrals.map(
-              (name) => ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.person),
-                ),
-                title: Text(name),
-                trailing: const Text(
-                  '+50 FAN',
-                  style: TextStyle(color: Colors.green),
-                ),
-              ),
-            ),
         ],
       ),
     );
   }
 
-  Widget buildRanking() {
-    final miners = [
-      ['PowerMiner01', '125,430 FAN'],
-      ['FanMaster', '98,210 FAN'],
-      ['CryptoFan', '76,850 FAN'],
-      ['PFN_User', '54,320 FAN'],
-      ['NewMiner', '32,100 FAN'],
-    ];
-
+  Widget buildReferralPage() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -602,7 +372,7 @@ class _MainScreenState extends State<MainScreen> {
           const SizedBox(height: 15),
 
           const Text(
-            'Top Miners',
+            'Referrals',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
@@ -611,103 +381,142 @@ class _MainScreenState extends State<MainScreen> {
 
           const SizedBox(height: 8),
 
-          const Text(
-            'Top 100 Power Fan Network miners',
-            style: TextStyle(color: Colors.grey),
+          Text(
+            'Invite friends and earn FAN',
+            style: TextStyle(color: Colors.grey.shade400),
           ),
 
           const SizedBox(height: 25),
 
-          ...List.generate(miners.length, (index) {
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor:
-                      index == 0 ? Colors.orange : Colors.grey,
-                  child: Text('${index + 1}'),
-                ),
-                title: Text(
-                  miners[index][0],
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                trailing: Text(
-                  miners[index][1],
-                  style: const TextStyle(
-                    color: Colors.orange,
-                  ),
+          balanceCard(),
+
+          const SizedBox(height: 20),
+
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: addReferral,
+              icon: const Icon(Icons.person_add),
+              label: const Text('ADD REFERRAL'),
+            ),
+          ),
+
+          const SizedBox(height: 25),
+
+          if (referrals.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(30),
+                child: Text(
+                  'No referrals yet.',
+                  style: TextStyle(fontSize: 16),
                 ),
               ),
-            );
-          }),
+            )
+          else
+            ...referrals.map(
+              (name) => Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        Colors.orange.withValues(alpha: 0.15),
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  title: Text(name),
+                  subtitle: const Text('+5.00 FAN'),
+                  trailing: const Icon(Icons.check_circle),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget buildSettings() {
-    return SingleChildScrollView(
+    return ListView(
       padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 15),
+      children: [
+        const SizedBox(height: 15),
 
-          const Text(
-            'Settings',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
+        const Text(
+          'Settings',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 25),
+
+        settingTile(
+          Icons.person,
+          'Profile',
+          'Manage your profile',
+        ),
+
+        settingTile(
+          Icons.notifications,
+          'Notifications',
+          'Mining and reward notifications',
+        ),
+
+        settingTile(
+          Icons.security,
+          'Security',
+          'Protect your account',
+        ),
+
+        settingTile(
+          Icons.info,
+          'About',
+          'Power Fan Network',
+        ),
+      ],
+    );
+  }
+
+  Widget balanceCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'FAN Balance',
+              style: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 15,
+              ),
             ),
-          ),
 
-          const SizedBox(height: 25),
+            const SizedBox(height: 8),
 
-          settingTile(
-            Icons.person,
-            'Profile',
-            'Manage your account',
-          ),
+            Text(
+              balance.toStringAsFixed(2),
+              style: const TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
 
-          settingTile(
-            Icons.notifications,
-            'Notifications',
-            'Mining and reward alerts',
-          ),
+            const SizedBox(height: 5),
 
-          settingTile(
-            Icons.security,
-            'Security',
-            'Password and account security',
-          ),
-
-          settingTile(
-            Icons.help,
-            'Help Center',
-            'Get support',
-          ),
-
-          settingTile(
-            Icons.info,
-            'About',
-            'Power Fan Network v1.0.0',
-          ),
-
-          const SizedBox(height: 30),
-
-          const Center(
-            child: Text(
-              'POWER FAN NETWORK',
+            const Text(
+              'FAN',
               style: TextStyle(
                 color: Colors.orange,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 2,
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -717,30 +526,34 @@ class _MainScreenState extends State<MainScreen> {
     String title,
     String value,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF151B23),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: Colors.orange),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: const TextStyle(color: Colors.grey),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              icon,
+              color: Colors.orange,
+              size: 28,
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey.shade400,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -756,7 +569,7 @@ class _MainScreenState extends State<MainScreen> {
       child: ListTile(
         onTap: onTap,
         leading: CircleAvatar(
-          backgroundColor: Colors.orange.withOpacity(0.15),
+          backgroundColor: Colors.orange.withValues(alpha: 0.15),
           child: Icon(
             icon,
             color: Colors.orange,
@@ -786,7 +599,12 @@ class _MainScreenState extends State<MainScreen> {
           icon,
           color: Colors.orange,
         ),
-        title: Text(title),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
       ),
