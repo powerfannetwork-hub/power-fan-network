@@ -11,8 +11,17 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+
   # Icons
   cupertino_icons: ^1.0.8
+
+  # State management
+  provider: ^6.1.5
+
+  # Routing
+  go_router: ^16.2.0
 
   # Local storage
   shared_preferences: ^2.5.5
@@ -32,11 +41,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  # Assets
-  # Idan daga baya muka saka logo/images,
-  # za mu cire comments mu saka folders ɗin assets a nan.
-  #
-  # assets:
-  #   - assets/images/
-  #   - assets/icons/
