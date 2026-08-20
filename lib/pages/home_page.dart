@@ -11,60 +11,41 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   static const Color primary = Color(0xFF35129B);
-  static const Color green = Color(0xFF239B5A);
+  static const Color darkPurple = Color(0xFF24106F);
+  static const Color green = Color(0xFF199B59);
 
-  double fanBalance = 20.0000;
+  SharedPreferences? _prefs;
+  Timer? _timer;
+
+  double _balance = 20.0;
+
+  // Mining
+  bool _isMining = false;
+  DateTime? _miningStarted;
+  DateTime? _miningEnds;
 
   // Base mining rate
-  double baseMiningRate = 0.2;
+  double _baseMiningRate = 0.2;
 
-  // Extra mining from watched ads
-  double adBoost = 0.0;
-
-  // Number of ads watched today
-  int adsWatchedToday = 0;
-
-  // Maximum ads per day
-  final int maxAdsPerDay = 7;
-
-  // Mining state
-  bool isMining = false;
+  // Ads
+  int _adsWatchedToday = 0;
+  static const int _maxAdsPerDay = 7;
+  static const double _adBoost = 0.1;
 
   // Daily social task
-  bool socialFollowCompleted = false;
-  bool socialLikeCompleted = false;
-  bool socialCommentCompleted = false;
-  bool socialClaimed = false;
+  bool _socialFollow = false;
+  bool _socialLike = false;
+  bool _socialComment = false;
+  bool _socialClaimed = false;
 
-  // Referral
-  int referralCount = 0;
-  int activeReferrals = 0;
+  static const double _socialReward = 10.0;
 
-  // New user reward
-  bool newUserRewardClaimed = false;
+  // Referrals
+  int _referralCount = 0;
+  int _activeReferrals = 0;
 
-  // KYC
-  bool kycCompleted = false;
-
-  // Notifications
-  final List<String> notifications = [];
-
-  Timer? miningTimer;
-  Timer? notificationTimer;
-
-  int selectedIndex = 0;
-
-  double get referralBoost => activeReferrals * 0.02;
-
-  double get miningRate {
-    return baseMiningRate + adBoost + referralBoost;
-  }
-
-  bool get socialTaskCompleted {
-    return socialFollowCompleted &&
-        socialLikeCompleted &&
-        socialCommentCompleted;
-  }
+  // Notification
+  final List<String> _notifications = [];
 
   @override
   void initState() {
@@ -74,1586 +55,475 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    miningTimer?.cancel();
-    notificationTimer?.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
+    _prefs = await SharedPreferences.getInstance();
 
-    final savedBalance = prefs.getDouble('fan_balance');
-    final savedAds = prefs.getInt('ads_watched_today');
-    final savedAdBoost = prefs.getDouble('ad_boost');
-    final savedMining = prefs.getBool('is_mining');
+    final today = _todayKey();
+    final savedAdsDate = _prefs!.getString('ads_date');
+
+    if (savedAdsDate != today) {
+      await _prefs!.setInt('ads_watched_today', 0);
+      await _prefs!.setString('ads_date', today);
+    }
+
+    final socialDate = _prefs!.getString('social_task_date');
+
+    if (socialDate != today) {
+      await _prefs!.setBool('social_follow', false);
+      await _prefs!.setBool('social_like', false);
+      await _prefs!.setBool('social_comment', false);
+      await _prefs!.setBool('social_claimed', false);
+      await _prefs!.setString('social_task_date', today);
+    }
 
     setState(() {
-      fanBalance = savedBalance ?? 20.0000;
-      adsWatchedToday = savedAds ?? 0;
-      adBoost = savedAdBoost ?? 0.0;
-      isMining = savedMining ?? false;
+      _balance = _prefs!.getDouble('fan_balance') ?? 20.0;
 
-      socialFollowCompleted =
-          prefs.getBool('social_follow_completed') ?? false;
-      socialLikeCompleted =
-          prefs.getBool('social_like_completed') ?? false;
-      socialCommentCompleted =
-          prefs.getBool('social_comment_completed') ?? false;
-      socialClaimed = prefs.getBool('social_claimed') ?? false;
+      _isMining = _prefs!.getBool('is_mining') ?? false;
 
-      referralCount = prefs.getInt('referral_count') ?? 0;
-      activeReferrals = prefs.getInt('active_referrals') ?? 0;
+      final start = _prefs!.getString('mining_start');
+      final end = _prefs!.getString('mining_end');
 
-      newUserRewardClaimed =
-          prefs.getBool('new_user_reward_claimed') ?? false;
+      _miningStarted =
+          start == null ? null : DateTime.tryParse(start);
 
-      kycCompleted = prefs.getBool('kyc_completed') ?? false;
+      _miningEnds =
+          end == null ? null : DateTime.tryParse(end);
+
+      _adsWatchedToday =
+          _prefs!.getInt('ads_watched_today') ?? 0;
+
+      _socialFollow =
+          _prefs!.getBool('social_follow') ?? false;
+
+      _socialLike =
+          _prefs!.getBool('social_like') ?? false;
+
+      _socialComment =
+          _prefs!.getBool('social_comment') ?? false;
+
+      _socialClaimed =
+          _prefs!.getBool('social_claimed') ?? false;
+
+      _referralCount =
+          _prefs!.getInt('referral_count') ?? 0;
+
+      _activeReferrals =
+          _prefs!.getInt('active_referrals') ?? 0;
     });
 
-    if (isMining) {
-      _startMiningTimer();
+    _startTimer();
+
+    _checkMiningStatus();
+  }
+
+  String _todayKey() {
+    final now = DateTime.now();
+
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
+  double get _miningRate {
+    return _baseMiningRate +
+        (_adsWatchedToday * _adBoost) +
+        (_activeReferrals * 0.02);
+  }
+
+  double get _sessionEarned {
+    if (!_isMining || _miningStarted == null) {
+      return 0;
     }
+
+    final now = DateTime.now();
+
+    final end = _miningEnds ?? now;
+
+    final current = now.isAfter(end) ? end : now;
+
+    final seconds =
+        current.difference(_miningStarted!).inSeconds;
+
+    if (seconds <= 0) {
+      return 0;
+    }
+
+    return (seconds / 3600) * _miningRate;
   }
 
-  Future<void> _saveData() async {
-    final prefs = await SharedPreferences.getInstance();
+  Duration get _remainingTime {
+    if (!_isMining || _miningEnds == null) {
+      return Duration.zero;
+    }
 
-    await prefs.setDouble('fan_balance', fanBalance);
-    await prefs.setInt('ads_watched_today', adsWatchedToday);
-    await prefs.setDouble('ad_boost', adBoost);
-    await prefs.setBool('is_mining', isMining);
+    final remaining =
+        _miningEnds!.difference(DateTime.now());
 
-    await prefs.setBool(
-      'social_follow_completed',
-      socialFollowCompleted,
-    );
-
-    await prefs.setBool(
-      'social_like_completed',
-      socialLikeCompleted,
-    );
-
-    await prefs.setBool(
-      'social_comment_completed',
-      socialCommentCompleted,
-    );
-
-    await prefs.setBool('social_claimed', socialClaimed);
-
-    await prefs.setInt('referral_count', referralCount);
-    await prefs.setInt('active_referrals', activeReferrals);
-
-    await prefs.setBool(
-      'new_user_reward_claimed',
-      newUserRewardClaimed,
-    );
-
-    await prefs.setBool('kyc_completed', kycCompleted);
+    return remaining.isNegative
+        ? Duration.zero
+        : remaining;
   }
 
-  void _startMiningTimer() {
-    miningTimer?.cancel();
+  Future<void> _save() async {
+    if (_prefs == null) return;
 
-    miningTimer = Timer.periodic(
-      const Duration(seconds: 10),
+    await _prefs!.setDouble('fan_balance', _balance);
+
+    await _prefs!.setBool('is_mining', _isMining);
+
+    if (_miningStarted != null) {
+      await _prefs!.setString(
+        'mining_start',
+        _miningStarted!.toIso8601String(),
+      );
+    } else {
+      await _prefs!.remove('mining_start');
+    }
+
+    if (_miningEnds != null) {
+      await _prefs!.setString(
+        'mining_end',
+        _miningEnds!.toIso8601String(),
+      );
+    } else {
+      await _prefs!.remove('mining_end');
+    }
+
+    await _prefs!.setInt(
+      'ads_watched_today',
+      _adsWatchedToday,
+    );
+
+    await _prefs!.setBool(
+      'social_follow',
+      _socialFollow,
+    );
+
+    await _prefs!.setBool(
+      'social_like',
+      _socialLike,
+    );
+
+    await _prefs!.setBool(
+      'social_comment',
+      _socialComment,
+    );
+
+    await _prefs!.setBool(
+      'social_claimed',
+      _socialClaimed,
+    );
+
+    await _prefs!.setInt(
+      'referral_count',
+      _referralCount,
+    );
+
+    await _prefs!.setInt(
+      'active_referrals',
+      _activeReferrals,
+    );
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
       (_) {
-        if (!mounted || !isMining) return;
+        if (!mounted) return;
 
-        // Small simulation update.
-        // The real backend should calculate the final balance.
-        final earned = miningRate / 360.0;
+        _checkMiningStatus();
 
-        setState(() {
-          fanBalance += earned;
-        });
-
-        _saveData();
+        setState(() {});
       },
     );
   }
 
-  void _startMining() {
-    if (isMining) return;
+  Future<void> _checkMiningStatus() async {
+    if (!_isMining || _miningEnds == null) {
+      return;
+    }
 
-    setState(() {
-      isMining = true;
-    });
+    if (DateTime.now().isAfter(_miningEnds!)) {
+      final earned = _sessionEarned;
 
-    _startMiningTimer();
-    _saveData();
+      _balance += earned;
 
-    _addNotification(
-      'Mining Started',
-      'Your FAN mining session has started.',
-    );
+      _isMining = false;
+      _miningStarted = null;
+      _miningEnds = null;
+
+      _notifications.insert(
+        0,
+        'Mining session completed. ${earned.toStringAsFixed(4)} FAN added.',
+      );
+
+      await _save();
+
+      if (mounted) {
+        setState(() {});
+      }
+    }
   }
 
-  void _stopMining() {
-    if (!isMining) return;
+  Future<void> _startMining() async {
+    if (_isMining) {
+      return;
+    }
+
+    final now = DateTime.now();
 
     setState(() {
-      isMining = false;
+      _isMining = true;
+      _miningStarted = now;
+      _miningEnds = now.add(
+        const Duration(hours: 24),
+      );
+
+      _notifications.insert(
+        0,
+        'Mining started at ${_formatTime(now)}.',
+      );
     });
 
-    miningTimer?.cancel();
-    _saveData();
-
-    _addNotification(
-      'Mining Stopped',
-      'Your mining session has stopped.',
-    );
+    await _save();
   }
 
-  void _watchAd() {
-    if (adsWatchedToday >= maxAdsPerDay) {
+  Future<void> _watchAd() async {
+    if (_adsWatchedToday >= _maxAdsPerDay) {
       _showMessage(
-        'You have reached today’s maximum of 7 ads.',
+        'You have reached today\'s maximum of 7 ads.',
       );
       return;
     }
 
-    // Demo ad completion.
-    // Connect this button to your real ad provider later.
+    // Wannan wurin za mu haɗa real AdMob reward daga baya.
+    //
+    // Bayan real rewarded ad ya kammala:
+    // _adsWatchedToday++;
+    // sannan mining rate ya ƙaru da 0.1 FAN/H.
+
     setState(() {
-      adsWatchedToday++;
-      adBoost += 0.1;
+      _adsWatchedToday++;
+
+      _notifications.insert(
+        0,
+        'Ad reward received: +0.1 FAN/H.',
+      );
     });
 
-    _saveData();
-
-    _addNotification(
-      'Mining Boost Added',
-      '+0.1 FAN/H has been added to your mining rate.',
-    );
+    await _save();
 
     _showMessage(
-      'Ad completed! +0.1 FAN/H added.',
+      'Ad reward added. Mining rate is now '
+      '${_miningRate.toStringAsFixed(2)} FAN/H.',
     );
   }
 
-  void _completeFollow() {
-    setState(() {
-      socialFollowCompleted = true;
-    });
-
-    _saveData();
-    _showMessage('Follow task completed.');
+  bool get _socialTaskComplete {
+    return _socialFollow &&
+        _socialLike &&
+        _socialComment;
   }
 
-  void _completeLike() {
-    setState(() {
-      socialLikeCompleted = true;
-    });
-
-    _saveData();
-    _showMessage('Like task completed.');
-  }
-
-  void _completeComment() {
-    setState(() {
-      socialCommentCompleted = true;
-    });
-
-    _saveData();
-    _showMessage('Comment task completed.');
-  }
-
-  void _claimSocialReward() {
-    if (!socialTaskCompleted) {
+  Future<void> _claimSocialReward() async {
+    if (_socialClaimed) {
       _showMessage(
-        'Complete Follow, Like and Comment before claiming.',
+        'Daily social reward already claimed.',
       );
       return;
     }
 
-    if (socialClaimed) {
+    if (!_socialTaskComplete) {
       _showMessage(
-        'You have already claimed today’s social reward.',
+        'You must complete Follow, Like and Comment first.',
       );
       return;
     }
 
     setState(() {
-      fanBalance += 10;
-      socialClaimed = true;
+      _balance += _socialReward;
+      _socialClaimed = true;
+
+      _notifications.insert(
+        0,
+        '+10 FAN social task reward claimed.',
+      );
     });
 
-    _saveData();
-
-    _addNotification(
-      'Daily Social Reward',
-      'You received 10 FAN for completing the social task.',
-    );
-
-    _showMessage('Congratulations! You received 10 FAN.');
-  }
-
-  void _claimNewUserReward() {
-    if (newUserRewardClaimed) {
-      _showMessage('New user reward has already been claimed.');
-      return;
-    }
-
-    setState(() {
-      fanBalance += 20;
-      newUserRewardClaimed = true;
-    });
-
-    _saveData();
-
-    _addNotification(
-      'Welcome Reward',
-      'You received 20 FAN as a new user reward.',
-    );
-
-    _showMessage('Welcome! 20 FAN added to your balance.');
-  }
-
-  void _addReferral() {
-    setState(() {
-      referralCount++;
-      activeReferrals++;
-      fanBalance += 5;
-    });
-
-    _saveData();
-
-    _addNotification(
-      'Referral Reward',
-      'You received 5 FAN for inviting a new user.',
-    );
+    await _save();
 
     _showMessage(
-      'Referral added! +5 FAN and +0.02 FAN/H boost.',
+      '+10 FAN added to your balance.',
     );
   }
 
-  void _notifyInactiveReferrals() {
-    if (referralCount == 0) {
-      _showMessage('You do not have any referrals yet.');
+  Future<void> _setSocialTask(
+    String task,
+    bool value,
+  ) async {
+    setState(() {
+      if (task == 'follow') {
+        _socialFollow = value;
+      }
+
+      if (task == 'like') {
+        _socialLike = value;
+      }
+
+      if (task == 'comment') {
+        _socialComment = value;
+      }
+    });
+
+    await _save();
+  }
+
+  double _referralMiningBonus() {
+    return _activeReferrals * 0.02;
+  }
+
+  Future<void> _sendReferralReminder() async {
+    if (_referralCount == 0) {
+      _showMessage(
+        'You do not have referrals yet.',
+      );
       return;
     }
 
-    _addNotification(
-      'Referral Reminder',
-      'Your inactive referrals have been notified to start mining.',
-    );
+    final inactive =
+        _referralCount - _activeReferrals;
+
+    if (inactive <= 0) {
+      _showMessage(
+        'All your referrals are currently active.',
+      );
+      return;
+    }
+
+    setState(() {
+      _notifications.insert(
+        0,
+        'Mining reminder sent to $inactive inactive referral(s).',
+      );
+    });
 
     _showMessage(
       'Reminder sent to inactive referrals.',
     );
   }
 
-  void _addNotification(String title, String message) {
-    setState(() {
-      notifications.insert(
-        0,
-        '$title|$message',
-      );
-    });
+  String _formatTime(DateTime time) {
+    final hour =
+        time.hour.toString().padLeft(2, '0');
+
+    final minute =
+        time.minute.toString().padLeft(2, '0');
+
+    return '$hour:$minute';
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours =
+        duration.inHours.toString().padLeft(2, '0');
+
+    final minutes =
+        duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+
+    final seconds =
+        duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+
+    return '$hours:$minutes:$seconds';
   }
 
   void _showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
-  void _openNotifications() {
+  void _showNotifications() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
-      ),
       builder: (context) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
+          child: SizedBox(
+            height: 420,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Text(
-                      'Notifications',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                if (notifications.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 30),
-                    child: Center(
-                      child: Text(
-                        'No notifications yet.',
-                      ),
-                    ),
-                  )
-                else
-                  ...notifications.take(8).map(
-                    (item) {
-                      final parts = item.split('|');
-
-                      return ListTile(
-                        leading: const CircleAvatar(
-                          backgroundColor: Color(0xFFEDE7FF),
-                          child: Icon(
-                            Icons.notifications,
-                            color: primary,
-                          ),
-                        ),
-                        title: Text(
-                          parts.first,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Text(
-                          parts.length > 1 ? parts[1] : '',
-                        ),
-                      );
-                    },
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _showSocialTaskDialog() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(28),
-        ),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  20,
-                  20,
-                  20,
-                  30,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Daily Social Task',
-                      style: TextStyle(
-                        fontSize: 23,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Complete all tasks to unlock your 10 FAN reward.',
-                      style: TextStyle(
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    _taskRow(
-                      icon: Icons.close,
-                      title: 'Follow us',
-                      completed: socialFollowCompleted,
-                      onTap: () {
-                        _completeFollow();
-                        setModalState(() {});
-                      },
-                    ),
-
-                    _taskRow(
-                      icon: Icons.thumb_up,
-                      title: 'Like our post',
-                      completed: socialLikeCompleted,
-                      onTap: () {
-                        _completeLike();
-                        setModalState(() {});
-                      },
-                    ),
-
-                    _taskRow(
-                      icon: Icons.comment,
-                      title: 'Comment',
-                      completed: socialCommentCompleted,
-                      onTap: () {
-                        _completeComment();
-                        setModalState(() {});
-                      },
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton.icon(
-                        onPressed: socialTaskCompleted &&
-                                !socialClaimed
-                            ? () {
-                                _claimSocialReward();
-                                Navigator.pop(context);
-                              }
-                            : null,
-                        icon: const Icon(Icons.card_giftcard),
-                        label: Text(
-                          socialClaimed
-                              ? 'REWARD CLAIMED'
-                              : 'CLAIM 10 FAN',
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primary,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor:
-                              Colors.grey.shade300,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _taskRow({
-    required IconData icon,
-    required String title,
-    required bool completed,
-    required VoidCallback onTap,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F6FC),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: completed
-                ? Colors.green.shade100
-                : const Color(0xFFEDE7FF),
-            child: Icon(
-              completed ? Icons.check : icon,
-              color: completed ? Colors.green : primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: completed ? null : onTap,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primary,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              completed ? 'DONE' : 'OPEN',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
-      body: SafeArea(
-        child: IndexedStack(
-          index: selectedIndex,
-          children: [
-            _buildHome(),
-            _buildReferralPage(),
-            _buildWalletPage(),
-            _buildSettingsPage(),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigation(),
-    );
-  }
-
-  Widget _buildHome() {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: _buildHeader(),
-        ),
-
-        SliverToBoxAdapter(
-          child: _buildBalanceCard(),
-        ),
-
-        SliverToBoxAdapter(
-          child: _buildMiningCard(),
-        ),
-
-        SliverToBoxAdapter(
-          child: _buildAdsCard(),
-        ),
-
-        SliverToBoxAdapter(
-          child: _buildDailyTaskCard(),
-        ),
-
-        SliverToBoxAdapter(
-          child: _buildKycCard(),
-        ),
-
-        SliverToBoxAdapter(
-          child: _buildReferralSummary(),
-        ),
-
-        const SliverToBoxAdapter(
-          child: SizedBox(height: 25),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        20,
-        16,
-        20,
-        12,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Text(
-                'AFAM',
-                style: TextStyle(
-                  color: primary,
-                  fontSize: 25,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                width: 50,
-                height: 50,
-                decoration: const BoxDecoration(
-                  color: Colors.black,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.token,
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Stack(
-                children: [
-                  IconButton(
-                    onPressed: _openNotifications,
-                    icon: const Icon(
-                      Icons.notifications_none,
-                      size: 34,
-                      color: primary,
-                    ),
-                  ),
-                  if (notifications.isNotEmpty)
-                    Positioned(
-                      right: 7,
-                      top: 7,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 2),
-
-          const Text(
-            'POWER FAN NETWORK',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: primary,
-              fontSize: 30,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-
-          const Text(
-            'Mine FAN. Earn More',
-            style: TextStyle(
-              color: primary,
-              fontSize: 17,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBalanceCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF4C1EC8),
-            Color(0xFF29106F),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                const SizedBox(height: 16),
                 const Text(
-                  'BALANCE',
+                  'Notifications',
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 19,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
-                const SizedBox(height: 8),
-
-                Row(
-                  children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: const BoxDecoration(
-                        color: Colors.orange,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.star,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    ),
-
-                    const SizedBox(width: 10),
-
-                    Flexible(
-                      child: Text(
-                        fanBalance.toStringAsFixed(4),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 35,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 8),
-
-                    const Text(
-                      'FAN',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                const Text(
-                  '≈ \$0.00',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          const Icon(
-            Icons.person,
-            color: Colors.white24,
-            size: 90,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMiningCard() {
-    return _whiteCard(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _circleIcon(
-                isMining
-                    ? Icons.bolt
-                    : Icons.pickaxe,
-              ),
-
-              const SizedBox(width: 16),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text.rich(
-                      TextSpan(
-                        text: 'STATUS: ',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: isMining
-                                ? 'MINING'
-                                : 'READY',
-                            style: TextStyle(
-                              color: isMining
-                                  ? green
-                                  : primary,
-                            ),
+                const Divider(),
+                Expanded(
+                  child: _notifications.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No notifications yet.',
                           ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    Text(
-                      isMining
-                          ? 'Mining is active'
-                          : 'Start mining to earn FAN',
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 18),
-          const Divider(),
-          const SizedBox(height: 15),
-
-          Row(
-            children: [
-              Expanded(
-                child: _infoColumn(
-                  Icons.speed,
-                  'MINING RATE',
-                  '${miningRate.toStringAsFixed(2)} FAN/H',
-                ),
-              ),
-
-              Container(
-                width: 1,
-                height: 55,
-                color: Colors.black12,
-              ),
-
-              Expanded(
-                child: _infoColumn(
-                  Icons.access_time,
-                  'SESSION',
-                  isMining
-                      ? 'ACTIVE'
-                      : '00:00:00',
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 18),
-
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton.icon(
-              onPressed:
-                  isMining ? _stopMining : _startMining,
-              icon: Icon(
-                isMining
-                    ? Icons.stop_circle
-                    : Icons.bolt,
-              ),
-              label: Text(
-                isMining
-                    ? 'STOP MINING'
-                    : 'START MINING',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAdsCard() {
-    final progress =
-        adsWatchedToday / maxAdsPerDay;
-
-    return _whiteCard(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _circleIcon(Icons.rocket_launch),
-
-              const SizedBox(width: 14),
-
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'BOOST BY WATCHING ADS',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Each ad adds +0.1 FAN/H',
-                      style: TextStyle(
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              ElevatedButton.icon(
-                onPressed: null,
-                icon: Icon(Icons.movie),
-                label: Text('WATCH'),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 15),
-
-          Row(
-            children: [
-              Text(
-                'Ads watched today: $adsWatchedToday / $maxAdsPerDay',
-                style: const TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '+${adBoost.toStringAsFixed(1)} FAN/H',
-                style: const TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          LinearProgressIndicator(
-            value: progress.clamp(0.0, 1.0),
-            minHeight: 8,
-            borderRadius: BorderRadius.circular(20),
-            backgroundColor: const Color(0xFFE8E5F4),
-            color: primary,
-          ),
-
-          const SizedBox(height: 12),
-
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton.icon(
-              onPressed:
-                  adsWatchedToday < maxAdsPerDay
-                      ? _watchAd
-                      : null,
-              icon: const Icon(Icons.play_arrow),
-              label: Text(
-                adsWatchedToday < maxAdsPerDay
-                    ? 'WATCH AD & GET +0.1 FAN/H'
-                    : 'DAILY LIMIT REACHED',
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: primary,
-                side: const BorderSide(
-                  color: primary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDailyTaskCard() {
-    final completedCount =
-        [
-          socialFollowCompleted,
-          socialLikeCompleted,
-          socialCommentCompleted,
-        ].where((item) => item).length;
-
-    return _whiteCard(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _circleIcon(
-                Icons.task_alt,
-                iconColor: Colors.green,
-                background: const Color(0xFFE5F5EA),
-              ),
-
-              const SizedBox(width: 14),
-
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'DAILY TASK',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Text(
-                      'Follow, Like & Comment',
-                      style: TextStyle(
-                        color: Colors.black54,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Complete all and earn 10 FAN',
-                      style: TextStyle(
-                        color: primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 15),
-
-          Row(
-            children: [
-              _socialIcon('X'),
-              const SizedBox(width: 8),
-              _socialIcon('TG'),
-              const SizedBox(width: 8),
-              _socialIcon('IG'),
-              const SizedBox(width: 8),
-              _socialIcon('YT'),
-              const Spacer(),
-              Text(
-                '$completedCount / 3',
-                style: const TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 15),
-
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: OutlinedButton.icon(
-              onPressed: _showSocialTaskDialog,
-              icon: const Icon(
-                Icons.card_giftcard,
-              ),
-              label: Text(
-                socialClaimed
-                    ? 'REWARD CLAIMED'
-                    : 'FOLLOW & EARN 10 FAN',
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: primary,
-                side: const BorderSide(
-                  color: primary,
-                  width: 1.5,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildKycCard() {
-    return _whiteCard(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      child: Row(
-        children: [
-          _circleIcon(
-            Icons.verified_user,
-            iconColor: Colors.white,
-            background: primary,
-          ),
-
-          const SizedBox(width: 14),
-
-          const Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'KYC VERIFICATION',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                SizedBox(height: 5),
-                Text(
-                  'Verify your identity to secure your account',
-                  style: TextStyle(
-                    color: Colors.black54,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          OutlinedButton(
-            onPressed: () {
-              _showMessage(
-                'KYC verification page will be connected next.',
-              );
-            },
-            child: const Text('COMPLETE KYC'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReferralSummary() {
-    return _whiteCard(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 8,
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'REFERRAL BOOST',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            '$referralCount referrals • '
-            '$activeReferrals active',
-            style: const TextStyle(
-              color: Colors.black54,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            '+${referralBoost.toStringAsFixed(2)} FAN/H',
-            style: const TextStyle(
-              color: primary,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _addReferral,
-                  child: const Text(
-                    'DEMO REFERRAL +5 FAN',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              IconButton(
-                onPressed: _notifyInactiveReferrals,
-                icon: const Icon(
-                  Icons.notifications_active,
-                  color: primary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReferralPage() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        children: [
-          const SizedBox(height: 15),
-
-          const Text(
-            'REFERRAL',
-            style: TextStyle(
-              color: primary,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          _whiteCard(
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.people_alt,
-                  color: primary,
-                  size: 70,
-                ),
-
-                const SizedBox(height: 15),
-
-                const Text(
-                  'Invite friends and earn FAN',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                const Text(
-                  'New user gets 20 FAN.\n'
-                  'Referrer gets 5 FAN.\n'
-                  'Each active referral adds +0.02 FAN/H.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.black54,
-                    height: 1.5,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: _statBox(
-                        'REFERRALS',
-                        '$referralCount',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _statBox(
-                        'ACTIVE',
-                        '$activeReferrals',
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _statBox(
-                        'BOOST',
-                        '+${referralBoost.toStringAsFixed(2)}',
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton.icon(
-                    onPressed: _addReferral,
-                    icon: const Icon(Icons.person_add),
-                    label: const Text(
-                      'INVITE FRIEND',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primary,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        _notifyInactiveReferrals,
-                    icon: const Icon(
-                      Icons.notifications_active,
-                    ),
-                    label: const Text(
-                      'REMIND INACTIVE REFERRALS',
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWalletPage() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        children: [
-          const SizedBox(height: 15),
-
-          const Text(
-            'WALLET',
-            style: TextStyle(
-              color: primary,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          _whiteCard(
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.account_balance_wallet,
-                  color: primary,
-                  size: 65,
-                ),
-
-                const SizedBox(height: 15),
-
-                const Text(
-                  'TOTAL FAN BALANCE',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                Text(
-                  fanBalance.toStringAsFixed(4),
-                  style: const TextStyle(
-                    color: primary,
-                    fontSize: 35,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                const Text(
-                  'Wallet and withdrawal features will be connected to the secure backend.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.black54,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsPage() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        children: [
-          const SizedBox(height: 15),
-
-          const Text(
-            'SETTINGS',
-            style: TextStyle(
-              color: primary,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          _whiteCard(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(
-                    Icons.security,
-                    color: primary,
-                  ),
-                  title: const Text(
-                    'One Account • One Device',
-                  ),
-                  subtitle: const Text(
-                    'Device security will be enforced by the backend.',
-                  ),
-                ),
-
-                const Divider(),
-
-                ListTile(
-                  leading: const Icon(
-                    Icons.verified_user,
-                    color: primary,
-                  ),
-                  title: const Text(
-                    'KYC Verification',
-                  ),
-                  subtitle: Text(
-                    kycCompleted
-                        ? 'Verified'
-                        : 'Not completed',
-                  ),
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                  ),
-                  onTap: () {
-                    _showMessage(
-                      'KYC page will be connected next.',
-                    );
-                  },
-                ),
-
-                const Divider(),
-
-                ListTile(
-                  leading: const Icon(
-                    Icons.notifications,
-                    color: primary,
-                  ),
-                  title: const Text(
-                    'Notifications',
-                  ),
-                  subtitle: Text(
-                    '${notifications.length} notification(s)',
-                  ),
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                  ),
-                  onTap: _openNotifications,
-                ),
-
-                const Divider(),
-
-                ListTile(
-                  leading: const Icon(
-                    Icons.card_giftcard,
-                    color: primary,
-                  ),
-                  title: const Text(
-                    'New User Reward',
-                  ),
-                  subtitle: const Text(
-                    '20 FAN welcome reward',
-                  ),
-                  trailing: newUserRewardClaimed
-                      ? const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
                         )
-                      : TextButton(
-                          onPressed:
-                              _claimNewUserReward,
-                          child: const Text('CLAIM'),
+                      : ListView.builder(
+                          itemCount:
+                              _notifications.length,
+                          itemBuilder:
+                              (context, index) {
+                            return ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor:
+                                    Color(0xFFEDE7F6),
+                                child: Icon(
+                                  Icons.notifications,
+                                  color: primary,
+                                ),
+                              ),
+                              title: Text(
+                                _notifications[index],
+                              ),
+                            );
+                          },
                         ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomNavigation() {
-    return BottomNavigationBar(
-      currentIndex: selectedIndex,
-      type: BottomNavigationBarType.fixed,
-      selectedItemColor: primary,
-      unselectedItemColor: Colors.grey.shade600,
-      onTap: (index) {
-        setState(() {
-          selectedIndex = index;
-        });
+        );
       },
-      items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.home),
-          label: 'HOME',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.people),
-          label: 'REFERRAL',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.account_balance_wallet),
-          label: 'WALLET',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.settings),
-          label: 'SETTINGS',
-        ),
-      ],
     );
   }
 
-  Widget _whiteCard({
+  Widget _card({
     required Widget child,
-    EdgeInsetsGeometry? margin,
+    EdgeInsetsGeometry padding =
+        const EdgeInsets.all(20),
   }) {
     return Container(
-      margin: margin,
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: padding,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -1661,10 +531,10 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _circleIcon(
+  Widget _iconCircle(
     IconData icon, {
-    Color iconColor = primary,
-    Color background = const Color(0xFFEDE9FA),
+    Color color = primary,
+    Color background = const Color(0xFFF0EDFA),
   }) {
     return Container(
       width: 58,
@@ -1675,96 +545,797 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Icon(
         icon,
-        color: iconColor,
+        color: color,
         size: 30,
       ),
     );
   }
 
-  Widget _infoColumn(
+  Widget _buildBalanceHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        22,
+        24,
+        12,
+        24,
+      ),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF35129B),
+            Color(0xFF4A18C9),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'BALANCE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.monetization_on,
+                      color: Colors.orange,
+                      size: 48,
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        '${_balance.toStringAsFixed(4)} FAN',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '≈ \$${(_balance * 0.01).toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.diamond,
+            color: Colors.deepPurpleAccent,
+            size: 100,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiningCard() {
+    final remaining = _remainingTime;
+
+    return _card(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _iconCircle(
+                _isMining
+                    ? Icons.bolt
+                    : Icons.handyman,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontSize: 20,
+                          color: Colors.black,
+                        ),
+                        children: [
+                          const TextSpan(
+                            text: 'STATUS: ',
+                            style: TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                          TextSpan(
+                            text: _isMining
+                                ? 'MINING'
+                                : 'READY',
+                            style: TextStyle(
+                              color: _isMining
+                                  ? green
+                                  : green,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _isMining
+                          ? 'Mining is active'
+                          : 'Start mining to earn FAN',
+                      style: const TextStyle(
+                        color: Color(0xFF45415B),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              Expanded(
+                child: _statItem(
+                  Icons.speed,
+                  'MINING RATE',
+                  '${_miningRate.toStringAsFixed(2)} FAN/H',
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 55,
+                color: Colors.grey.shade300,
+              ),
+              Expanded(
+                child: _statItem(
+                  Icons.access_time,
+                  'SESSION TIME',
+                  _isMining
+                      ? _formatDuration(remaining)
+                      : '00:00:00 / 24:00:00',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 58,
+            child: ElevatedButton.icon(
+              onPressed:
+                  _isMining ? null : _startMining,
+              icon: Icon(
+                _isMining
+                    ? Icons.bolt
+                    : Icons.hardware,
+              ),
+              label: Text(
+                _isMining
+                    ? 'MINING ACTIVE'
+                    : 'START MINING',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    Colors.grey.shade400,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(
     IconData icon,
     String title,
     String value,
   ) {
-    return Column(
+    return Row(
       children: [
+        const SizedBox(width: 8),
         Icon(
           icon,
           color: primary,
-          size: 32,
+          size: 38,
         ),
-        const SizedBox(height: 6),
-        Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 13,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: primary,
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: primary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _socialIcon(String text) {
-    return Container(
-      width: 43,
-      height: 43,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(12),
+  Widget _buildAdsCard() {
+    final progress =
+        _adsWatchedToday / _maxAdsPerDay;
+
+    return _card(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _iconCircle(
+                Icons.rocket_launch,
+                color: Colors.deepOrange,
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'BOOST BY WATCHING ADS',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Each ad adds +0.1 FAN/H',
+                      style: TextStyle(
+                        color: Color(0xFF45415B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: null,
+                icon: Icon(Icons.movie),
+                label: Text('WATCH AD'),
+                style: ButtonStyle(
+                  backgroundColor:
+                      WidgetStatePropertyAll(primary),
+                  foregroundColor:
+                      WidgetStatePropertyAll(
+                    Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Ads watched today: '
+                  '$_adsWatchedToday / $_maxAdsPerDay',
+                  style: const TextStyle(
+                    color: primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                '+${(_adsWatchedToday * _adBoost).toStringAsFixed(1)} FAN/H',
+                style: const TextStyle(
+                  color: primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius:
+                BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 10,
+              backgroundColor:
+                  const Color(0xFFE9E5F5),
+              valueColor:
+                  const AlwaysStoppedAnimation(
+                primary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed:
+                  _adsWatchedToday >= _maxAdsPerDay
+                      ? null
+                      : _watchAd,
+              icon: const Icon(
+                Icons.play_circle,
+              ),
+              label: Text(
+                _adsWatchedToday >= _maxAdsPerDay
+                    ? 'DAILY LIMIT REACHED'
+                    : 'TEST REWARD AD',
+              ),
+            ),
+          ),
+        ],
       ),
-      child: Text(
-        text,
+    );
+  }
+
+  Widget _buildSocialCard() {
+    return _card(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _iconCircle(
+                Icons.task_alt,
+                color: Colors.green.shade800,
+                background:
+                    const Color(0xFFE7F5EC),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'DAILY TASK',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Complete social media tasks',
+                      style: TextStyle(
+                        color: Color(0xFF45415B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '+10 FAN',
+                style: TextStyle(
+                  color: green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          _taskCheck(
+            'Follow official social media',
+            _socialFollow,
+            () => _setSocialTask(
+              'follow',
+              !_socialFollow,
+            ),
+          ),
+          _taskCheck(
+            'Like official post',
+            _socialLike,
+            () => _setSocialTask(
+              'like',
+              !_socialLike,
+            ),
+          ),
+          _taskCheck(
+            'Comment on official post',
+            _socialComment,
+            () => _setSocialTask(
+              'comment',
+              !_socialComment,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: _socialTaskComplete &&
+                      !_socialClaimed
+                  ? _claimSocialReward
+                  : null,
+              icon: const Icon(Icons.card_giftcard),
+              label: Text(
+                _socialClaimed
+                    ? 'REWARD CLAIMED'
+                    : 'VERIFY & CLAIM 10 FAN',
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    Colors.grey.shade300,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
+          if (!_socialTaskComplete &&
+              !_socialClaimed)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text(
+                'Complete all 3 tasks before claiming.',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _taskCheck(
+    String title,
+    bool checked,
+    VoidCallback onTap,
+  ) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: onTap,
+      leading: Icon(
+        checked
+            ? Icons.check_circle
+            : Icons.radio_button_unchecked,
+        color: checked ? green : Colors.grey,
+      ),
+      title: Text(
+        title,
         style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      trailing: checked
+          ? const Text(
+              'DONE',
+              style: TextStyle(
+                color: green,
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : const Text(
+              'PENDING',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+    );
+  }
+
+  Widget _buildReferralCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _iconCircle(
+                Icons.people,
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'REFERRAL REWARD',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'Invite users and earn rewards',
+                      style: TextStyle(
+                        color: Color(0xFF45415B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _referralStat(
+                  'REFERRALS',
+                  '$_referralCount',
+                ),
+              ),
+              Expanded(
+                child: _referralStat(
+                  'ACTIVE',
+                  '$_activeReferrals',
+                ),
+              ),
+              Expanded(
+                child: _referralStat(
+                  'BONUS RATE',
+                  '+${_referralMiningBonus().toStringAsFixed(2)}',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          const Text(
+            'New user: +20 FAN',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Inviter: +5 FAN',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Active referral bonus: +0.02 FAN/H each',
+            style: TextStyle(
+              color: primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 15),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _sendReferralReminder,
+              icon: const Icon(Icons.notifications_active),
+              label: const Text(
+                'REMIND INACTIVE REFERRALS',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _referralStat(
+    String title,
+    String value,
+  ) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: primary,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKycCard() {
+    return _card(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 18,
+        vertical: 15,
+      ),
+      child: Row(
+        children: [
+          _iconCircle(
+            Icons.verified_user,
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'KYC VERIFICATION',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'Verify your identity to secure your account',
+                  style: TextStyle(
+                    color: Color(0xFF45415B),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          OutlinedButton(
+            onPressed: () {
+              _showMessage(
+                'KYC module will be connected to the backend.',
+              );
+            },
+            child: const Text('COMPLETE KYC'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor:
+          const Color(0xFFF8F7FC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildTopBar(),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadData,
+                child: ListView(
+                  padding:
+                      const EdgeInsets.fromLTRB(
+                    16,
+                    10,
+                    16,
+                    30,
+                  ),
+                  children: [
+                    _buildBalanceHeader(),
+                    const SizedBox(height: 16),
+                    _buildMiningCard(),
+                    const SizedBox(height: 16),
+                    _buildAdsCard(),
+                    const SizedBox(height: 16),
+                    _buildSocialCard(),
+                    const SizedBox(height: 16),
+                    _buildReferralCard(),
+                    const SizedBox(height: 16),
+                    _buildKycCard(),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _statBox(
-    String title,
-    String value,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 15,
-        horizontal: 8,
+  Widget _buildTopBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        10,
+        12,
+        5,
       ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F2FF),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
+      child: Row(
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Colors.black54,
-              fontWeight: FontWeight.bold,
+          const Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AFAM',
+                  style: TextStyle(
+                    color: primary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'POWER FAN NETWORK',
+                  style: TextStyle(
+                    color: darkPurple,
+                    fontSize: 25,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  'Mine FAN. Earn More',
+                  style: TextStyle(
+                    color: darkPurple,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 5),
-          Text(
-            value,
-            style: const TextStyle(
-              color: primary,
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
+          IconButton(
+            onPressed: _showNotifications,
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(
+                  Icons.notifications_none,
+                  color: primary,
+                  size: 32,
+                ),
+                if (_notifications.isNotEmpty)
+                  Positioned(
+                    right: -1,
+                    top: -2,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration:
+                          const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
