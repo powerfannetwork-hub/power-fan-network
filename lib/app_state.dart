@@ -298,95 +298,7 @@ class AppState extends ChangeNotifier {
       _kyc1Status,
     );
 
-    await prefs.setString(
-      _keyKyc2Status,
-      _kyc2Status,
-    );
-
-    await prefs.setString(
-      _keyKyc3Status,
-      _kyc3Status,
-    );
-
-    await prefs.setBool(
-      _keyAuthenticated,
-      _isAuthenticated,
-    );
-
-    await prefs.setBool(
-      _keyFirstLaunch,
-      _isFirstLaunch,
-    );
-
-    await prefs.setBool(
-      _keyWarningShown,
-      _deviceWarningShown,
-    );
-  }
-
-  // ============================================================
-  // GETTERS
-  // ============================================================
-
-  bool get initialized => _initialized;
-
-  double get fanBalance => _fanBalance;
-
-  String get miningStatus => _miningStatus;
-
-  int? get miningStartTime => _miningStartTime;
-
-  int? get miningEndTime => _miningEndTime;
-
-  int get adsWatchedToday => _adsWatchedToday;
-
-  int get checkInStreak => _checkInStreak;
-
-  int get referralCount => _referralCount;
-
-  int get activeReferralCount => _activeReferralCount;
-
-  String get kyc1Status => _kyc1Status;
-
-  String get kyc2Status => _kyc2Status;
-
-  String get kyc3Status => _kyc3Status;
-
-  bool get isAuthenticated => _isAuthenticated;
-
-  bool get isFirstLaunch => _isFirstLaunch;
-
-  bool get deviceWarningShown => _deviceWarningShown;
-
-  List<AppNotification> get notifications =>
-      List.unmodifiable(_notifications);
-
-  // ============================================================
-  // CURRENT MINING RATE
-  // ============================================================
-
-  double get currentMiningRate {
-    final referralBoost =
-        _activeReferralCount *
-            AppConstants.activeReferralMiningBoost;
-
-    final adBoost =
-        _adsWatchedToday *
-            AppConstants.adBoostRate;
-
-    return AppConstants.baseMiningRate +
-        referralBoost +
-        adBoost;
-  }
-
-  // ============================================================
-  // SESSION RATE
-  // ============================================================
-
-  double get sessionMiningRate {
-    if (_miningStatus != AppConstants.miningStatusMining) {
-      return 0.0;
-    }
+    yyh    }
 
     return _miningRateAtStart;
   }
@@ -411,7 +323,7 @@ class AppState extends ChangeNotifier {
 
     final end = _miningEndTime ??
         (start +
-            AppConstants.miningSessionMilliseconds);
+            AppConstants.miningSessionMillisecondÿs);
 
     final effectiveNow =
         now > end ? end : now;
