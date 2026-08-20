@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_constants.dart';
@@ -15,21 +15,32 @@ class AppState extends ChangeNotifier {
   static const String _keyMiningStart = 'mining_start';
   static const String _keyMiningEnd = 'mining_end';
   static const String _keyMiningRate = 'mining_rate';
+
   static const String _keyAdsToday = 'ads_today';
   static const String _keyAdsDate = 'ads_date';
+
   static const String _keyCheckInStreak = 'checkin_streak';
   static const String _keyLastCheckIn = 'last_checkin';
+
   static const String _keyReferralCount = 'referral_count';
-  static const String _keyActiveReferralCount = 'active_referrals';
-  static const String _keySocialTaskDate = 'social_task_date';
-  static const String _keySocialTaskVerified = 'social_task_verified';
-  static const String _keySocialTaskClaimed = 'social_task_claimed';
+  static const String _keyActiveReferralCount =
+      'active_referrals';
+
+  static const String _keySocialTaskDate =
+      'social_task_date';
+  static const String _keySocialTaskVerified =
+      'social_task_verified';
+  static const String _keySocialTaskClaimed =
+      'social_task_claimed';
+
   static const String _keyKyc1Status = 'kyc1_status';
   static const String _keyKyc2Status = 'kyc2_status';
   static const String _keyKyc3Status = 'kyc3_status';
+
   static const String _keyAuthenticated = 'authenticated';
   static const String _keyFirstLaunch = 'first_launch';
-  static const String _keyWarningShown = 'device_warning_shown';
+  static const String _keyWarningShown =
+      'device_warning_shown';
 
   // ============================================================
   // PRIVATE STATE
@@ -43,12 +54,14 @@ class AppState extends ChangeNotifier {
 
   double _fanBalance = 0.0;
 
-  String _miningStatus = AppConstants.miningStatusReady;
+  String _miningStatus =
+      AppConstants.miningStatusReady;
 
   int? _miningStartTime;
   int? _miningEndTime;
 
-  double _miningRateAtStart = AppConstants.baseMiningRate;
+  double _miningRateAtStart =
+      AppConstants.baseMiningRate;
 
   int _adsWatchedToday = 0;
 
@@ -68,11 +81,14 @@ class AppState extends ChangeNotifier {
 
   bool _socialTaskClaimed = false;
 
-  String _kyc1Status = AppConstants.kycStatusLocked;
+  String _kyc1Status =
+      AppConstants.kycStatusLocked;
 
-  String _kyc2Status = AppConstants.kycStatusLocked;
+  String _kyc2Status =
+      AppConstants.kycStatusLocked;
 
-  String _kyc3Status = AppConstants.kycStatusLocked;
+  String _kyc3Status =
+      AppConstants.kycStatusLocked;
 
   bool _isAuthenticated = false;
 
@@ -99,15 +115,30 @@ class AppState extends ChangeNotifier {
     bool listen = true,
   }) {
     if (listen) {
-      return context.dependOnInheritedWidgetOfExactType<
-              _AppStateInherited>()!
-          .state;
+      final inherited =
+          context.dependOnInheritedWidgetOfExactType<
+              _AppStateInherited>();
+
+      if (inherited == null) {
+        throw FlutterError(
+          'AppStateScope was not found above this widget.',
+        );
+      }
+
+      return inherited.state;
     }
 
     final element = context
-        .getElementForInheritedWidgetOfExactType<_AppStateInherited>();
+        .getElementForInheritedWidgetOfExactType<
+            _AppStateInherited>();
 
-    return (element!.widget as _AppStateInherited).state;
+    if (element == null) {
+      throw FlutterError(
+        'AppStateScope was not found above this widget.',
+      );
+    }
+
+    return (element.widget as _AppStateInherited).state;
   }
 
   // ============================================================
@@ -131,22 +162,28 @@ class AppState extends ChangeNotifier {
   }
 
   // ============================================================
-  // LOAD SAVED STATE
+  // LOAD STATE
   // ============================================================
 
   void _loadState() {
     final prefs = _prefs;
 
-    if (prefs == null) return;
+    if (prefs == null) {
+      return;
+    }
 
-    _fanBalance = prefs.getDouble(_keyFanBalance) ?? 0.0;
+    _fanBalance =
+        prefs.getDouble(_keyFanBalance) ?? 0.0;
 
-    _miningStatus = prefs.getString(_keyMiningStatus) ??
-        AppConstants.miningStatusReady;
+    _miningStatus =
+        prefs.getString(_keyMiningStatus) ??
+            AppConstants.miningStatusReady;
 
-    _miningStartTime = prefs.getInt(_keyMiningStart);
+    _miningStartTime =
+        prefs.getInt(_keyMiningStart);
 
-    _miningEndTime = prefs.getInt(_keyMiningEnd);
+    _miningEndTime =
+        prefs.getInt(_keyMiningEnd);
 
     _miningRateAtStart =
         prefs.getDouble(_keyMiningRate) ??
@@ -155,7 +192,8 @@ class AppState extends ChangeNotifier {
     _adsWatchedToday =
         prefs.getInt(_keyAdsToday) ?? 0;
 
-    _adsDate = prefs.getString(_keyAdsDate);
+    _adsDate =
+        prefs.getString(_keyAdsDate);
 
     _checkInStreak =
         prefs.getInt(_keyCheckInStreak) ?? 0;
@@ -167,16 +205,25 @@ class AppState extends ChangeNotifier {
         prefs.getInt(_keyReferralCount) ?? 0;
 
     _activeReferralCount =
-        prefs.getInt(_keyActiveReferralCount) ?? 0;
+        prefs.getInt(
+      _keyActiveReferralCount,
+    ) ??
+        0;
 
     _socialTaskDate =
         prefs.getString(_keySocialTaskDate);
 
     _socialTaskVerified =
-        prefs.getBool(_keySocialTaskVerified) ?? false;
+        prefs.getBool(
+          _keySocialTaskVerified,
+        ) ??
+            false;
 
     _socialTaskClaimed =
-        prefs.getBool(_keySocialTaskClaimed) ?? false;
+        prefs.getBool(
+          _keySocialTaskClaimed,
+        ) ??
+            false;
 
     _kyc1Status =
         prefs.getString(_keyKyc1Status) ??
@@ -191,13 +238,22 @@ class AppState extends ChangeNotifier {
             AppConstants.kycStatusLocked;
 
     _isAuthenticated =
-        prefs.getBool(_keyAuthenticated) ?? false;
+        prefs.getBool(
+          _keyAuthenticated,
+        ) ??
+            false;
 
     _isFirstLaunch =
-        prefs.getBool(_keyFirstLaunch) ?? true;
+        prefs.getBool(
+          _keyFirstLaunch,
+        ) ??
+            true;
 
     _deviceWarningShown =
-        prefs.getBool(_keyWarningShown) ?? false;
+        prefs.getBool(
+          _keyWarningShown,
+        ) ??
+            false;
   }
 
   // ============================================================
@@ -207,7 +263,9 @@ class AppState extends ChangeNotifier {
   Future<void> _persistState() async {
     final prefs = _prefs;
 
-    if (prefs == null) return;
+    if (prefs == null) {
+      return;
+    }
 
     await prefs.setDouble(
       _keyFanBalance,
@@ -225,7 +283,9 @@ class AppState extends ChangeNotifier {
         _miningStartTime!,
       );
     } else {
-      await prefs.remove(_keyMiningStart);
+      await prefs.remove(
+        _keyMiningStart,
+      );
     }
 
     if (_miningEndTime != null) {
@@ -234,7 +294,9 @@ class AppState extends ChangeNotifier {
         _miningEndTime!,
       );
     } else {
-      await prefs.remove(_keyMiningEnd);
+      await prefs.remove(
+        _keyMiningEnd,
+      );
     }
 
     await prefs.setDouble(
@@ -247,12 +309,10 @@ class AppState extends ChangeNotifier {
       _adsWatchedToday,
     );
 
-    if (_adsDate != null) {
-      await prefs.setString(
-        _keyAdsDate,
-        _adsDate!,
-      );
-    }
+    await prefs.setString(
+      _keyAdsDate,
+      _adsDate ?? _todayDateString(),
+    );
 
     await prefs.setInt(
       _keyCheckInStreak,
@@ -263,6 +323,10 @@ class AppState extends ChangeNotifier {
       await prefs.setString(
         _keyLastCheckIn,
         _lastCheckInDate!,
+      );
+    } else {
+      await prefs.remove(
+        _keyLastCheckIn,
       );
     }
 
@@ -276,12 +340,10 @@ class AppState extends ChangeNotifier {
       _activeReferralCount,
     );
 
-    if (_socialTaskDate != null) {
-      await prefs.setString(
-        _keySocialTaskDate,
-        _socialTaskDate!,
-      );
-    }
+    await prefs.setString(
+      _keySocialTaskDate,
+      _socialTaskDate ?? _todayDateString(),
+    );
 
     await prefs.setBool(
       _keySocialTaskVerified,
@@ -298,13 +360,138 @@ class AppState extends ChangeNotifier {
       _kyc1Status,
     );
 
-    yyh    }
+    await prefs.setString(
+      _keyKyc2Status,
+      _kyc2Status,
+    );
 
-    return _miningRateAtStart;
+    await prefs.setString(
+      _keyKyc3Status,
+      _kyc3Status,
+    );
+
+    await prefs.setBool(
+      _keyAuthenticated,
+      _isAuthenticated,
+    );
+
+    await prefs.setBool(
+      _keyFirstLaunch,
+      _isFirstLaunch,
+    );
+
+    await prefs.setBool(
+      _keyWarningShown,
+      _deviceWarningShown,
+    );
   }
 
   // ============================================================
-  // LIVE SESSION EARNINGS
+  // PUBLIC GETTERS
+  // ============================================================
+
+  bool get initialized => _initialized;
+
+  double get fanBalance => _fanBalance;
+
+  String get miningStatus => _miningStatus;
+
+  bool get isMining =>
+      _miningStatus ==
+      AppConstants.miningStatusMining;
+
+  bool get miningCompleted =>
+      _miningStatus ==
+      AppConstants.miningStatusCompleted;
+
+  bool get miningReady =>
+      _miningStatus ==
+      AppConstants.miningStatusReady;
+
+  int get adsWatchedToday {
+    _checkDailyReset();
+
+    return _adsWatchedToday;
+  }
+
+  int get maxDailyAds =>
+      AppConstants.maxDailyAds;
+
+  int get checkInStreak =>
+      _checkInStreak;
+
+  int get referralCount =>
+      _referralCount;
+
+  int get activeReferralCount =>
+      _activeReferralCount;
+
+  bool get socialTaskVerified {
+    _checkDailyReset();
+
+    return _socialTaskVerified;
+  }
+
+  bool get socialTaskClaimed {
+    _checkDailyReset();
+
+    return _socialTaskClaimed;
+  }
+
+  String get kyc1Status =>
+      _kyc1Status;
+
+  String get kyc2Status =>
+      _kyc2Status;
+
+  String get kyc3Status =>
+      _kyc3Status;
+
+  bool get isAuthenticated =>
+      _isAuthenticated;
+
+  bool get isFirstLaunch =>
+      _isFirstLaunch;
+
+  bool get deviceWarningShown =>
+      _deviceWarningShown;
+
+  List<AppNotification> get notifications =>
+      List.unmodifiable(_notifications);
+
+  int get unreadNotificationCount {
+    return _notifications
+        .where(
+          (item) => !item.read,
+        )
+        .length;
+  }
+
+  // ============================================================
+  // MINING RATE
+  // ============================================================
+
+  double get referralMiningBoost {
+    return _activeReferralCount *
+        AppConstants.activeReferralMiningBoost;
+  }
+
+  double get adMiningBoost {
+    return _adsWatchedToday *
+        AppConstants.adMiningBoost;
+  }
+
+  double get currentMiningRate {
+    return AppConstants.baseMiningRate +
+        adMiningBoost +
+        referralMiningBoost;
+  }
+
+  double get miningRateAtStart =>
+      _miningRateAtStart;
+
+  // ============================================================
+  // SESSION EARNINGS
   // ============================================================
 
   double get sessionEarnedFan {
@@ -312,7 +499,8 @@ class AppState extends ChangeNotifier {
       return 0.0;
     }
 
-    if (_miningStatus == AppConstants.miningStatusReady) {
+    if (_miningStatus ==
+        AppConstants.miningStatusReady) {
       return 0.0;
     }
 
@@ -323,7 +511,8 @@ class AppState extends ChangeNotifier {
 
     final end = _miningEndTime ??
         (start +
-            AppConstants.miningSessionMillisecondÿs);
+            AppConstants
+                .miningSessionMilliseconds);
 
     final effectiveNow =
         now > end ? end : now;
@@ -332,12 +521,13 @@ class AppState extends ChangeNotifier {
       return 0.0;
     }
 
-    final elapsedMilliseconds =
+    final elapsed =
         effectiveNow - start;
 
     final elapsedHours =
-        elapsedMilliseconds /
-            AppConstants.millisecondsPerHour;
+        elapsed /
+            AppConstants
+                .millisecondsPerHour;
 
     return elapsedHours *
         _miningRateAtStart;
@@ -382,9 +572,6 @@ class AppState extends ChangeNotifier {
       return 0.0;
     }
 
-    final now =
-        DateTime.now().millisecondsSinceEpoch;
-
     final total =
         _miningEndTime! -
             _miningStartTime!;
@@ -392,6 +579,9 @@ class AppState extends ChangeNotifier {
     if (total <= 0) {
       return 1.0;
     }
+
+    final now =
+        DateTime.now().millisecondsSinceEpoch;
 
     final elapsed =
         now - _miningStartTime!;
@@ -415,8 +605,10 @@ class AppState extends ChangeNotifier {
   // ============================================================
 
   bool startMining() {
-    if (_miningStatus ==
-        AppConstants.miningStatusMining) {
+    _checkMiningCompletion();
+
+    if (_miningStatus !=
+        AppConstants.miningStatusReady) {
       return false;
     }
 
@@ -427,7 +619,8 @@ class AppState extends ChangeNotifier {
 
     _miningEndTime =
         now +
-            AppConstants.miningSessionMilliseconds;
+            AppConstants
+                .miningSessionMilliseconds;
 
     _miningRateAtStart =
         currentMiningRate;
@@ -487,6 +680,10 @@ class AppState extends ChangeNotifier {
         AppConstants.miningSessionHours *
             _miningRateAtStart;
 
+    if (reward <= 0) {
+      return 0.0;
+    }
+
     _fanBalance += reward;
 
     _miningStatus =
@@ -507,7 +704,7 @@ class AppState extends ChangeNotifier {
   }
 
   // ============================================================
-  // REWARDED AD
+  // REWARDED ADS
   // ============================================================
 
   bool canWatchRewardedAd() {
@@ -517,16 +714,20 @@ class AppState extends ChangeNotifier {
         AppConstants.maxDailyAds;
   }
 
-  /// Call this ONLY after the rewarded ad has actually completed
-  /// successfully and the ad provider confirms the reward.
+  /// This MUST only be called after the ad network
+  /// confirms that the user earned the reward.
   bool registerCompletedRewardedAd() {
-    if (!canWatchRewardedAd()) {
+    _checkDailyReset();
+
+    if (_adsWatchedToday >=
+        AppConstants.maxDailyAds) {
       return false;
     }
 
     _adsWatchedToday++;
 
-    _adsDate = _todayDateString();
+    _adsDate =
+        _todayDateString();
 
     _persistState();
 
@@ -535,10 +736,6 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  // ============================================================
-  // ADS REMAINING
-  // ============================================================
-
   int get adsRemainingToday {
     _checkDailyReset();
 
@@ -546,7 +743,9 @@ class AppState extends ChangeNotifier {
         AppConstants.maxDailyAds -
             _adsWatchedToday;
 
-    return remaining < 0 ? 0 : remaining;
+    return remaining < 0
+        ? 0
+        : remaining;
   }
 
   // ============================================================
@@ -626,12 +825,11 @@ class AppState extends ChangeNotifier {
   // REFERRALS
   // ============================================================
 
-  void setReferralCount(int count) {
-    if (count < 0) {
-      _referralCount = 0;
-    } else {
-      _referralCount = count;
-    }
+  void setReferralCount(
+    int count,
+  ) {
+    _referralCount =
+        count < 0 ? 0 : count;
 
     _updateKycEligibility();
 
@@ -640,21 +838,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setActiveReferralCount(int count) {
-    if (count < 0) {
-      _activeReferralCount = 0;
-    } else {
-      _activeReferralCount = count;
-    }
+  void setActiveReferralCount(
+    int count,
+  ) {
+    _activeReferralCount =
+        count < 0 ? 0 : count;
 
     _persistState();
 
     notifyListeners();
-  }
-
-  double get referralMiningBoost {
-    return _activeReferralCount *
-        AppConstants.activeReferralMiningBoost;
   }
 
   // ============================================================
@@ -662,7 +854,8 @@ class AppState extends ChangeNotifier {
   // ============================================================
 
   bool remindReferralToMine() {
-    if (!AppConstants.allowReferralReminderNotification) {
+    if (!AppConstants
+        .allowReferralReminderNotification) {
       return false;
     }
 
@@ -683,6 +876,7 @@ class AppState extends ChangeNotifier {
             'Remind them to start mining.',
         createdAt: DateTime.now(),
         read: false,
+        type: 'referral_reminder',
       ),
     );
 
@@ -695,21 +889,18 @@ class AppState extends ChangeNotifier {
   // SOCIAL TASK
   // ============================================================
 
-  bool get socialTaskVerified {
+  bool canClaimSocialTask() {
     _checkDailyReset();
 
-    return _socialTaskVerified;
+    return _socialTaskVerified &&
+        !_socialTaskClaimed;
   }
 
-  bool get socialTaskClaimed {
-    _checkDailyReset();
-
-    return _socialTaskClaimed;
-  }
-
-  /// This should eventually be controlled/verified by backend.
-  void setSocialTaskVerified(bool verified) {
-    _socialTaskVerified = verified;
+  void setSocialTaskVerified(
+    bool verified,
+  ) {
+    _socialTaskVerified =
+        verified;
 
     _socialTaskDate =
         _todayDateString();
@@ -717,13 +908,6 @@ class AppState extends ChangeNotifier {
     _persistState();
 
     notifyListeners();
-  }
-
-  bool canClaimSocialTask() {
-    _checkDailyReset();
-
-    return _socialTaskVerified &&
-        !_socialTaskClaimed;
   }
 
   double claimSocialTask() {
@@ -737,8 +921,10 @@ class AppState extends ChangeNotifier {
       return 0.0;
     }
 
-    _fanBalance +=
+    final reward =
         AppConstants.dailySocialTaskReward;
+
+    _fanBalance += reward;
 
     _socialTaskClaimed = true;
 
@@ -749,14 +935,16 @@ class AppState extends ChangeNotifier {
 
     notifyListeners();
 
-    return AppConstants.dailySocialTaskReward;
+    return reward;
   }
 
   // ============================================================
-  // KYC STATUS CONTROL
+  // KYC STATUS
   // ============================================================
 
-  void setKyc1Status(String status) {
+  void setKyc1Status(
+    String status,
+  ) {
     _kyc1Status = status;
 
     _persistState();
@@ -764,7 +952,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setKyc2Status(String status) {
+  void setKyc2Status(
+    String status,
+  ) {
     _kyc2Status = status;
 
     _persistState();
@@ -772,8 +962,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// KYC 3 should eventually be controlled by admin/backend.
-  void setKyc3Status(String status) {
+  void setKyc3Status(
+    String status,
+  ) {
     if (AppConstants.kyc3Locked) {
       return;
     }
@@ -789,7 +980,9 @@ class AppState extends ChangeNotifier {
   // AUTHENTICATION
   // ============================================================
 
-  void setAuthenticated(bool value) {
+  void setAuthenticated(
+    bool value,
+  ) {
     _isAuthenticated = value;
 
     if (value) {
@@ -840,6 +1033,7 @@ class AppState extends ChangeNotifier {
   void addNotification({
     required String title,
     required String message,
+    String type = 'general',
   }) {
     _notifications.insert(
       0,
@@ -851,14 +1045,18 @@ class AppState extends ChangeNotifier {
         message: message,
         createdAt: DateTime.now(),
         read: false,
+        type: type,
       ),
     );
 
     notifyListeners();
   }
 
-  void markNotificationRead(String id) {
-    final index = _notifications.indexWhere(
+  void markNotificationRead(
+    String id,
+  ) {
+    final index =
+        _notifications.indexWhere(
       (item) => item.id == id,
     );
 
@@ -887,26 +1085,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  int get unreadNotificationCount {
-    return _notifications
-        .where((item) => !item.read)
-        .length;
-  }
-
   void _addMiningCompletedNotification() {
-    if (!AppConstants.miningCompletionNotification) {
+    if (!AppConstants
+        .miningCompletionNotification) {
       return;
     }
 
     final alreadyExists =
         _notifications.any(
       (item) =>
-          item.type == 'mining_completed' &&
+          item.type ==
+              'mining_completed' &&
           item.createdAt
-              .difference(DateTime.now())
-              .inHours
-              .abs() <
-          24,
+                  .difference(
+                    DateTime.now(),
+                  )
+                  .inHours
+                  .abs() <
+              24,
     );
 
     if (alreadyExists) {
@@ -938,21 +1134,24 @@ class AppState extends ChangeNotifier {
     final today =
         _todayDateString();
 
+    bool changed = false;
+
     if (_adsDate != today) {
       _adsWatchedToday = 0;
-
       _adsDate = today;
+      changed = true;
     }
 
     if (_socialTaskDate != today) {
       _socialTaskVerified = false;
-
       _socialTaskClaimed = false;
-
       _socialTaskDate = today;
+      changed = true;
     }
 
-    _persistState();
+    if (changed) {
+      _persistState();
+    }
   }
 
   // ============================================================
@@ -966,9 +1165,7 @@ class AppState extends ChangeNotifier {
       const Duration(seconds: 1),
       (_) {
         _checkMiningCompletion();
-
         _checkDailyReset();
-
         notifyListeners();
       },
     );
@@ -984,15 +1181,23 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  String _dateToString(DateTime date) {
+  String _dateToString(
+    DateTime date,
+  ) {
     final year =
-        date.year.toString().padLeft(4, '0');
+        date.year
+            .toString()
+            .padLeft(4, '0');
 
     final month =
-        date.month.toString().padLeft(2, '0');
+        date.month
+            .toString()
+            .padLeft(2, '0');
 
     final day =
-        date.day.toString().padLeft(2, '0');
+        date.day
+            .toString()
+            .padLeft(2, '0');
 
     return '$year-$month-$day';
   }
@@ -1067,7 +1272,6 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _ticker?.cancel();
-
     super.dispose();
   }
 }
@@ -1116,7 +1320,8 @@ class AppNotification {
 // PROVIDER INHERITED WIDGET
 // =================================================================
 
-class _AppStateInherited extends InheritedNotifier<AppState> {
+class _AppStateInherited
+    extends InheritedNotifier<AppState> {
   const _AppStateInherited({
     required AppState state,
     required Widget child,
@@ -1143,7 +1348,9 @@ class AppStateScope extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return _AppStateInherited(
       state: state,
       child: child,
