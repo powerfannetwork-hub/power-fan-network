@@ -1,25 +1,42 @@
 name: power_fan_network
-description: Power Fan Network mobile app
+description: "Power Fan Network mobile application"
 publish_to: "none"
 
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
+  # Icons
   cupertino_icons: ^1.0.8
-  firebase_core: ^4.12.0
-  firebase_database: ^12.4.5
+
+  # Local storage
+  shared_preferences: ^2.5.5
+
+  # Firebase
+  firebase_core: ^4.13.0
+  firebase_database: ^12.4.7
+
+  # Advertising / Rewarded Ads
+  applovin_max: ^4.6.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
+
+  # Assets
+  # Idan daga baya muka saka logo/images,
+  # za mu cire comments mu saka folders ɗin assets a nan.
+  #
+  # assets:
+  #   - assets/images/
+  #   - assets/icons/
