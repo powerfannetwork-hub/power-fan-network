@@ -12,7 +12,7 @@ Future<void> main() async {
   );
 
   await FirebaseAppCheck.instance.activate(
-    providerAndroid: AndroidProvider.debug,
+    providerAndroid: const AndroidDebugProvider(),
   );
 
   runApp(const PowerFanNetworkApp());
@@ -69,6 +69,7 @@ class _LoginPageState extends State<LoginPage> {
               constraints: const BoxConstraints(maxWidth: 430),
               child: Column(
                 children: [
+                  // POWER FAN LOGO
                   Container(
                     width: 90,
                     height: 90,
@@ -79,6 +80,8 @@ class _LoginPageState extends State<LoginPage> {
                           Color(0xFF3B159B),
                           Color(0xFF241064),
                         ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
                     ),
                     child: const Icon(
@@ -99,6 +102,8 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
+                  const SizedBox(height: 3),
+
                   const Text(
                     'NETWORK',
                     style: TextStyle(
@@ -111,6 +116,7 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 32),
 
+                  // LOGIN CARD
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -132,6 +138,7 @@ class _LoginPageState extends State<LoginPage> {
                           style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E1E2D),
                           ),
                         ),
 
@@ -141,6 +148,7 @@ class _LoginPageState extends State<LoginPage> {
                           'Sign in to your POWER FAN account.',
                           style: TextStyle(
                             color: Colors.grey.shade600,
+                            fontSize: 14,
                           ),
                         ),
 
@@ -169,6 +177,17 @@ class _LoginPageState extends State<LoginPage> {
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(15),
                               borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF3B159B),
+                                width: 1.5,
+                              ),
                             ),
                           ),
                         ),
@@ -211,6 +230,17 @@ class _LoginPageState extends State<LoginPage> {
                               borderRadius: BorderRadius.circular(15),
                               borderSide: BorderSide.none,
                             ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: const BorderSide(
+                                color: Color(0xFF3B159B),
+                                width: 1.5,
+                              ),
+                            ),
                           ),
                         ),
 
@@ -234,6 +264,7 @@ class _LoginPageState extends State<LoginPage> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
                               ),
                             ),
                           ),
@@ -257,6 +288,10 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.black87,
+                              side: BorderSide(
+                                color: Colors.grey.shade300,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(15),
                               ),
@@ -273,6 +308,7 @@ class _LoginPageState extends State<LoginPage> {
                               'Forgot Password?',
                               style: TextStyle(
                                 color: Color(0xFF3B159B),
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
