@@ -1,6 +1,20 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
-void main() {
+import 'firebase_options.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: AndroidProvider.debug,
+  );
+
   runApp(const PowerFanNetworkApp());
 }
 
@@ -14,108 +28,63 @@ class PowerFanNetworkApp extends StatelessWidget {
       title: 'POWER FAN NETWORK',
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: 'Arial',
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF3B159B),
         ),
+        scaffoldBackgroundColor: const Color(0xFFF8F8FC),
       ),
-      home: const AuthPage(),
+      home: const LoginPage(),
     );
   }
 }
 
-class AuthPage extends StatefulWidget {
-  const AuthPage({super.key});
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<AuthPage> createState() => _AuthPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _AuthPageState extends State<AuthPage> {
-  bool isLogin = true;
-  bool obscurePassword = true;
-
+class _LoginPageState extends State<LoginPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final nameController = TextEditingController();
+
+  bool obscurePassword = true;
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-    nameController.dispose();
     super.dispose();
-  }
-
-  void submit() {
-    final email = emailController.text.trim();
-    final password = passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your email and password.'),
-        ),
-      );
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isLogin
-              ? 'Login interface is working.'
-              : 'Registration interface is working.',
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8FC),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 20,
-            ),
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 430),
               child: Column(
                 children: [
-                  const SizedBox(height: 20),
-
-                  // LOGO
                   Container(
-                    width: 92,
-                    height: 92,
-                    decoration: BoxDecoration(
+                    width: 90,
+                    height: 90,
+                    decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         colors: [
                           Color(0xFF3B159B),
                           Color(0xFF241064),
                         ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.deepPurple.withOpacity(0.25),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
                     ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.bolt_rounded,
-                        color: Colors.white,
-                        size: 50,
-                      ),
+                    child: const Icon(
+                      Icons.bolt_rounded,
+                      color: Colors.white,
+                      size: 50,
                     ),
                   ),
 
@@ -127,25 +96,21 @@ class _AuthPageState extends State<AuthPage> {
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF241064),
-                      letterSpacing: 1.2,
                     ),
                   ),
-
-                  const SizedBox(height: 4),
 
                   const Text(
                     'NETWORK',
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
                       color: Color(0xFF3B159B),
-                      letterSpacing: 3,
                     ),
                   ),
 
-                  const SizedBox(height: 35),
+                  const SizedBox(height: 32),
 
-                  // CARD
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -153,7 +118,7 @@ class _AuthPageState extends State<AuthPage> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
+                          color: Colors.black.withValues(alpha: 0.06),
                           blurRadius: 25,
                           offset: const Offset(0, 10),
                         ),
@@ -162,46 +127,24 @@ class _AuthPageState extends State<AuthPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          isLogin ? 'Welcome Back' : 'Create Account',
-                          style: const TextStyle(
-                            fontSize: 25,
+                        const Text(
+                          'Welcome Back',
+                          style: TextStyle(
+                            fontSize: 26,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E1E2D),
                           ),
                         ),
 
-                        const SizedBox(height: 7),
+                        const SizedBox(height: 8),
 
                         Text(
-                          isLogin
-                              ? 'Sign in to continue to your FAN account.'
-                              : 'Join POWER FAN NETWORK and start your journey.',
+                          'Sign in to your POWER FAN account.',
                           style: TextStyle(
-                            fontSize: 14,
                             color: Colors.grey.shade600,
                           ),
                         ),
 
-                        const SizedBox(height: 25),
-
-                        if (!isLogin) ...[
-                          const Text(
-                            'Full Name',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: nameController,
-                            decoration: inputDecoration(
-                              'Enter your name',
-                              Icons.person_outline,
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                        ],
+                        const SizedBox(height: 26),
 
                         const Text(
                           'Email',
@@ -215,9 +158,18 @@ class _AuthPageState extends State<AuthPage> {
                         TextField(
                           controller: emailController,
                           keyboardType: TextInputType.emailAddress,
-                          decoration: inputDecoration(
-                            'Enter your email',
-                            Icons.email_outlined,
+                          decoration: InputDecoration(
+                            hintText: 'Enter your email',
+                            prefixIcon: const Icon(
+                              Icons.email_outlined,
+                              color: Color(0xFF3B159B),
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF7F7FA),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
 
@@ -235,10 +187,12 @@ class _AuthPageState extends State<AuthPage> {
                         TextField(
                           controller: passwordController,
                           obscureText: obscurePassword,
-                          decoration: inputDecoration(
-                            'Enter your password',
-                            Icons.lock_outline,
-                          ).copyWith(
+                          decoration: InputDecoration(
+                            hintText: 'Enter your password',
+                            prefixIcon: const Icon(
+                              Icons.lock_outline,
+                              color: Color(0xFF3B159B),
+                            ),
                             suffixIcon: IconButton(
                               onPressed: () {
                                 setState(() {
@@ -251,31 +205,22 @@ class _AuthPageState extends State<AuthPage> {
                                     : Icons.visibility_off_outlined,
                               ),
                             ),
+                            filled: true,
+                            fillColor: const Color(0xFFF7F7FA),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
 
-                        if (isLogin)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: () {},
-                              child: const Text(
-                                'Forgot Password?',
-                                style: TextStyle(
-                                  color: Color(0xFF3B159B),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 24),
 
                         SizedBox(
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
-                            onPressed: submit,
+                            onPressed: () {},
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF3B159B),
                               foregroundColor: Colors.white,
@@ -284,46 +229,17 @@ class _AuthPageState extends State<AuthPage> {
                                 borderRadius: BorderRadius.circular(15),
                               ),
                             ),
-                            child: Text(
-                              isLogin ? 'LOGIN' : 'CREATE ACCOUNT',
-                              style: const TextStyle(
+                            child: const Text(
+                              'LOGIN',
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
                               ),
                             ),
                           ),
                         ),
 
-                        const SizedBox(height: 22),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Divider(
-                                color: Colors.grey.shade300,
-                              ),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                'OR',
-                                style: TextStyle(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Divider(
-                                color: Colors.grey.shade300,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
 
                         SizedBox(
                           width: double.infinity,
@@ -341,12 +257,22 @@ class _AuthPageState extends State<AuthPage> {
                               ),
                             ),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.black87,
-                              side: BorderSide(
-                                color: Colors.grey.shade300,
-                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(15),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        Center(
+                          child: TextButton(
+                            onPressed: () {},
+                            child: const Text(
+                              'Forgot Password?',
+                              style: TextStyle(
+                                color: Color(0xFF3B159B),
                               ),
                             ),
                           ),
@@ -355,80 +281,19 @@ class _AuthPageState extends State<AuthPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        isLogin
-                            ? "Don't have an account?"
-                            : 'Already have an account?',
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            isLogin = !isLogin;
-                          });
-                        },
-                        child: Text(
-                          isLogin ? 'Register' : 'Login',
-                          style: const TextStyle(
-                            color: Color(0xFF3B159B),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 20),
 
                   Text(
                     'POWER FAN NETWORK • AFAM',
                     style: TextStyle(
                       fontSize: 11,
                       color: Colors.grey.shade500,
-                      letterSpacing: 0.5,
                     ),
                   ),
                 ],
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  InputDecoration inputDecoration(
-    String hint,
-    IconData icon,
-  ) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: Icon(
-        icon,
-        color: const Color(0xFF3B159B),
-      ),
-      filled: true,
-      fillColor: const Color(0xFFF7F7FA),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(
-          color: Color(0xFF3B159B),
-          width: 1.5,
         ),
       ),
     );
