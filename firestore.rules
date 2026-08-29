@@ -1,0 +1,139 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================
+    // USERS
+    // =========================================================
+
+    match /users/{userId} {
+
+      // User zai iya karanta profile dinsa kawai.
+      allow read: if isOwner(userId);
+
+      // Sabon user zai iya ƙirƙirar profile dinsa.
+      allow create: if isOwner(userId)
+        && validNewUserProfile();
+
+      // User ba zai iya canza balance/mining/referrals/KYC
+      // da kansa ba.
+      allow update: if isOwner(userId)
+        && onlyAllowedUserFieldsChanged()
+        && protectedFieldsUnchanged();
+
+      // Ba a barin user ya goge account document daga client.
+      allow delete: if false;
+    }
+
+
+    // =========================================================
+    // HELPER FUNCTIONS
+    // =========================================================
+
+    function isOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId;
+    }
+
+
+    // =========================================================
+    // NEW USER VALIDATION
+    // =========================================================
+
+    function validNewUserProfile() {
+      return request.resource.data.uid == request.auth.uid
+
+        && request.resource.data.accountStatus == "active"
+
+        && request.resource.data.fanBalance == 0
+
+        && request.resource.data.afamBalance == 0
+
+        && request.resource.data.baseMiningRate == 0.2
+
+        && request.resource.data.miningRate == 0.2
+
+        && request.resource.data.adBoostRate == 0
+
+        && request.resource.data.activeReferralCount == 0
+
+        && request.resource.data.biometricVerified == false
+
+        && request.resource.data.kycStatus == "COMING_SOON"
+
+        && request.resource.data.referralRewardReceived == false
+
+        && request.resource.data.deviceLinked == false;
+    }
+
+
+    // =========================================================
+    // ALLOWED USER-EDITABLE FIELDS
+    // =========================================================
+
+    function onlyAllowedUserFieldsChanged() {
+      return request.resource.data.diff(
+        resource.data
+      ).affectedKeys().hasOnly([
+        "displayName",
+        "photoUrl",
+        "emailVerified",
+        "updatedAt",
+        "lastLoginAt"
+      ]);
+    }
+
+
+    // =========================================================
+    // PROTECTED FIELDS
+    // =========================================================
+
+    function protectedFieldsUnchanged() {
+      return request.resource.data.fanBalance
+        == resource.data.fanBalance
+
+        && request.resource.data.afamBalance
+        == resource.data.afamBalance
+
+        && request.resource.data.miningRate
+        == resource.data.miningRate
+
+        && request.resource.data.baseMiningRate
+        == resource.data.baseMiningRate
+
+        && request.resource.data.adBoostRate
+        == resource.data.adBoostRate
+
+        && request.resource.data.activeReferralCount
+        == resource.data.activeReferralCount
+
+        && request.resource.data.referralCode
+        == resource.data.referralCode
+
+        && request.resource.data.referredBy
+        == resource.data.referredBy
+
+        && request.resource.data.referralRewardReceived
+        == resource.data.referralRewardReceived
+
+        && request.resource.data.biometricVerified
+        == resource.data.biometricVerified
+
+        && request.resource.data.kycStatus
+        == resource.data.kycStatus
+
+        && request.resource.data.deviceLinked
+        == resource.data.deviceLinked
+
+        && request.resource.data.accountStatus
+        == resource.data.accountStatus
+
+        && request.resource.data.uid
+        == resource.data.uid
+
+        && request.resource.data.createdAt
+        == resource.data.createdAt;
+    }
+  }
+}
