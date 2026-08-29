@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firebase_options.dart';
 
@@ -10,6 +11,8 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await GoogleSignIn.instance.initialize();
 
   runApp(const PowerFanNetworkApp());
 }
@@ -73,7 +76,7 @@ class SplashPage extends StatelessWidget {
 }
 
 // ============================================================
-// LOGIN PAGE
+// LOGIN
 // ============================================================
 
 class LoginPage extends StatefulWidget {
@@ -89,6 +92,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool obscurePassword = true;
   bool loading = false;
+  bool googleLoading = false;
 
   @override
   void dispose() {
@@ -116,14 +120,56 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
     } on FirebaseAuthException catch (e) {
-      showMessage(firebaseErrorMessage(e.code));
+      showMessage(authErrorMessage(e.code));
     } catch (_) {
-      showMessage('Something went wrong. Please try again.');
+      showMessage('Login failed. Please try again.');
     }
 
     if (mounted) {
       setState(() {
         loading = false;
+      });
+    }
+  }
+
+  Future<void> googleLogin() async {
+    if (googleLoading) return;
+
+    setState(() {
+      googleLoading = true;
+    });
+
+    try {
+      final GoogleSignInAccount googleUser =
+          await GoogleSignIn.instance.authenticate();
+
+      final GoogleSignInAuthentication googleAuth =
+          googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
+    } on GoogleSignInException catch (e) {
+      if (e.code != GoogleSignInExceptionCode.canceled) {
+        showMessage(
+          'Google Sign-In failed. Please try again.',
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      showMessage(authErrorMessage(e.code));
+    } catch (_) {
+      showMessage(
+        'Google Sign-In failed. Please try again.',
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        googleLoading = false;
       });
     }
   }
@@ -146,13 +192,18 @@ class _LoginPageState extends State<LoginPage> {
         success: true,
       );
     } on FirebaseAuthException catch (e) {
-      showMessage(firebaseErrorMessage(e.code));
+      showMessage(authErrorMessage(e.code));
     } catch (_) {
-      showMessage('Unable to send reset email.');
+      showMessage(
+        'Unable to send password reset email.',
+      );
     }
   }
 
-  void showMessage(String message, {bool success = false}) {
+  void showMessage(
+    String message, {
+    bool success = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -164,7 +215,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  String firebaseErrorMessage(String code) {
+  String authErrorMessage(String code) {
     switch (code) {
       case 'invalid-email':
         return 'The email address is not valid.';
@@ -184,6 +235,9 @@ class _LoginPageState extends State<LoginPage> {
 
       case 'network-request-failed':
         return 'Check your internet connection.';
+
+      case 'operation-not-allowed':
+        return 'This sign-in method is not enabled in Firebase.';
 
       default:
         return 'Login failed. Please try again.';
@@ -242,9 +296,7 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 26),
 
-                        const FieldLabel(
-                          text: 'Email',
-                        ),
+                        const FieldLabel(text: 'Email'),
 
                         const SizedBox(height: 8),
 
@@ -260,9 +312,7 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 18),
 
-                        const FieldLabel(
-                          text: 'Password',
-                        ),
+                        const FieldLabel(text: 'Password'),
 
                         const SizedBox(height: 8),
 
@@ -299,9 +349,6 @@ class _LoginPageState extends State<LoginPage> {
                               backgroundColor:
                                   const Color(0xFF3B159B),
                               foregroundColor: Colors.white,
-                              disabledBackgroundColor:
-                                  const Color(0xFF3B159B)
-                                      .withValues(alpha: 0.6),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius:
@@ -329,20 +376,33 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
 
                         SizedBox(
                           width: double.infinity,
+                          height: 52,
                           child: OutlinedButton.icon(
-                            onPressed: () {
-                              showMessage(
-                                'Google Sign-In will be connected in the next step.',
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.g_mobiledata_rounded,
-                              size: 30,
-                            ),
+                            onPressed:
+                                googleLoading
+                                    ? null
+                                    : googleLogin,
+                            icon: googleLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text(
+                                    'G',
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight:
+                                          FontWeight.bold,
+                                    ),
+                                  ),
                             label: const Text(
                               'Continue with Google',
                               style: TextStyle(
@@ -350,8 +410,6 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             style: OutlinedButton.styleFrom(
-                              minimumSize:
-                                  const Size(double.infinity, 52),
                               shape: RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(15),
@@ -360,7 +418,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
 
                         Center(
                           child: TextButton(
@@ -374,8 +432,6 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ),
-
-                        const SizedBox(height: 4),
 
                         Center(
                           child: TextButton(
@@ -421,7 +477,7 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 // ============================================================
-// REGISTER PAGE
+// REGISTER
 // ============================================================
 
 class RegisterPage extends StatefulWidget {
@@ -490,10 +546,8 @@ class _RegisterPageState extends State<RegisterPage> {
         'Account created successfully.',
         success: true,
       );
-
-      Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
-      showMessage(firebaseErrorMessage(e.code));
+      showMessage(registerErrorMessage(e.code));
     } catch (_) {
       showMessage(
         'Registration failed. Please try again.',
@@ -507,7 +561,7 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  String firebaseErrorMessage(String code) {
+  String registerErrorMessage(String code) {
     switch (code) {
       case 'invalid-email':
         return 'The email address is not valid.';
@@ -520,6 +574,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
       case 'network-request-failed':
         return 'Check your internet connection.';
+
+      case 'operation-not-allowed':
+        return 'Email/Password sign-in is not enabled in Firebase.';
 
       default:
         return 'Registration failed. Please try again.';
@@ -547,10 +604,6 @@ class _RegisterPageState extends State<RegisterPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
       body: SafeArea(
         child: Center(
@@ -604,9 +657,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
                         const SizedBox(height: 26),
 
-                        const FieldLabel(
-                          text: 'Email',
-                        ),
+                        const FieldLabel(text: 'Email'),
 
                         const SizedBox(height: 8),
 
@@ -622,9 +673,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
                         const SizedBox(height: 18),
 
-                        const FieldLabel(
-                          text: 'Password',
-                        ),
+                        const FieldLabel(text: 'Password'),
 
                         const SizedBox(height: 8),
 
@@ -761,7 +810,7 @@ class _RegisterPageState extends State<RegisterPage> {
 }
 
 // ============================================================
-// HOME PAGE
+// HOME
 // ============================================================
 
 class HomePage extends StatelessWidget {
@@ -985,6 +1034,17 @@ InputDecoration inputDecoration({
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(15),
       borderSide: BorderSide.none,
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: BorderSide.none,
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(15),
+      borderSide: const BorderSide(
+        color: Color(0xFF3B159B),
+        width: 1.5,
+      ),
     ),
   );
 }
