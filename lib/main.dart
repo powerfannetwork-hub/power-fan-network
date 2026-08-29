@@ -1,9 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firebase_options.dart';
+
+const Color primaryPurple = Color(0xFF3B159B);
+const Color deepPurple = Color(0xFF241064);
+const Color lightBackground = Color(0xFFF8F8FC);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,14 +33,18 @@ class PowerFanNetworkApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF3B159B),
+          seedColor: primaryPurple,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF8F8FC),
+        scaffoldBackgroundColor: lightBackground,
       ),
       home: const AuthGate(),
     );
   }
 }
+
+// ============================================================
+// AUTH GATE
+// ============================================================
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -59,16 +68,73 @@ class AuthGate extends StatelessWidget {
   }
 }
 
+// ============================================================
+// FIRESTORE USER PROFILE
+// ============================================================
+
+class UserProfileService {
+  static final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
+  static Future<void> createOrUpdateProfile(User user) async {
+    final DocumentReference<Map<String, dynamic>> userRef =
+        _firestore.collection('users').doc(user.uid);
+
+    final existing = await userRef.get();
+
+    final Map<String, dynamic> profile = {
+      'uid': user.uid,
+      'email': user.email,
+      'displayName': user.displayName,
+      'photoUrl': user.photoURL,
+      'lastLoginAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (!existing.exists) {
+      profile.addAll({
+        'fanBalance': 0.0,
+        'afamBalance': 0.0,
+        'miningRate': 0.2,
+        'baseMiningRate': 0.2,
+        'adBoostRate': 0.0,
+        'activeReferralCount': 0,
+        'referralCode': user.uid.substring(
+          0,
+          user.uid.length >= 8 ? 8 : user.uid.length,
+        ).toUpperCase(),
+        'referredBy': null,
+        'referralRewardReceived': false,
+        'emailVerified': user.emailVerified,
+        'biometricVerified': false,
+        'kycStatus': 'COMING_SOON',
+        'deviceLinked': false,
+        'accountStatus': 'active',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await userRef.set(
+      profile,
+      SetOptions(merge: true),
+    );
+  }
+}
+
+// ============================================================
+// SPLASH
+// ============================================================
+
 class SplashPage extends StatelessWidget {
   const SplashPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Color(0xFFF8F8FC),
+      backgroundColor: lightBackground,
       body: Center(
         child: CircularProgressIndicator(
-          color: Color(0xFF3B159B),
+          color: primaryPurple,
         ),
       ),
     );
@@ -87,8 +153,11 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
+  final TextEditingController emailController =
+      TextEditingController();
+
+  final TextEditingController passwordController =
+      TextEditingController();
 
   bool obscurePassword = true;
   bool loading = false;
@@ -115,10 +184,17 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final UserCredential credential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      final User? user = credential.user;
+
+      if (user != null) {
+        await UserProfileService.createOrUpdateProfile(user);
+      }
     } on FirebaseAuthException catch (e) {
       showMessage(authErrorMessage(e.code));
     } catch (_) {
@@ -146,13 +222,27 @@ class _LoginPageState extends State<LoginPage> {
       final GoogleSignInAuthentication googleAuth =
           googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
+      final String? idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        throw Exception('Google ID token is unavailable.');
+      }
+
+      final OAuthCredential credential =
+          GoogleAuthProvider.credential(
+        idToken: idToken,
       );
 
-      await FirebaseAuth.instance.signInWithCredential(
+      final UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithCredential(
         credential,
       );
+
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        await UserProfileService.createOrUpdateProfile(user);
+      }
     } on GoogleSignInException catch (e) {
       if (e.code != GoogleSignInExceptionCode.canceled) {
         showMessage(
@@ -163,7 +253,7 @@ class _LoginPageState extends State<LoginPage> {
       showMessage(authErrorMessage(e.code));
     } catch (_) {
       showMessage(
-        'Google Sign-In failed. Please try again.',
+        'Google Sign-In failed. Please check your connection.',
       );
     }
 
@@ -200,21 +290,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void showMessage(
-    String message, {
-    bool success = false,
-  }) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            success ? Colors.green.shade700 : Colors.red.shade700,
-      ),
-    );
-  }
-
   String authErrorMessage(String code) {
     switch (code) {
       case 'invalid-email':
@@ -240,8 +315,23 @@ class _LoginPageState extends State<LoginPage> {
         return 'This sign-in method is not enabled in Firebase.';
 
       default:
-        return 'Login failed. Please try again.';
+        return 'Authentication failed. Please try again.';
     }
+  }
+
+  void showMessage(
+    String message, {
+    bool success = false,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            success ? Colors.green.shade700 : Colors.red.shade700,
+      ),
+    );
   }
 
   @override
@@ -275,7 +365,8 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Welcome Back',
@@ -344,10 +435,10 @@ class _LoginPageState extends State<LoginPage> {
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
-                            onPressed: loading ? null : login,
+                            onPressed:
+                                loading ? null : login,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  const Color(0xFF3B159B),
+                              backgroundColor: primaryPurple,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
@@ -382,10 +473,9 @@ class _LoginPageState extends State<LoginPage> {
                           width: double.infinity,
                           height: 52,
                           child: OutlinedButton.icon(
-                            onPressed:
-                                googleLoading
-                                    ? null
-                                    : googleLogin,
+                            onPressed: googleLoading
+                                ? null
+                                : googleLogin,
                             icon: googleLoading
                                 ? const SizedBox(
                                     width: 22,
@@ -426,7 +516,7 @@ class _LoginPageState extends State<LoginPage> {
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color: Color(0xFF3B159B),
+                                color: primaryPurple,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -447,7 +537,7 @@ class _LoginPageState extends State<LoginPage> {
                             child: const Text(
                               "Don't have an account? Register",
                               style: TextStyle(
-                                color: Color(0xFF3B159B),
+                                color: primaryPurple,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -488,9 +578,14 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
+  final TextEditingController emailController =
+      TextEditingController();
+
+  final TextEditingController passwordController =
+      TextEditingController();
+
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
 
   bool obscurePassword = true;
   bool obscureConfirmPassword = true;
@@ -534,18 +629,25 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
+      final UserCredential credential =
+          await FirebaseAuth.instance
+              .createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      if (!mounted) return;
+      final User? user = credential.user;
 
-      showMessage(
-        'Account created successfully.',
-        success: true,
-      );
+      if (user != null) {
+        await UserProfileService.createOrUpdateProfile(user);
+      }
+
+      if (mounted) {
+        showMessage(
+          'Account created successfully.',
+          success: true,
+        );
+      }
     } on FirebaseAuthException catch (e) {
       showMessage(registerErrorMessage(e.code));
     } catch (_) {
@@ -740,8 +842,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             onPressed:
                                 loading ? null : register,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  const Color(0xFF3B159B),
+                              backgroundColor: primaryPurple,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shape:
@@ -780,7 +881,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             child: const Text(
                               'Already have an account? Login',
                               style: TextStyle(
-                                color: Color(0xFF3B159B),
+                                color: primaryPurple,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -818,7 +919,11 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final User? user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const LoginPage();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -840,97 +945,261 @@ class HomePage extends StatelessWidget {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF3B159B),
-                    Color(0xFF241064),
-                  ],
-                ),
-                borderRadius:
-                    BorderRadius.circular(24),
+      body: StreamBuilder<
+          DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                color: primaryPurple,
               ),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Welcome to',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
+            );
+          }
+
+          final data = snapshot.data?.data();
+
+          final double fanBalance =
+              (data?['fanBalance'] as num?)?.toDouble() ?? 0.0;
+
+          final double afamBalance =
+              (data?['afamBalance'] as num?)?.toDouble() ?? 0.0;
+
+          final double miningRate =
+              (data?['miningRate'] as num?)?.toDouble() ?? 0.2;
+
+          final int referrals =
+              (data?['activeReferralCount'] as num?)?.toInt() ?? 0;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        primaryPurple,
+                        deepPurple,
+                      ],
                     ),
+                    borderRadius:
+                        BorderRadius.circular(24),
                   ),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'POWER FAN NETWORK',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 25,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Welcome to',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      const Text(
+                        'POWER FAN NETWORK',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Text(
+                        user.email ?? '',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    user?.email ?? '',
+                ),
+
+                const SizedBox(height: 24),
+
+                const Text(
+                  'FAN Balance',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${fanBalance.toStringAsFixed(4)} FAN',
                     style: const TextStyle(
-                      color: Colors.white70,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: primaryPurple,
                     ),
                   ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            const Text(
-              'FAN Balance',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius:
-                    BorderRadius.circular(20),
-              ),
-              child: const Text(
-                '0.0000 FAN',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3B159B),
                 ),
-              ),
-            ),
 
-            const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-            const Text(
-              'Mining system will be connected next.',
-              style: TextStyle(
-                color: Colors.grey,
-              ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _BalanceItem(
+                          title: 'AFAM',
+                          value:
+                              afamBalance.toStringAsFixed(4),
+                        ),
+                      ),
+                      Expanded(
+                        child: _BalanceItem(
+                          title: 'Mining Rate',
+                          value:
+                              '${miningRate.toStringAsFixed(2)} FAN/H',
+                        ),
+                      ),
+                      Expanded(
+                        child: _BalanceItem(
+                          title: 'Referrals',
+                          value: '$referrals',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mining',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Real mining engine will be connected in the next stage.',
+                        style: TextStyle(
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.verified_user_outlined,
+                        color: primaryPurple,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Biometric / KYC verification: Coming Soon',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
+    );
+  }
+}
+
+// ============================================================
+// BALANCE ITEM
+// ============================================================
+
+class _BalanceItem extends StatelessWidget {
+  final String title;
+  final String value;
+
+  const _BalanceItem({
+    required this.title,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: deepPurple,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }
@@ -953,8 +1222,8 @@ class LogoSection extends StatelessWidget {
             shape: BoxShape.circle,
             gradient: LinearGradient(
               colors: [
-                Color(0xFF3B159B),
-                Color(0xFF241064),
+                primaryPurple,
+                deepPurple,
               ],
             ),
           ),
@@ -972,7 +1241,7 @@ class LogoSection extends StatelessWidget {
           style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF241064),
+            color: deepPurple,
           ),
         ),
 
@@ -982,7 +1251,7 @@ class LogoSection extends StatelessWidget {
             fontSize: 13,
             fontWeight: FontWeight.bold,
             letterSpacing: 4,
-            color: Color(0xFF3B159B),
+            color: primaryPurple,
           ),
         ),
       ],
@@ -1026,7 +1295,7 @@ InputDecoration inputDecoration({
     hintText: hint,
     prefixIcon: Icon(
       icon,
-      color: const Color(0xFF3B159B),
+      color: primaryPurple,
     ),
     suffixIcon: suffix,
     filled: true,
@@ -1042,7 +1311,7 @@ InputDecoration inputDecoration({
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(15),
       borderSide: const BorderSide(
-        color: Color(0xFF3B159B),
+        color: primaryPurple,
         width: 1.5,
       ),
     ),
