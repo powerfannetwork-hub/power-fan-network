@@ -5,41 +5,38 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firebase_options.dart';
 
-/// ============================================================
-/// POWER FAN NETWORK
-/// Main Authentication File
-/// ============================================================
-
-const String webServerClientId =
+const String googleWebClientId =
     '983417377998-oaptk186cjkb7pk8pfhma2nbtsindbkf.apps.googleusercontent.com';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ------------------------------------------------------------
+  // ============================================================
   // FIREBASE
-  // ------------------------------------------------------------
+  // ============================================================
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // ------------------------------------------------------------
-  // GOOGLE SIGN-IN 7.x
+  // ============================================================
+  // GOOGLE SIGN-IN
+  // ============================================================
   //
-  // IMPORTANT:
-  // initialize() must be called before authenticate().
-  // We provide the Web OAuth Client ID as serverClientId.
-  // ------------------------------------------------------------
+  // google_sign_in 7.x requires initialize().
+  // serverClientId is the WEB OAuth client ID from Firebase.
+  //
+
   await GoogleSignIn.instance.initialize(
-    serverClientId: webServerClientId,
+    serverClientId: googleWebClientId,
   );
 
   runApp(const PowerFanNetworkApp());
 }
 
-/// ============================================================
-/// APP
-/// ============================================================
+// ============================================================
+// APP
+// ============================================================
 
 class PowerFanNetworkApp extends StatelessWidget {
   const PowerFanNetworkApp({super.key});
@@ -51,19 +48,19 @@ class PowerFanNetworkApp extends StatelessWidget {
       title: 'POWER FAN NETWORK',
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF8F8FC),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF3B159B),
         ),
+        scaffoldBackgroundColor: const Color(0xFFF8F8FC),
       ),
       home: const AuthGate(),
     );
   }
 }
 
-/// ============================================================
-/// AUTH GATE
-/// ============================================================
+// ============================================================
+// AUTH GATE
+// ============================================================
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -87,9 +84,9 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// SPLASH
-/// ============================================================
+// ============================================================
+// SPLASH
+// ============================================================
 
 class SplashPage extends StatelessWidget {
   const SplashPage({super.key});
@@ -107,9 +104,9 @@ class SplashPage extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// LOGIN PAGE
-/// ============================================================
+// ============================================================
+// LOGIN PAGE
+// ============================================================
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -119,11 +116,8 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final TextEditingController emailController =
-      TextEditingController();
-
-  final TextEditingController passwordController =
-      TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
 
   bool obscurePassword = true;
   bool loading = false;
@@ -136,13 +130,13 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /// ==========================================================
-  /// EMAIL LOGIN
-  /// ==========================================================
+  // ==========================================================
+  // EMAIL LOGIN
+  // ==========================================================
 
   Future<void> loginWithEmail() async {
-    final String email = emailController.text.trim();
-    final String password = passwordController.text;
+    final email = emailController.text.trim();
+    final password = passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       showMessage(
@@ -160,8 +154,6 @@ class _LoginPageState extends State<LoginPage> {
         email: email,
         password: password,
       );
-
-      // AuthGate will automatically open HomePage.
     } on FirebaseAuthException catch (e) {
       showMessage(firebaseAuthMessage(e));
     } catch (e) {
@@ -175,14 +167,12 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// ==========================================================
-  /// GOOGLE LOGIN
-  /// ==========================================================
+  // ==========================================================
+  // GOOGLE LOGIN
+  // ==========================================================
 
   Future<void> loginWithGoogle() async {
-    if (googleLoading) {
-      return;
-    }
+    if (googleLoading) return;
 
     setState(() {
       googleLoading = true;
@@ -190,8 +180,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       // IMPORTANT:
-      // Do NOT call initialize() here.
-      //
+      // Do NOT call initialize() again here.
       // It was already initialized in main().
       final GoogleSignInAccount googleUser =
           await GoogleSignIn.instance.authenticate();
@@ -217,7 +206,11 @@ class _LoginPageState extends State<LoginPage> {
         credential,
       );
 
-      // AuthGate will automatically open HomePage.
+      if (!mounted) return;
+
+      showMessage(
+        'Google Sign-In successful.',
+      );
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         showMessage(
@@ -249,12 +242,12 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// ==========================================================
-  /// FORGOT PASSWORD
-  /// ==========================================================
+  // ==========================================================
+  // FORGOT PASSWORD
+  // ==========================================================
 
   Future<void> forgotPassword() async {
-    final String email = emailController.text.trim();
+    final email = emailController.text.trim();
 
     if (email.isEmpty) {
       showMessage(
@@ -272,36 +265,68 @@ class _LoginPageState extends State<LoginPage> {
         'Password reset email sent. Check your inbox.',
       );
     } on FirebaseAuthException catch (e) {
-      showMessage(firebaseAuthMessage(e));
-    } catch (e) {
       showMessage(
-        'Password reset failed:\n$e',
+        firebaseAuthMessage(e),
       );
     }
   }
 
-  /// ==========================================================
-  /// MESSAGE
-  /// ==========================================================
+  // ==========================================================
+  // MESSAGE
+  // ==========================================================
 
   void showMessage(String message) {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
-  /// ==========================================================
-  /// LOGIN UI
-  /// ==========================================================
+  // ==========================================================
+  // INPUT DECORATION
+  // ==========================================================
+
+  InputDecoration inputDecoration({
+    required String hint,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(
+        icon,
+        color: const Color(0xFF3B159B),
+      ),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: const Color(0xFFF7F7FA),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Color(0xFF3B159B),
+          width: 1.2,
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // BUILD LOGIN
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
@@ -318,12 +343,10 @@ class _LoginPageState extends State<LoginPage> {
                 children: [
                   const SizedBox(height: 20),
 
-                  // ------------------------------------------------
                   // LOGO
-                  // ------------------------------------------------
                   Container(
-                    width: 90,
-                    height: 90,
+                    width: 100,
+                    height: 100,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
@@ -336,7 +359,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: const Icon(
                       Icons.bolt_rounded,
                       color: Colors.white,
-                      size: 50,
+                      size: 55,
                     ),
                   ),
 
@@ -345,7 +368,7 @@ class _LoginPageState extends State<LoginPage> {
                   const Text(
                     'POWER FAN',
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: 30,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF241064),
                     ),
@@ -354,23 +377,21 @@ class _LoginPageState extends State<LoginPage> {
                   const Text(
                     'NETWORK',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 4,
+                      letterSpacing: 5,
                       color: Color(0xFF3B159B),
                     ),
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 38),
 
-                  // ------------------------------------------------
                   // LOGIN CARD
-                  // ------------------------------------------------
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(
@@ -388,7 +409,7 @@ class _LoginPageState extends State<LoginPage> {
                         const Text(
                           'Welcome Back',
                           style: TextStyle(
-                            fontSize: 26,
+                            fontSize: 28,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -398,18 +419,18 @@ class _LoginPageState extends State<LoginPage> {
                         Text(
                           'Sign in to your POWER FAN account.',
                           style: TextStyle(
-                            color: Colors.grey.shade600,
                             fontSize: 16,
+                            color: Colors.grey.shade600,
                           ),
                         ),
 
-                        const SizedBox(height: 26),
+                        const SizedBox(height: 28),
 
                         const Text(
                           'Email',
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
                             fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
 
@@ -421,30 +442,19 @@ class _LoginPageState extends State<LoginPage> {
                               TextInputType.emailAddress,
                           textInputAction:
                               TextInputAction.next,
-                          decoration: InputDecoration(
-                            hintText: 'Enter your email',
-                            prefixIcon: const Icon(
-                              Icons.email_outlined,
-                              color: Color(0xFF3B159B),
-                            ),
-                            filled: true,
-                            fillColor:
-                                const Color(0xFFF7F7FA),
-                            border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(15),
-                              borderSide: BorderSide.none,
-                            ),
+                          decoration: inputDecoration(
+                            hint: 'Enter your email',
+                            icon: Icons.email_outlined,
                           ),
                         ),
 
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 20),
 
                         const Text(
                           'Password',
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
                             fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
 
@@ -460,12 +470,9 @@ class _LoginPageState extends State<LoginPage> {
                               loginWithEmail();
                             }
                           },
-                          decoration: InputDecoration(
-                            hintText: 'Enter your password',
-                            prefixIcon: const Icon(
-                              Icons.lock_outline,
-                              color: Color(0xFF3B159B),
-                            ),
+                          decoration: inputDecoration(
+                            hint: 'Enter your password',
+                            icon: Icons.lock_outline,
                             suffixIcon: IconButton(
                               onPressed: () {
                                 setState(() {
@@ -475,43 +482,29 @@ class _LoginPageState extends State<LoginPage> {
                               },
                               icon: Icon(
                                 obscurePassword
-                                    ? Icons
-                                        .visibility_outlined
-                                    : Icons
-                                        .visibility_off_outlined,
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
                               ),
-                            ),
-                            filled: true,
-                            fillColor:
-                                const Color(0xFFF7F7FA),
-                            border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(15),
-                              borderSide: BorderSide.none,
                             ),
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 26),
 
-                        // ------------------------------------------------
                         // LOGIN BUTTON
-                        // ------------------------------------------------
                         SizedBox(
                           width: double.infinity,
-                          height: 54,
+                          height: 56,
                           child: ElevatedButton(
                             onPressed:
                                 loading
                                     ? null
                                     : loginWithEmail,
-                            style: ElevatedButton.styleFrom(
+                            style:
+                                ElevatedButton.styleFrom(
                               backgroundColor:
                                   const Color(0xFF3B159B),
-                              foregroundColor:
-                                  Colors.white,
-                              disabledBackgroundColor:
-                                  const Color(0xFFE0E0E0),
+                              foregroundColor: Colors.white,
                               elevation: 0,
                               shape:
                                   RoundedRectangleBorder(
@@ -521,13 +514,12 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                             child: loading
                                 ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
+                                    width: 25,
+                                    height: 25,
                                     child:
                                         CircularProgressIndicator(
                                       strokeWidth: 2.5,
-                                      color:
-                                          Colors.white,
+                                      color: Colors.white,
                                     ),
                                   )
                                 : const Text(
@@ -543,16 +535,15 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 16),
 
-                        // ------------------------------------------------
-                        // GOOGLE
-                        // ------------------------------------------------
+                        // GOOGLE BUTTON
                         SizedBox(
                           width: double.infinity,
-                          height: 52,
+                          height: 54,
                           child: OutlinedButton.icon(
-                            onPressed: googleLoading
-                                ? null
-                                : loginWithGoogle,
+                            onPressed:
+                                googleLoading
+                                    ? null
+                                    : loginWithGoogle,
                             icon: googleLoading
                                 ? const SizedBox(
                                     width: 22,
@@ -577,9 +568,8 @@ class _LoginPageState extends State<LoginPage> {
                                   ? 'Signing in...'
                                   : 'Continue with Google',
                               style: const TextStyle(
-                                fontWeight:
-                                    FontWeight.w600,
                                 fontSize: 16,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             style:
@@ -587,8 +577,7 @@ class _LoginPageState extends State<LoginPage> {
                               foregroundColor:
                                   const Color(0xFF3B159B),
                               side: BorderSide(
-                                color:
-                                    Colors.grey.shade400,
+                                color: Colors.grey.shade400,
                               ),
                               shape:
                                   RoundedRectangleBorder(
@@ -601,19 +590,15 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 10),
 
-                        // ------------------------------------------------
                         // FORGOT PASSWORD
-                        // ------------------------------------------------
                         Center(
                           child: TextButton(
                             onPressed: forgotPassword,
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color:
-                                    Color(0xFF3B159B),
-                                fontWeight:
-                                    FontWeight.w600,
+                                color: Color(0xFF3B159B),
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -621,9 +606,7 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 4),
 
-                        // ------------------------------------------------
                         // REGISTER
-                        // ------------------------------------------------
                         Center(
                           child: Row(
                             mainAxisAlignment:
@@ -632,8 +615,7 @@ class _LoginPageState extends State<LoginPage> {
                               Text(
                                 "Don't have an account? ",
                                 style: TextStyle(
-                                  color:
-                                      Colors.grey.shade600,
+                                  color: Colors.grey.shade600,
                                 ),
                               ),
                               TextButton(
@@ -649,10 +631,8 @@ class _LoginPageState extends State<LoginPage> {
                                 child: const Text(
                                   'Register',
                                   style: TextStyle(
-                                    color:
-                                        Color(0xFF3B159B),
-                                    fontWeight:
-                                        FontWeight.bold,
+                                    color: Color(0xFF3B159B),
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
@@ -682,9 +662,9 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-/// ============================================================
-/// REGISTER PAGE
-/// ============================================================
+// ============================================================
+// REGISTER PAGE
+// ============================================================
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -694,17 +674,10 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final TextEditingController nameController =
-      TextEditingController();
-
-  final TextEditingController emailController =
-      TextEditingController();
-
-  final TextEditingController passwordController =
-      TextEditingController();
-
-  final TextEditingController confirmController =
-      TextEditingController();
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmController = TextEditingController();
 
   bool obscurePassword = true;
   bool obscureConfirm = true;
@@ -719,15 +692,15 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
-  /// ==========================================================
-  /// REGISTER
-  /// ==========================================================
+  // ==========================================================
+  // REGISTER
+  // ==========================================================
 
   Future<void> register() async {
-    final String name = nameController.text.trim();
-    final String email = emailController.text.trim();
-    final String password = passwordController.text;
-    final String confirm = confirmController.text;
+    final name = nameController.text.trim();
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    final confirm = confirmController.text;
 
     if (name.isEmpty ||
         email.isEmpty ||
@@ -758,24 +731,25 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      final UserCredential credential =
-          await FirebaseAuth.instance
-              .createUserWithEmailAndPassword(
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // Save display name in Firebase Authentication.
       await credential.user?.updateDisplayName(name);
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      // AuthGate will detect the newly signed-in user.
+      showMessage(
+        'Account created successfully.',
+      );
+
       Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
-      showMessage(firebaseAuthMessage(e));
+      showMessage(
+        firebaseAuthMessage(e),
+      );
     } catch (e) {
       showMessage(
         'Registration failed:\n$e',
@@ -789,28 +763,62 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  /// ==========================================================
-  /// MESSAGE
-  /// ==========================================================
+  // ==========================================================
+  // MESSAGE
+  // ==========================================================
 
   void showMessage(String message) {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
-  /// ==========================================================
-  /// REGISTER UI
-  /// ==========================================================
+  // ==========================================================
+  // INPUT
+  // ==========================================================
+
+  InputDecoration inputDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(
+        icon,
+        color: const Color(0xFF3B159B),
+      ),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: const Color(0xFFF7F7FA),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: const BorderSide(
+          color: Color(0xFF3B159B),
+          width: 1.2,
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
@@ -820,7 +828,6 @@ class _RegisterPageState extends State<RegisterPage> {
           'Create Account',
         ),
         foregroundColor: const Color(0xFF241064),
-        backgroundColor: Colors.transparent,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -848,62 +855,37 @@ class _RegisterPageState extends State<RegisterPage> {
 
               const SizedBox(height: 30),
 
-              // NAME
               TextField(
                 controller: nameController,
                 textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: const Icon(
-                    Icons.person_outline,
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF7F7FA),
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
+                decoration: inputDecoration(
+                  label: 'Full Name',
+                  icon: Icons.person_outline,
                 ),
               ),
 
               const SizedBox(height: 16),
 
-              // EMAIL
               TextField(
                 controller: emailController,
                 keyboardType:
                     TextInputType.emailAddress,
-                textInputAction:
-                    TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: const Icon(
-                    Icons.email_outlined,
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF7F7FA),
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
+                textInputAction: TextInputAction.next,
+                decoration: inputDecoration(
+                  label: 'Email',
+                  icon: Icons.email_outlined,
                 ),
               ),
 
               const SizedBox(height: 16),
 
-              // PASSWORD
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
-                textInputAction:
-                    TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(
-                    Icons.lock_outline,
-                  ),
+                textInputAction: TextInputAction.next,
+                decoration: inputDecoration(
+                  label: 'Password',
+                  icon: Icons.lock_outline,
                   suffixIcon: IconButton(
                     onPressed: () {
                       setState(() {
@@ -917,34 +899,23 @@ class _RegisterPageState extends State<RegisterPage> {
                           : Icons.visibility_off_outlined,
                     ),
                   ),
-                  filled: true,
-                  fillColor: const Color(0xFFF7F7FA),
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
                 ),
               ),
 
               const SizedBox(height: 16),
 
-              // CONFIRM PASSWORD
               TextField(
                 controller: confirmController,
                 obscureText: obscureConfirm,
-                textInputAction:
-                    TextInputAction.done,
+                textInputAction: TextInputAction.done,
                 onSubmitted: (_) {
                   if (!loading) {
                     register();
                   }
                 },
-                decoration: InputDecoration(
-                  labelText: 'Confirm Password',
-                  prefixIcon: const Icon(
-                    Icons.lock_outline,
-                  ),
+                decoration: inputDecoration(
+                  label: 'Confirm Password',
+                  icon: Icons.lock_outline,
                   suffixIcon: IconButton(
                     onPressed: () {
                       setState(() {
@@ -958,19 +929,11 @@ class _RegisterPageState extends State<RegisterPage> {
                           : Icons.visibility_off_outlined,
                     ),
                   ),
-                  filled: true,
-                  fillColor: const Color(0xFFF7F7FA),
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
                 ),
               ),
 
               const SizedBox(height: 24),
 
-              // CREATE ACCOUNT
               SizedBox(
                 width: double.infinity,
                 height: 54,
@@ -981,9 +944,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     backgroundColor:
                         const Color(0xFF3B159B),
                     foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape:
-                        RoundedRectangleBorder(
+                    shape: RoundedRectangleBorder(
                       borderRadius:
                           BorderRadius.circular(15),
                     ),
@@ -994,15 +955,15 @@ class _RegisterPageState extends State<RegisterPage> {
                           height: 24,
                           child:
                               CircularProgressIndicator(
-                            strokeWidth: 2.5,
                             color: Colors.white,
+                            strokeWidth: 2.5,
                           ),
                         )
                       : const Text(
                           'CREATE ACCOUNT',
                           style: TextStyle(
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
                         ),
                 ),
@@ -1015,53 +976,31 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-/// ============================================================
-/// HOME PAGE
-/// ============================================================
+// ============================================================
+// HOME PAGE
+// ============================================================
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  /// ==========================================================
-  /// LOGOUT
-  /// ==========================================================
-
-  Future<void> logout() async {
-    try {
-      await FirebaseAuth.instance.signOut();
-
-      // Sign out from Google as well.
-      try {
-        await GoogleSignIn.instance.signOut();
-      } catch (_) {
-        // Firebase logout has already completed.
-      }
-    } catch (_) {
-      // AuthGate will handle the authentication state.
-    }
-  }
-
-  /// ==========================================================
-  /// HOME UI
-  /// ==========================================================
-
   @override
   Widget build(BuildContext context) {
-    final User? user =
-        FirebaseAuth.instance.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'POWER FAN NETWORK',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
         ),
         actions: [
           IconButton(
-            tooltip: 'Logout',
-            onPressed: logout,
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+
+              try {
+                await GoogleSignIn.instance.signOut();
+              } catch (_) {}
+            },
             icon: const Icon(
               Icons.logout,
             ),
@@ -1069,33 +1008,19 @@ class HomePage extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment:
                 MainAxisAlignment.center,
             children: [
-              // LOGO
-              Container(
-                width: 100,
-                height: 100,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [
-                      Color(0xFF3B159B),
-                      Color(0xFF241064),
-                    ],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.bolt_rounded,
-                  size: 58,
-                  color: Colors.white,
-                ),
+              const Icon(
+                Icons.bolt_rounded,
+                size: 85,
+                color: Color(0xFF3B159B),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               const Text(
                 'Welcome to POWER FAN NETWORK',
@@ -1103,117 +1028,38 @@ class HomePage extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF241064),
                 ),
               ),
 
               const SizedBox(height: 12),
 
               Text(
-                user?.displayName ?? '',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              Text(
-                user?.email ?? '',
+                user?.displayName ??
+                    user?.email ??
+                    '',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.grey.shade600,
+                  fontSize: 17,
+                  color: Colors.grey.shade700,
                 ),
               ),
 
-              const SizedBox(height: 30),
-
-              // FIREBASE STATUS CARD
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(
-                        alpha: 0.05,
-                      ),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Column(
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 45,
-                      color: Color(0xFF159B61),
-                    ),
-
-                    SizedBox(height: 12),
-
-                    Text(
-                      'Firebase Connected',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    SizedBox(height: 8),
-
-                    Text(
-                      'Your POWER FAN account is successfully connected to Firebase.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              // FAN BALANCE PLACEHOLDER
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF3B159B),
-                      Color(0xFF241064),
-                    ],
+              if (user?.email != null) ...[
+                const SizedBox(height: 5),
+                Text(
+                  user!.email!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
                   ),
-                  borderRadius:
-                      BorderRadius.circular(20),
                 ),
-                child: const Column(
-                  children: [
-                    Text(
-                      'FAN Balance',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                      ),
-                    ),
+              ],
 
-                    SizedBox(height: 8),
+              const SizedBox(height: 30),
 
-                    Text(
-                      '0.0000 FAN',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
+              const Text(
+                'Your account is successfully connected to Firebase.',
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -1223,9 +1069,9 @@ class HomePage extends StatelessWidget {
   }
 }
 
-/// ============================================================
-/// FIREBASE AUTH ERROR MESSAGES
-/// ============================================================
+// ============================================================
+// FIREBASE AUTH ERROR
+// ============================================================
 
 String firebaseAuthMessage(
   FirebaseAuthException e,
@@ -1238,8 +1084,6 @@ String firebaseAuthMessage(
       return 'No account was found with this email.';
 
     case 'wrong-password':
-      return 'Incorrect email or password.';
-
     case 'invalid-credential':
       return 'Incorrect email or password.';
 
@@ -1261,11 +1105,9 @@ String firebaseAuthMessage(
     case 'missing-google-id-token':
       return 'Google did not return an ID token.';
 
-    case 'account-exists-with-different-credential':
-      return 'An account already exists with a different sign-in method.';
-
     default:
-      return 'Authentication error: ${e.code}\n'
+      return 'Authentication error:\n'
+          '${e.code}\n'
           '${e.message ?? ''}';
   }
 }
