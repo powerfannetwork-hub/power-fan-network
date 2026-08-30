@@ -1,89 +1,92 @@
 // ============================================================
-// POWER FAN NETWORK — AUTH ROUTES
-// FILE: src/routes/auth_routes.js
+// POWER FAN NETWORK
+// CUSTOM AUTH ROUTES
+// ============================================================
+//
+// Firebase Authentication: NOT USED
+// Authentication: JWT + bcrypt
+// Database: Firestore
 // ============================================================
 
 const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+const { getDb } = require("../firebase");
+const { authenticate } = require("../../middleware/auth");
+
 const router = express.Router();
 
-const admin = require("firebase-admin");
-const crypto = require("crypto");
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  "CHANGE_THIS_SECRET_IN_PRODUCTION";
 
-const {
-  createSession,
-  publicSession,
-} = require("../services/session_service");
+const JWT_EXPIRES_IN = "30d";
 
-const SessionStore = require("../services/session_store");
+// ============================================================
+// HELPERS
+// ============================================================
 
-const db = admin.database();
-const auth = admin.auth();
-
-const sessionStore =
-  new SessionStore(db);
-
-const MAX_NAME_LENGTH = 80;
-const MAX_EMAIL_LENGTH = 254;
-const MIN_PASSWORD_LENGTH = 6;
-
-const BASE_MINING_RATE = 0.2;
-
-function now() {
-  return Date.now();
+function cleanEmail(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase();
 }
 
-function cleanString(value) {
-  return String(value || "").trim();
+function cleanName(name) {
+  return String(name || "").trim();
 }
 
-function normalizeEmail(value) {
-  return cleanString(value).toLowerCase();
-}
-
-function validEmail(email) {
+function generateUserId() {
   return (
-    email.length > 3 &&
-    email.length <= MAX_EMAIL_LENGTH &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    "user_" +
+    Date.now() +
+    "_" +
+    Math.random()
+      .toString(36)
+      .substring(2, 10)
   );
 }
 
-function generateReferralCode() {
-  return crypto
-    .randomBytes(5)
-    .toString("hex")
-    .toUpperCase();
+function generateReferralCode(name) {
+  const prefix = cleanName(name)
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase()
+    .substring(0, 5);
+
+  const random = Math.floor(
+    100000 + Math.random() * 900000
+  );
+
+  return `${prefix || "FAN"}${random}`;
 }
 
-async function generateUniqueReferralCode() {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const code =
-      generateReferralCode();
-
-    const snapshot =
-      await db
-        .ref(`referralCodes/${code}`)
-        .once("value");
-
-    if (!snapshot.exists()) {
-      return code;
+function createToken(user) {
+  return jwt.sign(
+    {
+      userId: user.id,
+      email: user.email,
+    },
+    JWT_SECRET,
+    {
+      expiresIn: JWT_EXPIRES_IN,
     }
-  }
-
-  throw new Error(
-    "Unable to generate referral code.",
   );
 }
 
 function publicUser(user) {
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   return {
-    uid: user.uid || "",
+    id: user.id,
     name: user.name || "",
     email: user.email || "",
+
+    referralCode:
+      user.referralCode || "",
+
+    referredBy:
+      user.referredBy || null,
 
     fanBalance:
       Number(user.fanBalance || 0),
@@ -92,36 +95,45 @@ function publicUser(user) {
       Number(user.afamBalance || 0),
 
     miningRate:
-      Number(
-        user.miningRate ||
-          BASE_MINING_RATE,
-      ),
+      Number(user.miningRate || 0.2),
 
-    dailyAdCount:
-      Number(user.dailyAdCount || 0),
+    activeReferrals:
+      Number(user.activeReferrals || 0),
 
-    dailyAdBoost:
-      Number(user.dailyAdBoost || 0),
+    dailyAdsWatched:
+      Number(user.dailyAdsWatched || 0),
 
-    activeReferralCount:
-      Number(
-        user.activeReferralCount || 0,
-      ),
-
-    referralCode:
-      user.referralCode || "",
-
-    referrerUid:
-      user.referrerUid || null,
+    adBoost:
+      Number(user.adBoost || 0),
 
     miningActive:
-      user.miningActive === true,
+      Boolean(user.miningActive),
 
     miningStartedAt:
       user.miningStartedAt || null,
 
     miningEndsAt:
       user.miningEndsAt || null,
+
+    consecutiveCheckIns:
+      Number(
+        user.consecutiveCheckIns || 0
+      ),
+
+    kyc1Eligible:
+      Boolean(user.kyc1Eligible),
+
+    kyc1Verified:
+      Boolean(user.kyc1Verified),
+
+    kyc2Eligible:
+      Boolean(user.kyc2Eligible),
+
+    kyc2Verified:
+      Boolean(user.kyc2Verified),
+
+    kyc3Verified:
+      Boolean(user.kyc3Verified),
 
     createdAt:
       user.createdAt || null,
@@ -131,72 +143,10 @@ function publicUser(user) {
   };
 }
 
-async function getUser(uid) {
-  const snapshot =
-    await db
-      .ref(`users/${uid}`)
-      .once("value");
-
-  return snapshot.exists()
-    ? snapshot.val()
-    : null;
-}
-
-async function saveUser(user) {
-  await db
-    .ref(`users/${user.uid}`)
-    .set(user);
-
-  await db
-    .ref(
-      `referralCodes/${user.referralCode}`,
-    )
-    .set(user.uid);
-}
-
-async function createDatabaseUser({
-  uid,
-  name,
-  email,
-}) {
-  const referralCode =
-    await generateUniqueReferralCode();
-
-  const timestamp = now();
-
-  const user = {
-    uid,
-    name,
-    email,
-
-    fanBalance: 0,
-    afamBalance: 0,
-
-    miningRate: BASE_MINING_RATE,
-
-    dailyAdCount: 0,
-    dailyAdBoost: 0,
-    dailyAdDate:
-      new Date(timestamp)
-        .toISOString()
-        .slice(0, 10),
-
-    activeReferralCount: 0,
-
-    referralCode,
-    referrerUid: null,
-
-    miningActive: false,
-    miningStartedAt: null,
-    miningEndsAt: null,
-
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-
-  await saveUser(user);
-
-  return user;
+function validEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email
+  );
 }
 
 // ============================================================
@@ -207,108 +157,255 @@ router.post(
   "/register",
   async (req, res) => {
     try {
-      const name =
-        cleanString(req.body.name);
+      const db = getDb();
 
-      const email =
-        normalizeEmail(req.body.email);
-
-      const password =
-        String(
-          req.body.password || "",
-        );
-
-      if (!name) {
-        return res.status(400).json({
+      if (!db) {
+        return res.status(503).json({
           success: false,
-          error: "name_required",
           message:
-            "Name is required.",
+            "Database is not connected.",
         });
       }
 
-      if (
-        name.length >
-        MAX_NAME_LENGTH
-      ) {
+      const name =
+        cleanName(req.body.name);
+
+      const email =
+        cleanEmail(req.body.email);
+
+      const password =
+        String(req.body.password || "");
+
+      const referralCode =
+        String(
+          req.body.referralCode || ""
+        )
+          .trim()
+          .toUpperCase();
+
+      // ------------------------------------------------------
+      // VALIDATION
+      // ------------------------------------------------------
+
+      if (!name || !email || !password) {
         return res.status(400).json({
           success: false,
-          error: "name_too_long",
+          message:
+            "Name, email and password are required.",
+        });
+      }
+
+      if (name.length < 2) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Name must contain at least 2 characters.",
         });
       }
 
       if (!validEmail(email)) {
         return res.status(400).json({
           success: false,
-          error: "invalid_email",
+          message:
+            "Invalid email address.",
         });
       }
 
-      if (
-        password.length <
-        MIN_PASSWORD_LENGTH
-      ) {
+      if (password.length < 6) {
         return res.status(400).json({
           success: false,
-          error: "weak_password",
           message:
             "Password must contain at least 6 characters.",
         });
       }
 
-      // Backend-managed authentication account.
-      // Firebase Authentication is not used.
-      const existingEmailSnapshot =
-        await db
-          .ref("users")
-          .orderByChild("email")
-          .equalTo(email)
-          .once("value");
+      // ------------------------------------------------------
+      // CHECK EMAIL
+      // ------------------------------------------------------
 
-      if (
-        existingEmailSnapshot.exists()
-      ) {
+      const existing =
+        await db
+          .collection("users")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
+
+      if (!existing.empty) {
         return res.status(409).json({
           success: false,
-          error:
-            "email_already_in_use",
           message:
             "This email is already registered.",
         });
       }
 
-      const uid =
-        crypto.randomUUID();
+      // ------------------------------------------------------
+      // REFERRER
+      // ------------------------------------------------------
+
+      let referrerDoc = null;
+
+      if (referralCode) {
+        const referrerQuery =
+          await db
+            .collection("users")
+            .where(
+              "referralCode",
+              "==",
+              referralCode
+            )
+            .limit(1)
+            .get();
+
+        if (referrerQuery.empty) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Invalid referral code.",
+          });
+        }
+
+        referrerDoc =
+          referrerQuery.docs[0];
+      }
+
+      // ------------------------------------------------------
+      // PASSWORD HASH
+      // ------------------------------------------------------
 
       const passwordHash =
-        crypto
-          .createHash("sha256")
-          .update(password)
-          .digest("hex");
+        await bcrypt.hash(
+          password,
+          12
+        );
 
-      const user =
-        await createDatabaseUser({
-          uid,
-          name,
-          email,
-        });
+      // ------------------------------------------------------
+      // USER
+      // ------------------------------------------------------
 
-      await db
-        .ref(`credentials/${uid}`)
-        .set({
-          uid,
-          email,
-          passwordHash,
-          createdAt: now(),
-          updatedAt: now(),
-        });
+      const userId =
+        generateUserId();
 
-      const sessionData =
-        createSession(uid);
+      const newReferralCode =
+        generateReferralCode(name);
 
-      await sessionStore.create(
-        sessionData.session,
+      const now =
+        new Date().toISOString();
+
+      const newUser = {
+        id: userId,
+
+        name,
+        email,
+
+        passwordHash,
+
+        referralCode:
+          newReferralCode,
+
+        referredBy:
+          referrerDoc
+            ? referrerDoc.id
+            : null,
+
+        // New user receives 20 FAN
+        fanBalance:
+          referrerDoc ? 20 : 0,
+
+        afamBalance: 0,
+
+        // Base mining rate
+        miningRate: 0.2,
+
+        // Important:
+        // Referral is NOT active until
+        // the referred user starts mining.
+        activeReferrals: 0,
+
+        dailyAdsWatched: 0,
+
+        adBoost: 0,
+
+        miningActive: false,
+
+        miningStartedAt: null,
+
+        miningEndsAt: null,
+
+        // Used to prevent counting
+        // same mining session twice.
+        referralActiveForSession:
+          false,
+
+        consecutiveCheckIns: 0,
+
+        kyc1Eligible: false,
+        kyc1Verified: false,
+
+        kyc2Eligible: false,
+        kyc2Verified: false,
+
+        kyc3Verified: false,
+
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      // ------------------------------------------------------
+      // TRANSACTION
+      // ------------------------------------------------------
+
+      await db.runTransaction(
+        async (transaction) => {
+          const userRef =
+            db
+              .collection("users")
+              .doc(userId);
+
+          transaction.set(
+            userRef,
+            newUser
+          );
+
+          /*
+           * Important:
+           *
+           * Inviter gets 5 FAN for successful
+           * referral.
+           *
+           * But activeReferrals remains 0
+           * until the referred user actually
+           * starts mining.
+           */
+
+          if (referrerDoc) {
+            const referrerData =
+              referrerDoc.data();
+
+            const balance =
+              Number(
+                referrerData.fanBalance ||
+                  0
+              );
+
+            transaction.update(
+              referrerDoc.ref,
+              {
+                fanBalance:
+                  balance + 5,
+
+                updatedAt: now,
+              }
+            );
+          }
+        }
       );
+
+      // ------------------------------------------------------
+      // TOKEN
+      // ------------------------------------------------------
+
+      const token =
+        createToken(newUser);
 
       return res.status(201).json({
         success: true,
@@ -316,31 +413,24 @@ router.post(
         message:
           "Account created successfully.",
 
-        token:
-          sessionData.token,
-
-        session:
-          publicSession(
-            sessionData.session,
-          ),
+        token,
 
         user:
-          publicUser(user),
+          publicUser(newUser),
       });
     } catch (error) {
       console.error(
-        "Register error:",
-        error,
+        "REGISTER ERROR:",
+        error
       );
 
       return res.status(500).json({
         success: false,
-        error: "registration_failed",
         message:
-          "Unable to create account.",
+          "Registration failed.",
       });
     }
-  },
+  }
 );
 
 // ============================================================
@@ -351,111 +441,69 @@ router.post(
   "/login",
   async (req, res) => {
     try {
+      const db = getDb();
+
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          message:
+            "Database is not connected.",
+        });
+      }
+
       const email =
-        normalizeEmail(req.body.email);
+        cleanEmail(req.body.email);
 
       const password =
-        String(
-          req.body.password || "",
-        );
+        String(req.body.password || "");
 
-      if (!validEmail(email)) {
+      if (!email || !password) {
         return res.status(400).json({
           success: false,
-          error: "invalid_email",
+          message:
+            "Email and password are required.",
         });
       }
 
-      if (!password) {
-        return res.status(400).json({
-          success: false,
-          error: "password_required",
-        });
-      }
-
-      const passwordHash =
-        crypto
-          .createHash("sha256")
-          .update(password)
-          .digest("hex");
-
-      const credentialsSnapshot =
+      const query =
         await db
-          .ref("credentials")
-          .orderByChild("email")
-          .equalTo(email)
-          .once("value");
+          .collection("users")
+          .where("email", "==", email)
+          .limit(1)
+          .get();
 
-      if (
-        !credentialsSnapshot.exists()
-      ) {
+      if (query.empty) {
         return res.status(401).json({
           success: false,
-          error:
-            "invalid_credentials",
           message:
             "Incorrect email or password.",
         });
       }
 
-      const credentials =
-        credentialsSnapshot.val();
+      const doc =
+        query.docs[0];
 
-      let credential = null;
+      const user = {
+        id: doc.id,
+        ...doc.data(),
+      };
 
-      for (
-        const item of
-        Object.values(credentials)
-      ) {
-        if (
-          item &&
-          item.email === email
-        ) {
-          credential = item;
-          break;
-        }
-      }
+      const valid =
+        await bcrypt.compare(
+          password,
+          user.passwordHash || ""
+        );
 
-      if (
-        !credential ||
-        credential.passwordHash !==
-          passwordHash
-      ) {
+      if (!valid) {
         return res.status(401).json({
           success: false,
-          error:
-            "invalid_credentials",
           message:
             "Incorrect email or password.",
         });
       }
 
-      const user =
-        await getUser(
-          credential.uid,
-        );
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          error: "user_not_found",
-        });
-      }
-
-      const sessionData =
-        createSession(
-          credential.uid,
-        );
-
-      await sessionStore.create(
-        sessionData.session,
-      );
-
-      await db
-        .ref(
-          `credentials/${credential.uid}/updatedAt`,
-        )
-        .set(now());
+      const token =
+        createToken(user);
 
       return res.json({
         success: true,
@@ -463,31 +511,24 @@ router.post(
         message:
           "Login successful.",
 
-        token:
-          sessionData.token,
-
-        session:
-          publicSession(
-            sessionData.session,
-          ),
+        token,
 
         user:
           publicUser(user),
       });
     } catch (error) {
       console.error(
-        "Login error:",
-        error,
+        "LOGIN ERROR:",
+        error
       );
 
       return res.status(500).json({
         success: false,
-        error: "login_failed",
         message:
-          "Unable to login.",
+          "Login failed.",
       });
     }
-  },
+  }
 );
 
 // ============================================================
@@ -496,227 +537,133 @@ router.post(
 
 router.get(
   "/me",
+  authenticate,
   async (req, res) => {
-    try {
-      if (!req.user?.uid) {
-        return res.status(401).json({
-          success: false,
-          error:
-            "missing_authentication",
-        });
-      }
-
-      const user =
-        await getUser(
-          req.user.uid,
-        );
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          error: "user_not_found",
-        });
-      }
-
-      return res.json({
-        success: true,
-        user:
-          publicUser(user),
-      });
-    } catch (error) {
-      console.error(
-        "Current user error:",
-        error,
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: "server_error",
-      });
-    }
-  },
+    return res.json({
+      success: true,
+      user:
+        publicUser(req.user),
+    });
+  }
 );
 
 // ============================================================
 // LOGOUT
 // ============================================================
+//
+// JWT logout happens on the client by deleting
+// the locally stored token.
+// ============================================================
 
 router.post(
   "/logout",
+  authenticate,
   async (req, res) => {
-    try {
-      if (!req.user?.uid) {
-        return res.status(401).json({
-          success: false,
-          error:
-            "missing_authentication",
-        });
-      }
-
-      if (req.session?.tokenHash) {
-        await sessionStore.delete(
-          req.session.tokenHash,
-        );
-      }
-
-      return res.json({
-        success: true,
-        message:
-          "Logged out successfully.",
-      });
-    } catch (error) {
-      console.error(
-        "Logout error:",
-        error,
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: "logout_failed",
-      });
-    }
-  },
+    return res.json({
+      success: true,
+      message:
+        "Logged out successfully.",
+    });
+  }
 );
 
 // ============================================================
-// FORGOT PASSWORD
+// CHANGE PASSWORD
 // ============================================================
 
 router.post(
-  "/forgot-password",
+  "/change-password",
+  authenticate,
   async (req, res) => {
     try {
-      const email =
-        normalizeEmail(req.body.email);
+      const db = getDb();
 
-      if (!validEmail(email)) {
-        return res.status(400).json({
+      if (!db) {
+        return res.status(503).json({
           success: false,
-          error: "invalid_email",
+          message:
+            "Database is not connected.",
         });
       }
 
-      const credentialsSnapshot =
-        await db
-          .ref("credentials")
-          .orderByChild("email")
-          .equalTo(email)
-          .once("value");
+      const currentPassword =
+        String(
+          req.body.currentPassword ||
+            ""
+        );
+
+      const newPassword =
+        String(
+          req.body.newPassword || ""
+        );
 
       if (
-        !credentialsSnapshot.exists()
+        !currentPassword ||
+        !newPassword
       ) {
-        // Do not reveal whether the email exists.
-        return res.json({
-          success: true,
+        return res.status(400).json({
+          success: false,
           message:
-            "If the account exists, password recovery instructions will be sent.",
+            "Current password and new password are required.",
         });
       }
 
-      const credentials =
-        credentialsSnapshot.val();
-
-      let credential = null;
-
-      for (
-        const item of
-        Object.values(credentials)
-      ) {
-        if (
-          item &&
-          item.email === email
-        ) {
-          credential = item;
-          break;
-        }
-      }
-
-      if (!credential) {
-        return res.json({
-          success: true,
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
           message:
-            "If the account exists, password recovery instructions will be sent.",
+            "New password must contain at least 6 characters.",
         });
       }
 
-      // Password recovery delivery will be connected
-      // to the production email service later.
+      const valid =
+        await bcrypt.compare(
+          currentPassword,
+          req.user.passwordHash ||
+            ""
+        );
+
+      if (!valid) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Current password is incorrect.",
+        });
+      }
+
+      const passwordHash =
+        await bcrypt.hash(
+          newPassword,
+          12
+        );
+
       await db
-        .ref(
-          `passwordResetRequests/${credential.uid}`,
-        )
-        .set({
-          uid: credential.uid,
-          email,
-          requestedAt: now(),
-          status: "pending",
+        .collection("users")
+        .doc(req.userId)
+        .update({
+          passwordHash,
+          updatedAt:
+            new Date().toISOString(),
         });
 
       return res.json({
         success: true,
         message:
-          "Password recovery request created.",
+          "Password changed successfully.",
       });
     } catch (error) {
       console.error(
-        "Forgot password error:",
-        error,
+        "CHANGE PASSWORD ERROR:",
+        error
       );
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+        message:
+          "Could not change password.",
       });
     }
-  },
-);
-
-// ============================================================
-// BOOTSTRAP
-// ============================================================
-
-router.post(
-  "/bootstrap",
-  async (req, res) => {
-    try {
-      if (!req.user?.uid) {
-        return res.status(401).json({
-          success: false,
-          error:
-            "missing_authentication",
-        });
-      }
-
-      let user =
-        await getUser(
-          req.user.uid,
-        );
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          error: "user_not_found",
-        });
-      }
-
-      return res.json({
-        success: true,
-        user:
-          publicUser(user),
-      });
-    } catch (error) {
-      console.error(
-        "Bootstrap error:",
-        error,
-      );
-
-      return res.status(500).json({
-        success: false,
-        error: "server_error",
-      });
-    }
-  },
+  }
 );
 
 module.exports = router;
