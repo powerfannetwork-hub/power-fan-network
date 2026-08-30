@@ -59,7 +59,7 @@ class AuthGate extends StatelessWidget {
         }
 
         if (snapshot.hasData) {
-          return const HomePage();
+          return const MainNavigationPage();
         }
 
         return const LoginPage();
@@ -73,39 +73,34 @@ class AuthGate extends StatelessWidget {
 // ============================================================
 
 class UserProfileService {
-  static final FirebaseFirestore _firestore =
+  static final FirebaseFirestore firestore =
       FirebaseFirestore.instance;
 
   static Future<void> createOrUpdateProfile(User user) async {
-    final DocumentReference<Map<String, dynamic>> userRef =
-        _firestore.collection('users').doc(user.uid);
+    final ref = firestore.collection('users').doc(user.uid);
+    final snapshot = await ref.get();
 
-    final existing = await userRef.get();
-
-    final Map<String, dynamic> profile = {
+    final Map<String, dynamic> data = {
       'uid': user.uid,
       'email': user.email,
       'displayName': user.displayName,
       'photoUrl': user.photoURL,
+      'emailVerified': user.emailVerified,
       'lastLoginAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    if (!existing.exists) {
-      profile.addAll({
+    if (!snapshot.exists) {
+      data.addAll({
         'fanBalance': 0.0,
         'afamBalance': 0.0,
-        'miningRate': 0.2,
         'baseMiningRate': 0.2,
+        'miningRate': 0.2,
         'adBoostRate': 0.0,
         'activeReferralCount': 0,
-        'referralCode': user.uid.substring(
-          0,
-          user.uid.length >= 8 ? 8 : user.uid.length,
-        ).toUpperCase(),
+        'referralCode': _makeReferralCode(user.uid),
         'referredBy': null,
         'referralRewardReceived': false,
-        'emailVerified': user.emailVerified,
         'biometricVerified': false,
         'kycStatus': 'COMING_SOON',
         'deviceLinked': false,
@@ -114,10 +109,15 @@ class UserProfileService {
       });
     }
 
-    await userRef.set(
-      profile,
+    await ref.set(
+      data,
       SetOptions(merge: true),
     );
+  }
+
+  static String _makeReferralCode(String uid) {
+    final length = uid.length >= 8 ? 8 : uid.length;
+    return uid.substring(0, length).toUpperCase();
   }
 }
 
@@ -153,11 +153,8 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final TextEditingController emailController =
-      TextEditingController();
-
-  final TextEditingController passwordController =
-      TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
 
   bool obscurePassword = true;
   bool loading = false;
@@ -184,13 +181,13 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final UserCredential credential =
+      final credential =
           await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final User? user = credential.user;
+      final user = credential.user;
 
       if (user != null) {
         await UserProfileService.createOrUpdateProfile(user);
@@ -222,32 +219,29 @@ class _LoginPageState extends State<LoginPage> {
       final GoogleSignInAuthentication googleAuth =
           googleUser.authentication;
 
-      final String? idToken = googleAuth.idToken;
+      final idToken = googleAuth.idToken;
 
       if (idToken == null) {
-        throw Exception('Google ID token is unavailable.');
+        throw Exception('Google ID token unavailable.');
       }
 
-      final OAuthCredential credential =
-          GoogleAuthProvider.credential(
+      final credential = GoogleAuthProvider.credential(
         idToken: idToken,
       );
 
-      final UserCredential userCredential =
+      final userCredential =
           await FirebaseAuth.instance.signInWithCredential(
         credential,
       );
 
-      final User? user = userCredential.user;
+      final user = userCredential.user;
 
       if (user != null) {
         await UserProfileService.createOrUpdateProfile(user);
       }
     } on GoogleSignInException catch (e) {
       if (e.code != GoogleSignInExceptionCode.canceled) {
-        showMessage(
-          'Google Sign-In failed. Please try again.',
-        );
+        showMessage('Google Sign-In failed.');
       }
     } on FirebaseAuthException catch (e) {
       showMessage(authErrorMessage(e.code));
@@ -278,15 +272,13 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       showMessage(
-        'Password reset email has been sent.',
+        'Password reset email sent.',
         success: true,
       );
     } on FirebaseAuthException catch (e) {
       showMessage(authErrorMessage(e.code));
     } catch (_) {
-      showMessage(
-        'Unable to send password reset email.',
-      );
+      showMessage('Unable to send reset email.');
     }
   }
 
@@ -294,26 +286,19 @@ class _LoginPageState extends State<LoginPage> {
     switch (code) {
       case 'invalid-email':
         return 'The email address is not valid.';
-
       case 'user-disabled':
         return 'This account has been disabled.';
-
       case 'user-not-found':
         return 'No account was found with this email.';
-
       case 'wrong-password':
       case 'invalid-credential':
         return 'Email or password is incorrect.';
-
       case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-
+        return 'Too many attempts. Try again later.';
       case 'network-request-failed':
         return 'Check your internet connection.';
-
       case 'operation-not-allowed':
-        return 'This sign-in method is not enabled in Firebase.';
-
+        return 'This sign-in method is not enabled.';
       default:
         return 'Authentication failed. Please try again.';
     }
@@ -478,8 +463,8 @@ class _LoginPageState extends State<LoginPage> {
                                 : googleLogin,
                             icon: googleLoading
                                 ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
+                                    width: 21,
+                                    height: 21,
                                     child:
                                         CircularProgressIndicator(
                                       strokeWidth: 2,
@@ -517,7 +502,6 @@ class _LoginPageState extends State<LoginPage> {
                               'Forgot Password?',
                               style: TextStyle(
                                 color: primaryPurple,
-                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -578,36 +562,30 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final TextEditingController emailController =
-      TextEditingController();
-
-  final TextEditingController passwordController =
-      TextEditingController();
-
-  final TextEditingController confirmPasswordController =
-      TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmController = TextEditingController();
 
   bool obscurePassword = true;
-  bool obscureConfirmPassword = true;
+  bool obscureConfirm = true;
   bool loading = false;
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-    confirmPasswordController.dispose();
+    confirmController.dispose();
     super.dispose();
   }
 
   Future<void> register() async {
     final email = emailController.text.trim();
     final password = passwordController.text;
-    final confirmPassword =
-        confirmPasswordController.text;
+    final confirm = confirmController.text;
 
     if (email.isEmpty ||
         password.isEmpty ||
-        confirmPassword.isEmpty) {
+        confirm.isEmpty) {
       showMessage('Please fill all fields.');
       return;
     }
@@ -619,7 +597,7 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    if (password != confirmPassword) {
+    if (password != confirm) {
       showMessage('Passwords do not match.');
       return;
     }
@@ -629,31 +607,21 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      final UserCredential credential =
-          await FirebaseAuth.instance
-              .createUserWithEmailAndPassword(
+      final credential =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final User? user = credential.user;
+      final user = credential.user;
 
       if (user != null) {
         await UserProfileService.createOrUpdateProfile(user);
       }
-
-      if (mounted) {
-        showMessage(
-          'Account created successfully.',
-          success: true,
-        );
-      }
     } on FirebaseAuthException catch (e) {
       showMessage(registerErrorMessage(e.code));
     } catch (_) {
-      showMessage(
-        'Registration failed. Please try again.',
-      );
+      showMessage('Registration failed.');
     }
 
     if (mounted) {
@@ -667,19 +635,14 @@ class _RegisterPageState extends State<RegisterPage> {
     switch (code) {
       case 'invalid-email':
         return 'The email address is not valid.';
-
       case 'email-already-in-use':
         return 'An account already exists with this email.';
-
       case 'weak-password':
         return 'Please choose a stronger password.';
-
       case 'network-request-failed':
         return 'Check your internet connection.';
-
       case 'operation-not-allowed':
-        return 'Email/Password sign-in is not enabled in Firebase.';
-
+        return 'Email/Password is not enabled.';
       default:
         return 'Registration failed. Please try again.';
     }
@@ -727,14 +690,6 @@ class _RegisterPageState extends State<RegisterPage> {
                       color: Colors.white,
                       borderRadius:
                           BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black
-                              .withValues(alpha: 0.06),
-                          blurRadius: 25,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
                     ),
                     child: Column(
                       crossAxisAlignment:
@@ -810,22 +765,20 @@ class _RegisterPageState extends State<RegisterPage> {
                         const SizedBox(height: 8),
 
                         TextField(
-                          controller:
-                              confirmPasswordController,
-                          obscureText:
-                              obscureConfirmPassword,
+                          controller: confirmController,
+                          obscureText: obscureConfirm,
                           decoration: inputDecoration(
                             hint: 'Confirm your password',
                             icon: Icons.lock_outline,
                             suffix: IconButton(
                               onPressed: () {
                                 setState(() {
-                                  obscureConfirmPassword =
-                                      !obscureConfirmPassword;
+                                  obscureConfirm =
+                                      !obscureConfirm;
                                 });
                               },
                               icon: Icon(
-                                obscureConfirmPassword
+                                obscureConfirm
                                     ? Icons.visibility_outlined
                                     : Icons.visibility_off_outlined,
                               ),
@@ -864,7 +817,6 @@ class _RegisterPageState extends State<RegisterPage> {
                                 : const Text(
                                     'CREATE ACCOUNT',
                                     style: TextStyle(
-                                      fontSize: 16,
                                       fontWeight:
                                           FontWeight.bold,
                                     ),
@@ -872,7 +824,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 12),
 
                         Center(
                           child: TextButton(
@@ -882,22 +834,11 @@ class _RegisterPageState extends State<RegisterPage> {
                               'Already have an account? Login',
                               style: TextStyle(
                                 color: primaryPurple,
-                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Text(
-                    'POWER FAN NETWORK • AFAM',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
                     ),
                   ),
                 ],
@@ -911,7 +852,72 @@ class _RegisterPageState extends State<RegisterPage> {
 }
 
 // ============================================================
-// HOME
+// MAIN NAVIGATION
+// ============================================================
+
+class MainNavigationPage extends StatefulWidget {
+  const MainNavigationPage({super.key});
+
+  @override
+  State<MainNavigationPage> createState() =>
+      _MainNavigationPageState();
+}
+
+class _MainNavigationPageState
+    extends State<MainNavigationPage> {
+  int selectedIndex = 0;
+
+  final pages = const [
+    HomePage(),
+    ReferralPage(),
+    WalletPage(),
+    SettingsPage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: selectedIndex,
+        children: pages,
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'Referral',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon:
+                Icon(Icons.account_balance_wallet),
+            label: 'Wallet',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HOME PAGE
 // ============================================================
 
 class HomePage extends StatelessWidget {
@@ -919,11 +925,15 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final User? user = FirebaseAuth.instance.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       return const LoginPage();
     }
+
+    final userRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
 
     return Scaffold(
       appBar: AppBar(
@@ -935,22 +945,10 @@ class HomePage extends StatelessWidget {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: 'Logout',
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-            icon: const Icon(Icons.logout),
-          ),
-        ],
       ),
       body: StreamBuilder<
           DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .snapshots(),
+        stream: userRef.snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
@@ -963,199 +961,115 @@ class HomePage extends StatelessWidget {
 
           final data = snapshot.data?.data();
 
-          final double fanBalance =
+          final fanBalance =
               (data?['fanBalance'] as num?)?.toDouble() ?? 0.0;
 
-          final double afamBalance =
+          final afamBalance =
               (data?['afamBalance'] as num?)?.toDouble() ?? 0.0;
 
-          final double miningRate =
+          final miningRate =
               (data?['miningRate'] as num?)?.toDouble() ?? 0.2;
 
-          final int referrals =
+          final adBoost =
+              (data?['adBoostRate'] as num?)?.toDouble() ?? 0.0;
+
+          final referrals =
               (data?['activeReferralCount'] as num?)?.toInt() ?? 0;
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        primaryPurple,
-                        deepPurple,
-                      ],
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(24),
+          return RefreshIndicator(
+            color: primaryPurple,
+            onRefresh: () async {
+              await userRef.get();
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  _WelcomeCard(
+                    email: user.email ?? '',
                   ),
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Welcome to',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 16,
-                        ),
-                      ),
 
-                      const SizedBox(height: 5),
+                  const SizedBox(height: 20),
 
-                      const Text(
-                        'POWER FAN NETWORK',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 25,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      Text(
-                        user.email ?? '',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                const Text(
-                  'FAN Balance',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${fanBalance.toStringAsFixed(4)} FAN',
-                    style: const TextStyle(
-                      fontSize: 28,
+                  const Text(
+                    'FAN Balance',
+                    style: TextStyle(
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: primaryPurple,
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 8),
 
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(20),
+                  _BalanceCard(
+                    balance: fanBalance,
                   ),
-                  child: Row(
+
+                  const SizedBox(height: 16),
+
+                  Row(
                     children: [
                       Expanded(
-                        child: _BalanceItem(
+                        child: _SmallBalanceCard(
                           title: 'AFAM',
                           value:
                               afamBalance.toStringAsFixed(4),
+                          icon: Icons.token_outlined,
                         ),
                       ),
+                      const SizedBox(width: 12),
                       Expanded(
-                        child: _BalanceItem(
+                        child: _SmallBalanceCard(
                           title: 'Mining Rate',
                           value:
                               '${miningRate.toStringAsFixed(2)} FAN/H',
+                          icon: Icons.speed,
                         ),
                       ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
                       Expanded(
-                        child: _BalanceItem(
+                        child: _SmallBalanceCard(
+                          title: 'Ad Boost',
+                          value:
+                              '+${adBoost.toStringAsFixed(2)} FAN/H',
+                          icon: Icons.ads_click,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _SmallBalanceCard(
                           title: 'Referrals',
                           value: '$referrals',
+                          icon: Icons.people_outline,
                         ),
                       ),
                     ],
                   ),
-                ),
 
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(20),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Mining',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Real mining engine will be connected in the next stage.',
-                        style: TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                  const MiningCard(),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.verified_user_outlined,
-                        color: primaryPurple,
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Biometric / KYC verification: Coming Soon',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                  const SocialTaskCard(),
+
+                  const SizedBox(height: 16),
+
+                  const KycComingSoonCard(),
+
+                  const SizedBox(height: 30),
+                ],
+              ),
             ),
           );
         },
@@ -1165,41 +1079,706 @@ class HomePage extends StatelessWidget {
 }
 
 // ============================================================
-// BALANCE ITEM
+// WELCOME CARD
 // ============================================================
 
-class _BalanceItem extends StatelessWidget {
-  final String title;
-  final String value;
+class _WelcomeCard extends StatelessWidget {
+  final String email;
 
-  const _BalanceItem({
-    required this.title,
-    required this.value,
+  const _WelcomeCard({
+    required this.email,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          title,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            primaryPurple,
+            deepPurple,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Welcome to',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'POWER FAN NETWORK',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            email,
+            style: const TextStyle(
+              color: Colors.white70,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// BALANCE CARD
+// ============================================================
+
+class _BalanceCard extends StatelessWidget {
+  final double balance;
+
+  const _BalanceCard({
+    required this.balance,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: primaryPurple.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.bolt,
+              color: primaryPurple,
+              size: 30,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              '${balance.toStringAsFixed(4)} FAN',
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: primaryPurple,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// SMALL BALANCE CARD
+// ============================================================
+
+class _SmallBalanceCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+
+  const _SmallBalanceCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color: primaryPurple,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              color: deepPurple,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// MINING CARD
+// ============================================================
+
+class MiningCard extends StatelessWidget {
+  const MiningCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 45,
+                height: 45,
+                decoration: BoxDecoration(
+                  color: primaryPurple.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.bolt,
+                  color: primaryPurple,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Mining',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Chip(
+                label: Text('READY'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          const Text(
+            'Base mining rate',
+            style: TextStyle(
+              color: Colors.grey,
+            ),
+          ),
+
+          const SizedBox(height: 5),
+
+          const Text(
+            '0.20 FAN / H',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: primaryPurple,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Text(
+            'The secure mining engine will be connected '
+            'through the server in the next stage.',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// SOCIAL TASK
+// ============================================================
+
+class SocialTaskCard extends StatelessWidget {
+  const SocialTaskCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.public,
+                color: primaryPurple,
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Daily Social Task',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+
+          SizedBox(height: 12),
+
+          Text(
+            'Complete the official social-media task '
+            'to become eligible for the daily reward.',
+            style: TextStyle(
+              color: Colors.grey,
+              height: 1.4,
+            ),
+          ),
+
+          SizedBox(height: 12),
+
+          Text(
+            'Reward: 10 FAN',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: primaryPurple,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// KYC / BIOMETRIC COMING SOON
+// ============================================================
+
+class KycComingSoonCard extends StatelessWidget {
+  const KycComingSoonCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        children: [
+          Icon(
+            Icons.fingerprint,
+            color: primaryPurple,
+            size: 30,
+          ),
+          SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Biometric Verification',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Coming Soon',
+                  style: TextStyle(
+                    color: primaryPurple,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// REFERRAL PAGE
+// ============================================================
+
+class ReferralPage extends StatelessWidget {
+  const ReferralPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const LoginPage();
+    }
+
+    final ref = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Referral',
           style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 5),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 15,
             fontWeight: FontWeight.bold,
-            color: deepPurple,
           ),
-          textAlign: TextAlign.center,
         ),
-      ],
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: StreamBuilder<
+          DocumentSnapshot<Map<String, dynamic>>>(
+        stream: ref.snapshots(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data();
+
+          final code =
+              data?['referralCode']?.toString() ?? 'N/A';
+
+          final count =
+              (data?['activeReferralCount'] as num?)?.toInt() ?? 0;
+
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      primaryPurple,
+                      deepPurple,
+                    ],
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(24),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.people,
+                      color: Colors.white,
+                      size: 45,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Invite Friends',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Active referrals: $count',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your Referral Code',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      code,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: primaryPurple,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    const Text(
+                      'Referral rewards and activation will '
+                      'be connected securely in the next stage.',
+                      style: TextStyle(
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ============================================================
+// WALLET PAGE
+// ============================================================
+
+class WalletPage extends StatelessWidget {
+  const WalletPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Wallet',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(30),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(24),
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.account_balance_wallet,
+                  color: primaryPurple,
+                  size: 60,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Wallet',
+                  style: TextStyle(
+                    fontSize: 25,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'COMING SOON',
+                  style: TextStyle(
+                    color: primaryPurple,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// SETTINGS PAGE
+// ============================================================
+
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key});
+
+  Future<void> logout() async {
+    await FirebaseAuth.instance.signOut();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor:
+                      primaryPurple.withValues(alpha: 0.1),
+                  backgroundImage:
+                      user?.photoURL != null
+                          ? NetworkImage(user!.photoURL!)
+                          : null,
+                  child: user?.photoURL == null
+                      ? const Icon(
+                          Icons.person,
+                          color: primaryPurple,
+                          size: 30,
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: Text(
+                    user?.email ?? '',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 15),
+
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(20),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(
+                    Icons.fingerprint,
+                    color: primaryPurple,
+                  ),
+                  title: const Text(
+                    'Biometric Verification',
+                  ),
+                  subtitle: const Text(
+                    'Coming Soon',
+                  ),
+                  trailing: const Icon(
+                    Icons.lock_outline,
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(
+                    Icons.security,
+                    color: primaryPurple,
+                  ),
+                  title: const Text(
+                    'Account Security',
+                  ),
+                  subtitle: const Text(
+                    'Protected by Firebase',
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: logout,
+              icon: const Icon(Icons.logout),
+              label: const Text(
+                'LOGOUT',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          Center(
+            child: Text(
+              'POWER FAN NETWORK • AFAM\nVersion 1.0.0',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1233,9 +1812,7 @@ class LogoSection extends StatelessWidget {
             size: 50,
           ),
         ),
-
         const SizedBox(height: 18),
-
         const Text(
           'POWER FAN',
           style: TextStyle(
@@ -1244,7 +1821,6 @@ class LogoSection extends StatelessWidget {
             color: deepPurple,
           ),
         ),
-
         const Text(
           'NETWORK',
           style: TextStyle(
