@@ -1,10 +1,29 @@
 // ============================================================
 // POWER FAN NETWORK — PRODUCTION BACKEND
 // FILE: src/server.js
+//
+// IMPORTANT ARCHITECTURE
+// ------------------------------------------------------------
+// Firebase Authentication is NOT used.
+//
+// Authentication:
+//   Flutter -> POWER FAN NETWORK Backend -> Session Token
+//
+// Database:
+//   POWER FAN NETWORK Backend -> Firebase Realtime Database
+//
+// Mining / balances / rewards:
+//   Backend is the source of truth.
+//
+// Flutter is NOT trusted to calculate FAN rewards.
 // ============================================================
+
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
 
@@ -13,16 +32,18 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
 // ============================================================
-// FIREBASE CONFIG
+// FIREBASE DATABASE CONFIG
 // ============================================================
 
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-const firebaseWebApiKey = process.env.FIREBASE_WEB_API_KEY;
 
 if (!projectId || !clientEmail || !privateKey) {
-  console.error("Missing Firebase environment variables.");
+  console.error(
+    "Missing Firebase environment variables: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY",
+  );
+
   process.exit(1);
 }
 
@@ -32,12 +53,13 @@ admin.initializeApp({
     clientEmail,
     privateKey: privateKey.replace(/\\n/g, "\n"),
   }),
+
   databaseURL:
-      `https://${projectId}-default-rtdb.firebaseio.com`,
+    process.env.FIREBASE_DATABASE_URL ||
+    `https://${projectId}-default-rtdb.firebaseio.com`,
 });
 
 const db = admin.database();
-const auth = admin.auth();
 
 // ============================================================
 // CONFIGURATION
@@ -50,25 +72,80 @@ const CONFIG = {
   miningCoin: "FAN",
   originalCoin: "AFAM",
 
+  // ----------------------------------------------------------
+  // MINING
+  // ----------------------------------------------------------
+
   baseMiningRate: 0.2,
-
-  adBoostPerAd: 0.1,
-  maximumDailyAds: 7,
-  maximumAdBoost: 0.7,
-
-  activeReferralMiningBonus: 0.02,
-
-  maximumMiningRate: 0.9,
 
   miningSessionHours: 24,
 
+  // ----------------------------------------------------------
+  // ADS
+  // ----------------------------------------------------------
+
+  adBoostPerAd: 0.1,
+
+  maximumDailyAds: 7,
+
+  maximumAdBoost: 0.7,
+
+  // IMPORTANT:
+  // There is NO maximum mining rate.
+  // Referral bonuses can continue indefinitely.
+  // ----------------------------------------------------------
+
+  // ----------------------------------------------------------
+  // REFERRALS
+  // ----------------------------------------------------------
+
   newUserReferralReward: 20,
+
   inviterReferralReward: 5,
+
+  activeReferralMiningBonus: 0.02,
+
+  // NO maximum referral count.
+  // NO maximum referral mining bonus.
+  // ----------------------------------------------------------
+
+  // ----------------------------------------------------------
+  // SOCIAL TASK
+  // ----------------------------------------------------------
 
   dailySocialReward: 10,
 
+  // ----------------------------------------------------------
+  // SECURITY
+  // ----------------------------------------------------------
+
   maximumNameLength: 80,
+
   maximumEmailLength: 254,
+
+  minimumPasswordLength: 8,
+
+  accessTokenDays: 30,
+
+  refreshTokenDays: 90,
+
+  passwordResetTokenMinutes: 30,
+
+  // ----------------------------------------------------------
+  // RATE LIMITS
+  // ----------------------------------------------------------
+
+  loginWindowMs: 15 * 60 * 1000,
+
+  loginMaxAttempts: 10,
+
+  registerWindowMs: 15 * 60 * 1000,
+
+  registerMaxAttempts: 10,
+
+  generalWindowMs: 60 * 1000,
+
+  generalMaxRequests: 120,
 };
 
 // ============================================================
@@ -78,9 +155,24 @@ const CONFIG = {
 app.disable("x-powered-by");
 
 app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+  }),
+);
+
+app.use(
   cors({
     origin: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -93,6 +185,62 @@ app.use(
     limit: "1mb",
   }),
 );
+
+app.use(
+  rateLimit({
+    windowMs: CONFIG.generalWindowMs,
+    limit: CONFIG.generalMaxRequests,
+
+    standardHeaders: "draft-7",
+
+    legacyHeaders: false,
+
+    message: {
+      success: false,
+      error: "too_many_requests",
+      message:
+        "Too many requests. Please try again later.",
+    },
+  }),
+);
+
+// ============================================================
+// AUTH RATE LIMITERS
+// ============================================================
+
+const loginLimiter = rateLimit({
+  windowMs: CONFIG.loginWindowMs,
+
+  limit: CONFIG.loginMaxAttempts,
+
+  standardHeaders: "draft-7",
+
+  legacyHeaders: false,
+
+  message: {
+    success: false,
+    error: "too_many_login_attempts",
+    message:
+      "Too many login attempts. Please try again later.",
+  },
+});
+
+const registerLimiter = rateLimit({
+  windowMs: CONFIG.registerWindowMs,
+
+  limit: CONFIG.registerMaxAttempts,
+
+  standardHeaders: "draft-7",
+
+  legacyHeaders: false,
+
+  message: {
+    success: false,
+    error: "too_many_registration_attempts",
+    message:
+      "Too many registration attempts. Please try again later.",
+  },
+});
 
 // ============================================================
 // HELPERS
@@ -107,7 +255,7 @@ function todayKey() {
 }
 
 function cleanString(value) {
-  return String(value || "").trim();
+  return String(value ?? "").trim();
 }
 
 function normalizeEmail(value) {
@@ -122,13 +270,6 @@ function validEmail(email) {
   );
 }
 
-function generateReferralCode() {
-  return crypto
-    .randomBytes(5)
-    .toString("hex")
-    .toUpperCase();
-}
-
 function safeNumber(value, fallback = 0) {
   const number = Number(value);
 
@@ -137,11 +278,150 @@ function safeNumber(value, fallback = 0) {
     : fallback;
 }
 
+function safeInteger(value, fallback = 0) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+
+  return Math.floor(number);
+}
+
+function generateReferralCode() {
+  return crypto
+    .randomBytes(5)
+    .toString("hex")
+    .toUpperCase();
+}
+
+function generateToken(bytes = 32) {
+  return crypto
+    .randomBytes(bytes)
+    .toString("hex");
+}
+
+function hashToken(token) {
+  return crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+}
+
+function timingSafeEqualStrings(a, b) {
+  const first = Buffer.from(String(a));
+  const second = Buffer.from(String(b));
+
+  if (first.length !== second.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    first,
+    second,
+  );
+}
+
+// ============================================================
+// PASSWORD HASHING
+// ============================================================
+
+function hashPassword(password) {
+  const salt = crypto
+    .randomBytes(16)
+    .toString("hex");
+
+  const derivedKey =
+    crypto.scryptSync(
+      password,
+      salt,
+      64,
+    );
+
+  return `scrypt:${salt}:${derivedKey.toString(
+    "hex",
+  )}`;
+}
+
+function verifyPassword(
+  password,
+  storedHash,
+) {
+  try {
+    const parts =
+      String(storedHash).split(":");
+
+    if (
+      parts.length !== 3 ||
+      parts[0] !== "scrypt"
+    ) {
+      return false;
+    }
+
+    const salt = parts[1];
+
+    const storedKey =
+      Buffer.from(parts[2], "hex");
+
+    const derivedKey =
+      crypto.scryptSync(
+        password,
+        salt,
+        64,
+      );
+
+    if (
+      storedKey.length !==
+      derivedKey.length
+    ) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(
+      storedKey,
+      derivedKey,
+    );
+  } catch (error) {
+    console.error(
+      "Password verification error:",
+      error.message,
+    );
+
+    return false;
+  }
+}
+
+// ============================================================
+// MINING CALCULATION
+// ============================================================
+//
+// IMPORTANT:
+// Referral bonus has NO LIMIT.
+//
+// Example:
+//
+// 0 referrals
+// 0.20 FAN/H
+//
+// 1 referral
+// 0.22 FAN/H
+//
+// 100 referrals
+// 2.20 FAN/H
+//
+// 1000 referrals
+// 20.20 FAN/H
+//
+// Ads add up to +0.70 FAN/H.
+//
+// There is NO maximumMiningRate.
+// ============================================================
+
 function calculateMiningRate(user) {
   const referrals = Math.max(
     0,
-    Math.floor(
-      safeNumber(user.activeReferralCount),
+    safeInteger(
+      user.activeReferralCount,
     ),
   );
 
@@ -149,7 +429,9 @@ function calculateMiningRate(user) {
     CONFIG.maximumAdBoost,
     Math.max(
       0,
-      safeNumber(user.dailyAdBoost),
+      safeNumber(
+        user.dailyAdBoost,
+      ),
     ),
   );
 
@@ -162,67 +444,230 @@ function calculateMiningRate(user) {
     referralBoost +
     adBoost;
 
-  return Math.min(
-    Number(total.toFixed(4)),
-    CONFIG.maximumMiningRate,
+  return Number(
+    total.toFixed(8),
   );
 }
 
+// ============================================================
+// PUBLIC USER
+// ============================================================
+
 function publicUser(user) {
-  if (!user) return null;
+  if (!user) {
+    return null;
+  }
 
   return {
     uid: user.uid,
-    name: user.name || "",
-    email: user.email || "",
 
-    fanBalance: safeNumber(user.fanBalance),
-    afamBalance: safeNumber(user.afamBalance),
+    name:
+      user.name || "",
 
-    miningRate: safeNumber(
-      user.miningRate,
-      CONFIG.baseMiningRate,
-    ),
+    email:
+      user.email || "",
 
-    dailyAdCount: safeNumber(user.dailyAdCount),
-    dailyAdBoost: safeNumber(user.dailyAdBoost),
+    fanBalance:
+      safeNumber(
+        user.fanBalance,
+      ),
+
+    afamBalance:
+      safeNumber(
+        user.afamBalance,
+      ),
+
+    miningRate:
+      calculateMiningRate(user),
+
+    dailyAdCount:
+      safeNumber(
+        user.dailyAdCount,
+      ),
+
+    dailyAdBoost:
+      safeNumber(
+        user.dailyAdBoost,
+      ),
 
     activeReferralCount:
-      safeNumber(user.activeReferralCount),
+      safeNumber(
+        user.activeReferralCount,
+      ),
 
-    referralCode: user.referralCode || "",
+    referralCode:
+      user.referralCode || "",
+
+    referrerUid:
+      user.referrerUid || null,
 
     miningActive:
       user.miningActive === true,
 
     miningStartedAt:
-      user.miningStartedAt || null,
+      user.miningStartedAt ||
+      null,
 
     miningEndsAt:
-      user.miningEndsAt || null,
+      user.miningEndsAt ||
+      null,
 
     createdAt:
-      user.createdAt || null,
+      user.createdAt ||
+      null,
 
     updatedAt:
-      user.updatedAt || null,
+      user.updatedAt ||
+      null,
   };
 }
 
+// ============================================================
+// DATABASE HELPERS
+// ============================================================
+
 async function getUser(uid) {
   const snapshot =
-    await db.ref(`users/${uid}`).once("value");
+    await db
+      .ref(`users/${uid}`)
+      .once("value");
 
   return snapshot.exists()
     ? snapshot.val()
     : null;
 }
 
+async function createUniqueReferralCode() {
+  for (
+    let attempt = 0;
+    attempt < 20;
+    attempt++
+  ) {
+    const candidate =
+      generateReferralCode();
+
+    const snapshot =
+      await db
+        .ref(
+          `referralCodes/${candidate}`,
+        )
+        .once("value");
+
+    if (!snapshot.exists()) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    "Unable to generate unique referral code.",
+  );
+}
+
 // ============================================================
-// AUTHENTICATION
+// SESSION AUTHENTICATION
+// ============================================================
+//
+// Backend authentication:
+//
+// Flutter sends:
+//
+// Authorization: Bearer <session-token>
+//
+// We hash the token before storing it in Firebase.
 // ============================================================
 
-async function authenticate(req, res, next) {
+async function createSession(
+  uid,
+  type,
+  durationMs,
+) {
+  const rawToken =
+    generateToken(48);
+
+  const tokenHash =
+    hashToken(rawToken);
+
+  const createdAt =
+    now();
+
+  const expiresAt =
+    createdAt +
+    durationMs;
+
+  await db
+    .ref(`sessions/${tokenHash}`)
+    .set({
+      uid,
+      type,
+      createdAt,
+      expiresAt,
+      lastUsedAt: createdAt,
+    });
+
+  return {
+    token: rawToken,
+    expiresAt,
+  };
+}
+
+async function getSessionFromToken(
+  token,
+) {
+  const tokenHash =
+    hashToken(token);
+
+  const snapshot =
+    await db
+      .ref(`sessions/${tokenHash}`)
+      .once("value");
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  const session =
+    snapshot.val();
+
+  if (
+    safeNumber(
+      session.expiresAt,
+    ) <= now()
+  ) {
+    await db
+      .ref(`sessions/${tokenHash}`)
+      .remove();
+
+    return null;
+  }
+
+  return {
+    ...session,
+    tokenHash,
+  };
+}
+
+async function revokeSession(token) {
+  if (!token) {
+    return;
+  }
+
+  const tokenHash =
+    hashToken(token);
+
+  await db
+    .ref(`sessions/${tokenHash}`)
+    .remove();
+}
+
+// ============================================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================================
+
+async function authenticate(
+  req,
+  res,
+  next,
+) {
   try {
     const header =
       req.headers.authorization;
@@ -233,9 +678,10 @@ async function authenticate(req, res, next) {
     ) {
       return res.status(401).json({
         success: false,
-        error: "missing_authentication",
+        error:
+          "missing_authentication",
         message:
-          "Firebase ID token is required.",
+          "Backend session token is required.",
       });
     }
 
@@ -245,450 +691,870 @@ async function authenticate(req, res, next) {
     if (!token) {
       return res.status(401).json({
         success: false,
-        error: "missing_token",
+        error:
+          "missing_token",
       });
     }
 
-    const decodedToken =
-      await auth.verifyIdToken(token);
+    const session =
+      await getSessionFromToken(
+        token,
+      );
 
-    req.user = decodedToken;
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        error:
+          "invalid_or_expired_session",
+        message:
+          "Your session is invalid or expired. Please login again.",
+      });
+    }
+
+    const user =
+      await getUser(
+        session.uid,
+      );
+
+    if (!user) {
+      await db
+        .ref(
+          `sessions/${session.tokenHash}`,
+        )
+        .remove();
+
+      return res.status(401).json({
+        success: false,
+        error:
+          "user_not_found",
+      });
+    }
+
+    await db
+      .ref(
+        `sessions/${session.tokenHash}/lastUsedAt`,
+      )
+      .set(now());
+
+    req.user = user;
+
+    req.session = {
+      ...session,
+      rawToken: token,
+    };
 
     next();
   } catch (error) {
     console.error(
       "Authentication error:",
-      error.message,
+      error,
     );
 
     return res.status(401).json({
       success: false,
-      error: "invalid_authentication",
-      message:
-        "Invalid or expired authentication token.",
+      error:
+        "authentication_failed",
     });
   }
 }
 
 // ============================================================
-// ROOT / HEALTH
+// ROOT
 // ============================================================
 
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    app: CONFIG.appName,
-    version: CONFIG.version,
-    status: "running",
-  });
-});
+app.get(
+  "/",
+  (req, res) => {
+    res.json({
+      success: true,
 
-app.get("/health", (req, res) => {
-  res.json({
-    success: true,
-    status: "ok",
-    service: "POWER FAN NETWORK Backend",
-    firebase: true,
-    time: new Date().toISOString(),
-  });
-});
+      app:
+        CONFIG.appName,
 
-app.get("/api/status", (req, res) => {
-  res.json({
-    success: true,
-    app: CONFIG.appName,
-    backend: true,
-    database: "Firebase Realtime Database",
-    authentication: "Firebase Authentication",
-    status: "online",
-    time: new Date().toISOString(),
-  });
-});
+      version:
+        CONFIG.version,
+
+      status:
+        "running",
+    });
+  },
+);
+
+// ============================================================
+// HEALTH
+// ============================================================
+
+app.get(
+  "/health",
+  async (req, res) => {
+    try {
+      await db
+        .ref(".info/connected")
+        .once("value");
+
+      return res.json({
+        success: true,
+
+        status:
+          "ok",
+
+        service:
+          "POWER FAN NETWORK Backend",
+
+        database:
+          "Firebase Realtime Database",
+
+        authentication:
+          "POWER FAN NETWORK Backend",
+
+        firebaseAuthentication:
+          false,
+
+        time:
+          new Date().toISOString(),
+      });
+    } catch (error) {
+      return res.status(503).json({
+        success: false,
+
+        status:
+          "degraded",
+
+        database:
+          "unavailable",
+
+        error:
+          "database_connection_failed",
+      });
+    }
+  },
+);
+
+// ============================================================
+// API STATUS
+// ============================================================
+
+app.get(
+  "/api/status",
+  (req, res) => {
+    res.json({
+      success: true,
+
+      app:
+        CONFIG.appName,
+
+      backend:
+        true,
+
+      database:
+        "Firebase Realtime Database",
+
+      authentication:
+        "POWER FAN NETWORK Backend",
+
+      firebaseAuthentication:
+        false,
+
+      status:
+        "online",
+
+      time:
+        new Date().toISOString(),
+    });
+  },
+);
 
 // ============================================================
 // AUTH — REGISTER
 // ============================================================
 
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const name =
-      cleanString(req.body.name);
+app.post(
+  "/api/auth/register",
+  registerLimiter,
 
-    const email =
-      normalizeEmail(req.body.email);
+  async (req, res) => {
+    try {
+      const name =
+        cleanString(
+          req.body.name,
+        );
 
-    const password =
-      String(req.body.password || "");
+      const email =
+        normalizeEmail(
+          req.body.email,
+        );
 
-    if (!name) {
-      return res.status(400).json({
-        success: false,
-        error: "name_required",
-        message: "Name is required.",
-      });
-    }
+      const password =
+        String(
+          req.body.password || "",
+        );
 
-    if (
-      name.length >
-      CONFIG.maximumNameLength
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: "name_too_long",
-      });
-    }
+      // --------------------------------------------------------
+      // VALIDATION
+      // --------------------------------------------------------
 
-    if (!validEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_email",
-      });
-    }
+      if (!name) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "name_required",
 
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        error: "weak_password",
-        message:
-          "Password must contain at least 6 characters.",
-      });
-    }
+          message:
+            "Name is required.",
+        });
+      }
 
-    if (!firebaseWebApiKey) {
-      return res.status(500).json({
-        success: false,
-        error: "firebase_web_api_key_missing",
-      });
-    }
+      if (
+        name.length >
+        CONFIG.maximumNameLength
+      ) {
+        return res.status(400).json({
+          success: false,
 
-    // Create Firebase Authentication account.
-    const userRecord =
-      await auth.createUser({
-        email,
-        password,
-        displayName: name,
-        emailVerified: false,
-      });
+          error:
+            "name_too_long",
+        });
+      }
 
-    const uid = userRecord.uid;
+      if (!validEmail(email)) {
+        return res.status(400).json({
+          success: false,
 
-    // Generate unique referral code.
-    let referralCode;
+          error:
+            "invalid_email",
+        });
+      }
 
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const candidate =
-        generateReferralCode();
+      if (
+        password.length <
+        CONFIG.minimumPasswordLength
+      ) {
+        return res.status(400).json({
+          success: false,
 
-      const existing =
+          error:
+            "weak_password",
+
+          message:
+            `Password must contain at least ${CONFIG.minimumPasswordLength} characters.`,
+        });
+      }
+
+      // --------------------------------------------------------
+      // CHECK EXISTING EMAIL
+      // --------------------------------------------------------
+
+      const emailIndexSnapshot =
         await db
-          .ref(`referralCodes/${candidate}`)
+          .ref(
+            `emailIndex/${encodeURIComponent(
+              email,
+            )}`,
+          )
           .once("value");
 
-      if (!existing.exists()) {
-        referralCode = candidate;
-        break;
-      }
-    }
+      if (
+        emailIndexSnapshot.exists()
+      ) {
+        return res.status(409).json({
+          success: false,
 
-    if (!referralCode) {
-      await auth.deleteUser(uid);
+          error:
+            "email_already_in_use",
 
-      return res.status(500).json({
-        success: false,
-        error: "referral_code_generation_failed",
-      });
-    }
-
-    const timestamp = now();
-
-    const user = {
-      uid,
-      name,
-      email,
-
-      fanBalance: 0,
-      afamBalance: 0,
-
-      miningRate:
-        CONFIG.baseMiningRate,
-
-      dailyAdCount: 0,
-      dailyAdBoost: 0,
-      dailyAdDate: todayKey(),
-
-      activeReferralCount: 0,
-
-      referralCode,
-
-      referrerUid: null,
-
-      miningActive: false,
-      miningStartedAt: null,
-      miningEndsAt: null,
-
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-
-    await db.ref().update({
-      [`users/${uid}`]: user,
-      [`referralCodes/${referralCode}`]: uid,
-    });
-
-    // Get Firebase custom token.
-    const customToken =
-      await auth.createCustomToken(uid);
-
-    return res.status(201).json({
-      success: true,
-      message: "Account created successfully.",
-
-      token: customToken,
-
-      user: publicUser(user),
-    });
-  } catch (error) {
-    console.error(
-      "Register error:",
-      error,
-    );
-
-    if (
-      error.code ===
-      "auth/email-already-exists"
-    ) {
-      return res.status(409).json({
-        success: false,
-        error: "email_already_in_use",
-        message:
-          "This email is already registered.",
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      error: "registration_failed",
-      message:
-        error.message || "Registration failed.",
-    });
-  }
-});
-
-// ============================================================
-// AUTH — LOGIN
-// ============================================================
-
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    const email =
-      normalizeEmail(req.body.email);
-
-    const password =
-      String(req.body.password || "");
-
-    if (!validEmail(email)) {
-      return res.status(400).json({
-        success: false,
-        error: "invalid_email",
-      });
-    }
-
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        error: "password_required",
-      });
-    }
-
-    if (!firebaseWebApiKey) {
-      return res.status(500).json({
-        success: false,
-        error: "firebase_web_api_key_missing",
-      });
-    }
-
-    // Firebase Authentication REST API.
-    const response = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${firebaseWebApiKey}`,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
-        body: JSON.stringify({
-          email,
-          password,
-          returnSecureToken: true,
-        }),
-      },
-    );
-
-    const data =
-      await response.json();
-
-    if (!response.ok) {
-      return res.status(401).json({
-        success: false,
-        error: "invalid_credentials",
-        message:
-          "Incorrect email or password.",
-      });
-    }
-
-    const uid = data.localId;
-
-    let user =
-      await getUser(uid);
-
-    // Repair/create database profile
-    // if Authentication exists but profile is missing.
-    if (!user) {
-      let referralCode;
-
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const candidate =
-          generateReferralCode();
-
-        const existing =
-          await db
-            .ref(`referralCodes/${candidate}`)
-            .once("value");
-
-        if (!existing.exists()) {
-          referralCode = candidate;
-          break;
-        }
+          message:
+            "This email is already registered.",
+        });
       }
 
-      const timestamp = now();
+      // --------------------------------------------------------
+      // UID
+      // --------------------------------------------------------
 
-      user = {
+      const uid =
+        crypto
+          .randomBytes(16)
+          .toString("hex");
+
+      // --------------------------------------------------------
+      // REFERRAL CODE
+      // --------------------------------------------------------
+
+      const referralCode =
+        await createUniqueReferralCode();
+
+      const timestamp =
+        now();
+
+      // --------------------------------------------------------
+      // PASSWORD HASH
+      // --------------------------------------------------------
+
+      const passwordHash =
+        hashPassword(password);
+
+      // --------------------------------------------------------
+      // USER
+      // --------------------------------------------------------
+
+      const user = {
         uid,
 
-        name: data.displayName || "",
+        name,
 
         email,
 
+        passwordHash,
+
         fanBalance: 0,
+
         afamBalance: 0,
 
         miningRate:
           CONFIG.baseMiningRate,
 
         dailyAdCount: 0,
+
         dailyAdBoost: 0,
-        dailyAdDate: todayKey(),
+
+        dailyAdDate:
+          todayKey(),
 
         activeReferralCount: 0,
 
         referralCode,
 
-        referrerUid: null,
+        referrerUid:
+          null,
 
-        miningActive: false,
-        miningStartedAt: null,
-        miningEndsAt: null,
+        miningActive:
+          false,
 
-        createdAt: timestamp,
-        updatedAt: timestamp,
+        miningStartedAt:
+          null,
+
+        miningEndsAt:
+          null,
+
+        miningSessionRate:
+          null,
+
+        miningSessionStartedAt:
+          null,
+
+        miningSessionEndsAt:
+          null,
+
+        createdAt:
+          timestamp,
+
+        updatedAt:
+          timestamp,
       };
 
-      await db.ref().update({
-        [`users/${uid}`]: user,
-        [`referralCodes/${referralCode}`]: uid,
+      // --------------------------------------------------------
+      // DATABASE WRITE
+      // --------------------------------------------------------
+
+      const updates = {};
+
+      updates[
+        `users/${uid}`
+      ] = user;
+
+      updates[
+        `referralCodes/${referralCode}`
+      ] = uid;
+
+      updates[
+        `emailIndex/${encodeURIComponent(
+          email,
+        )}`
+      ] = uid;
+
+      await db
+        .ref()
+        .update(updates);
+
+      // --------------------------------------------------------
+      // SESSION
+      // --------------------------------------------------------
+
+      const accessSession =
+        await createSession(
+          uid,
+
+          "access",
+
+          CONFIG.accessTokenDays *
+            24 *
+            60 *
+            60 *
+            1000,
+        );
+
+      const refreshSession =
+        await createSession(
+          uid,
+
+          "refresh",
+
+          CONFIG.refreshTokenDays *
+            24 *
+            60 *
+            60 *
+            1000,
+        );
+
+      // --------------------------------------------------------
+      // RESPONSE
+      // --------------------------------------------------------
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "Account created successfully.",
+
+        token:
+          accessSession.token,
+
+        refreshToken:
+          refreshSession.token,
+
+        expiresAt:
+          accessSession.expiresAt,
+
+        user:
+          publicUser(user),
+      });
+    } catch (error) {
+      console.error(
+        "Register error:",
+        error,
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        error:
+          "registration_failed",
+
+        message:
+          "Registration failed.",
       });
     }
-
-    return res.json({
-      success: true,
-      message: "Login successful.",
-
-      // ID token is used by API requests.
-      token: data.idToken,
-
-      refreshToken:
-        data.refreshToken || "",
-
-      expiresIn:
-        data.expiresIn || "3600",
-
-      user: publicUser(user),
-    });
-  } catch (error) {
-    console.error(
-      "Login error:",
-      error,
-    );
-
-    return res.status(500).json({
-      success: false,
-      error: "login_failed",
-      message:
-        error.message || "Login failed.",
-    });
-  }
-});
+  },
+);
 
 // ============================================================
-// AUTH — FORGOT PASSWORD
+// AUTH — LOGIN
 // ============================================================
 
 app.post(
-  "/api/auth/forgot-password",
+  "/api/auth/login",
+  loginLimiter,
+
   async (req, res) => {
     try {
       const email =
-        normalizeEmail(req.body.email);
+        normalizeEmail(
+          req.body.email,
+        );
+
+      const password =
+        String(
+          req.body.password || "",
+        );
 
       if (!validEmail(email)) {
         return res.status(400).json({
           success: false,
-          error: "invalid_email",
-        });
-      }
 
-      if (!firebaseWebApiKey) {
-        return res.status(500).json({
-          success: false,
           error:
-            "firebase_web_api_key_missing",
+            "invalid_email",
         });
       }
 
-      const response = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${firebaseWebApiKey}`,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
-          body: JSON.stringify({
-            requestType: "PASSWORD_RESET",
-            email,
-          }),
-        },
-      );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
+      if (!password) {
         return res.status(400).json({
           success: false,
-          error: "password_reset_failed",
-          message:
-            "Unable to send password reset email.",
+
+          error:
+            "password_required",
         });
       }
+
+      const emailIndexSnapshot =
+        await db
+          .ref(
+            `emailIndex/${encodeURIComponent(
+              email,
+            )}`,
+          )
+          .once("value");
+
+      if (
+        !emailIndexSnapshot.exists()
+      ) {
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "invalid_credentials",
+
+          message:
+            "Incorrect email or password.",
+        });
+      }
+
+      const uid =
+        emailIndexSnapshot.val();
+
+      const user =
+        await getUser(uid);
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "invalid_credentials",
+        });
+      }
+
+      const passwordValid =
+        verifyPassword(
+          password,
+
+          user.passwordHash,
+        );
+
+      if (!passwordValid) {
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "invalid_credentials",
+
+          message:
+            "Incorrect email or password.",
+        });
+      }
+
+      // --------------------------------------------------------
+      // RESET DAILY AD COUNTER IF NECESSARY
+      // --------------------------------------------------------
+
+      const currentDate =
+        todayKey();
+
+      if (
+        user.dailyAdDate !==
+        currentDate
+      ) {
+        user.dailyAdDate =
+          currentDate;
+
+        user.dailyAdCount =
+          0;
+
+        user.dailyAdBoost =
+          0;
+
+        user.miningRate =
+          calculateMiningRate(
+            user,
+          );
+
+        user.updatedAt =
+          now();
+
+        await db
+          .ref(`users/${uid}`)
+          .update({
+            dailyAdDate:
+              currentDate,
+
+            dailyAdCount:
+              0,
+
+            dailyAdBoost:
+              0,
+
+            miningRate:
+              user.miningRate,
+
+            updatedAt:
+              user.updatedAt,
+          });
+      }
+
+      const accessSession =
+        await createSession(
+          uid,
+
+          "access",
+
+          CONFIG.accessTokenDays *
+            24 *
+            60 *
+            60 *
+            1000,
+        );
+
+      const refreshSession =
+        await createSession(
+          uid,
+
+          "refresh",
+
+          CONFIG.refreshTokenDays *
+            24 *
+            60 *
+            60 *
+            1000,
+        );
 
       return res.json({
         success: true,
+
         message:
-          "Password reset email sent.",
+          "Login successful.",
+
+        token:
+          accessSession.token,
+
+        refreshToken:
+          refreshSession.token,
+
+        expiresAt:
+          accessSession.expiresAt,
+
+        expiresIn:
+          Math.floor(
+            CONFIG.accessTokenDays *
+              24 *
+              60 *
+              60,
+          ).toString(),
+
+        user:
+          publicUser(
+            user,
+          ),
+      });
+    } catch (error) {
+      console.error(
+        "Login error:",
+        error,
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        error:
+          "login_failed",
+      });
+    }
+  },
+);
+
+// ============================================================
+// AUTH — REFRESH SESSION
+// ============================================================
+
+app.post(
+  "/api/auth/refresh",
+  async (req, res) => {
+    try {
+      const refreshToken =
+        cleanString(
+          req.body.refreshToken,
+        );
+
+      if (!refreshToken) {
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "refresh_token_required",
+        });
+      }
+
+      const session =
+        await getSessionFromToken(
+          refreshToken,
+        );
+
+      if (
+        !session ||
+        session.type !==
+          "refresh"
+      ) {
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "invalid_refresh_token",
+        });
+      }
+
+      const user =
+        await getUser(
+          session.uid,
+        );
+
+      if (!user) {
+        await revokeSession(
+          refreshToken,
+        );
+
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "user_not_found",
+        });
+      }
+
+      const accessSession =
+        await createSession(
+          user.uid,
+
+          "access",
+
+          CONFIG.accessTokenDays *
+            24 *
+            60 *
+            60 *
+            1000,
+        );
+
+      return res.json({
+        success: true,
+
+        token:
+          accessSession.token,
+
+        expiresAt:
+          accessSession.expiresAt,
+
+        user:
+          publicUser(user),
+      });
+    } catch (error) {
+      console.error(
+        "Refresh error:",
+        error,
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        error:
+          "refresh_failed",
+      });
+    }
+  },
+);
+
+// ============================================================
+// AUTH — FORGOT PASSWORD
+// ============================================================
+//
+// This endpoint creates a secure password-reset request.
+//
+// IMPORTANT:
+// An email delivery provider is intentionally NOT hard-coded
+// into this backend. The actual delivery system can later be
+// connected without changing the account/database architecture.
+//
+// For security, the API does not reveal whether an email exists.
+// ============================================================
+
+app.post(
+  "/api/auth/forgot-password",
+
+  async (req, res) => {
+    try {
+      const email =
+        normalizeEmail(
+          req.body.email,
+        );
+
+      if (!validEmail(email)) {
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "invalid_email",
+        });
+      }
+
+      const emailIndexSnapshot =
+        await db
+          .ref(
+            `emailIndex/${encodeURIComponent(
+              email,
+            )}`,
+          )
+          .once("value");
+
+      // Always return the same public response.
+      if (
+        !emailIndexSnapshot.exists()
+      ) {
+        return res.json({
+          success: true,
+
+          message:
+            "If the account exists, password reset instructions will be sent.",
+        });
+      }
+
+      const uid =
+        emailIndexSnapshot.val();
+
+      const resetToken =
+        generateToken(48);
+
+      const resetTokenHash =
+        hashToken(resetToken);
+
+      const createdAt =
+        now();
+
+      const expiresAt =
+        createdAt +
+        CONFIG.passwordResetTokenMinutes *
+          60 *
+          1000;
+
+      await db
+        .ref(
+          `passwordResetTokens/${resetTokenHash}`,
+        )
+        .set({
+          uid,
+
+          createdAt,
+
+          expiresAt,
+
+          used: false,
+        });
+
+      // Do not expose the reset token in a production
+      // response. A future email/SMS delivery provider
+      // should send it to the user.
+      //
+      // We intentionally return only a generic response.
+      return res.json({
+        success: true,
+
+        message:
+          "If the account exists, password reset instructions will be sent.",
       });
     } catch (error) {
       console.error(
@@ -698,7 +1564,184 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "password_reset_request_failed",
+      });
+    }
+  },
+);
+
+// ============================================================
+// AUTH — RESET PASSWORD
+// ============================================================
+
+app.post(
+  "/api/auth/reset-password",
+
+  async (req, res) => {
+    try {
+      const token =
+        cleanString(
+          req.body.token,
+        );
+
+      const newPassword =
+        String(
+          req.body.password || "",
+        );
+
+      if (!token) {
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "reset_token_required",
+        });
+      }
+
+      if (
+        newPassword.length <
+        CONFIG.minimumPasswordLength
+      ) {
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "weak_password",
+
+          message:
+            `Password must contain at least ${CONFIG.minimumPasswordLength} characters.`,
+        });
+      }
+
+      const tokenHash =
+        hashToken(token);
+
+      const resetRef =
+        db.ref(
+          `passwordResetTokens/${tokenHash}`,
+        );
+
+      const snapshot =
+        await resetRef.once(
+          "value",
+        );
+
+      if (!snapshot.exists()) {
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "invalid_reset_token",
+        });
+      }
+
+      const reset =
+        snapshot.val();
+
+      if (
+        reset.used === true
+      ) {
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "reset_token_already_used",
+        });
+      }
+
+      if (
+        safeNumber(
+          reset.expiresAt,
+        ) <= now()
+      ) {
+        await resetRef.remove();
+
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "reset_token_expired",
+        });
+      }
+
+      const passwordHash =
+        hashPassword(
+          newPassword,
+        );
+
+      await db
+        .ref(
+          `users/${reset.uid}/passwordHash`,
+        )
+        .set(passwordHash);
+
+      await db
+        .ref(
+          `users/${reset.uid}/updatedAt`,
+        )
+        .set(now());
+
+      await resetRef.update({
+        used: true,
+
+        usedAt:
+          now(),
+      });
+
+      // Revoke all sessions for this user.
+      const sessionsSnapshot =
+        await db
+          .ref("sessions")
+          .orderByChild("uid")
+          .equalTo(reset.uid)
+          .once("value");
+
+      const sessions =
+        sessionsSnapshot.val() ||
+        {};
+
+      const sessionDeletes = {};
+
+      Object.keys(
+        sessions,
+      ).forEach((sessionHash) => {
+        sessionDeletes[
+          `sessions/${sessionHash}`
+        ] = null;
+      });
+
+      if (
+        Object.keys(
+          sessionDeletes,
+        ).length >
+        0
+      ) {
+        await db
+          .ref()
+          .update(
+            sessionDeletes,
+          );
+      }
+
+      return res.json({
+        success: true,
+
+        message:
+          "Password reset successfully. Please login again.",
+      });
+    } catch (error) {
+      console.error(
+        "Reset password error:",
+        error,
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        error:
+          "password_reset_failed",
       });
     }
   },
@@ -710,27 +1753,30 @@ app.post(
 
 app.get(
   "/api/auth/me",
+
   authenticate,
+
   async (req, res) => {
     try {
-      const user =
-        await getUser(req.user.uid);
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          error: "user_not_found",
-        });
-      }
-
       return res.json({
         success: true,
-        user: publicUser(user),
+
+        user:
+          publicUser(
+            req.user,
+          ),
       });
     } catch (error) {
+      console.error(
+        "Auth me error:",
+        error,
+      );
+
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -742,7 +1788,9 @@ app.get(
 
 app.post(
   "/api/user/bootstrap",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
@@ -752,77 +1800,105 @@ app.post(
         await getUser(uid);
 
       if (!user) {
-        let referralCode;
+        const referralCode =
+          await createUniqueReferralCode();
 
-        for (let attempt = 0; attempt < 10; attempt++) {
-          const candidate =
-            generateReferralCode();
-
-          const existing =
-            await db
-              .ref(`referralCodes/${candidate}`)
-              .once("value");
-
-          if (!existing.exists()) {
-            referralCode = candidate;
-            break;
-          }
-        }
-
-        if (!referralCode) {
-          return res.status(500).json({
-            success: false,
-            error:
-              "referral_code_generation_failed",
-          });
-        }
-
-        const timestamp = now();
+        const timestamp =
+          now();
 
         user = {
           uid,
 
           name:
             req.user.name ||
-            req.user.email ||
             "",
 
           email:
-            req.user.email || "",
+            req.user.email ||
+            "",
 
-          fanBalance: 0,
-          afamBalance: 0,
+          passwordHash:
+            null,
+
+          fanBalance:
+            0,
+
+          afamBalance:
+            0,
 
           miningRate:
             CONFIG.baseMiningRate,
 
-          dailyAdCount: 0,
-          dailyAdBoost: 0,
-          dailyAdDate: todayKey(),
+          dailyAdCount:
+            0,
 
-          activeReferralCount: 0,
+          dailyAdBoost:
+            0,
+
+          dailyAdDate:
+            todayKey(),
+
+          activeReferralCount:
+            0,
 
           referralCode,
 
-          referrerUid: null,
+          referrerUid:
+            null,
 
-          miningActive: false,
-          miningStartedAt: null,
-          miningEndsAt: null,
+          miningActive:
+            false,
 
-          createdAt: timestamp,
-          updatedAt: timestamp,
+          miningStartedAt:
+            null,
+
+          miningEndsAt:
+            null,
+
+          miningSessionRate:
+            null,
+
+          miningSessionStartedAt:
+            null,
+
+          miningSessionEndsAt:
+            null,
+
+          createdAt:
+            timestamp,
+
+          updatedAt:
+            timestamp,
         };
 
-        await db.ref().update({
-          [`users/${uid}`]: user,
-          [`referralCodes/${referralCode}`]: uid,
-        });
+        const updates = {};
+
+        updates[
+          `users/${uid}`
+        ] = user;
+
+        updates[
+          `referralCodes/${referralCode}`
+        ] = uid;
+
+        if (user.email) {
+          updates[
+            `emailIndex/${encodeURIComponent(
+              user.email,
+            )}`
+          ] = uid;
+        }
+
+        await db
+          .ref()
+          .update(updates);
       }
 
       return res.json({
         success: true,
-        user: publicUser(user),
+
+        user:
+          publicUser(user),
       });
     } catch (error) {
       console.error(
@@ -832,7 +1908,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -844,22 +1922,30 @@ app.post(
 
 app.get(
   "/api/user/profile",
+
   authenticate,
+
   async (req, res) => {
     try {
       const user =
-        await getUser(req.user.uid);
+        await getUser(
+          req.user.uid,
+        );
 
       if (!user) {
         return res.status(404).json({
           success: false,
-          error: "user_not_found",
+
+          error:
+            "user_not_found",
         });
       }
 
       return res.json({
         success: true,
-        user: publicUser(user),
+
+        user:
+          publicUser(user),
       });
     } catch (error) {
       console.error(
@@ -869,23 +1955,27 @@ app.get(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
 );
 
 // ============================================================
-// CONFIG — MINING
+// MINING CONFIG
 // ============================================================
 
 app.get(
   "/api/mining/config",
+
   (req, res) => {
     res.json({
       success: true,
 
-      coin: CONFIG.miningCoin,
+      coin:
+        CONFIG.miningCoin,
 
       baseMiningRate:
         CONFIG.baseMiningRate,
@@ -903,20 +1993,24 @@ app.get(
         CONFIG.activeReferralMiningBonus,
 
       maximumMiningRate:
-        CONFIG.maximumMiningRate,
+        null,
 
       miningSessionHours:
         CONFIG.miningSessionHours,
+
+      referralMiningRateIsUnlimited:
+        true,
     });
   },
 );
 
 // ============================================================
-// CONFIG — REFERRAL
+// REFERRAL CONFIG
 // ============================================================
 
 app.get(
   "/api/referral/config",
+
   (req, res) => {
     res.json({
       success: true,
@@ -929,16 +2023,23 @@ app.get(
 
       miningRatePerActiveReferral:
         CONFIG.activeReferralMiningBonus,
+
+      maximumActiveReferrals:
+        null,
+
+      referralMiningBonusLimit:
+        null,
     });
   },
 );
 
 // ============================================================
-// CONFIG — SOCIAL
+// SOCIAL CONFIG
 // ============================================================
 
 app.get(
   "/api/social/config",
+
   (req, res) => {
     res.json({
       success: true,
@@ -946,121 +2047,175 @@ app.get(
       dailyReward:
         CONFIG.dailySocialReward,
 
-      coin: CONFIG.miningCoin,
+      coin:
+        CONFIG.miningCoin,
     });
   },
 );
 
 // ============================================================
-// ADS — CLAIM BOOST
+// ADS — CLAIM
+// ============================================================
+//
+// IMPORTANT:
+// This endpoint records an ad reward request.
+//
+// For production AdMob usage, Flutter should NOT be trusted
+// merely because it says "ad watched".
+//
+// A future AdMob Server-Side Verification endpoint can call
+// the same reward/accounting logic after Google verifies the
+// rewarded ad.
+//
+// The backend still enforces the 7/day limit.
 // ============================================================
 
 app.post(
   "/api/ads/claim",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
         req.user.uid;
 
       const userRef =
-        db.ref(`users/${uid}`);
+        db.ref(
+          `users/${uid}`,
+        );
 
-      let newCount = 0;
-      let newBoost = 0;
+      let newCount =
+        0;
+
+      let newBoost =
+        0;
+
+      let newRate =
+        CONFIG.baseMiningRate;
 
       const result =
-        await userRef.transaction((user) => {
-          if (!user) {
+        await userRef.transaction(
+          (user) => {
+            if (!user) {
+              return user;
+            }
+
+            const date =
+              todayKey();
+
+            if (
+              user.dailyAdDate !==
+              date
+            ) {
+              user.dailyAdDate =
+                date;
+
+              user.dailyAdCount =
+                0;
+
+              user.dailyAdBoost =
+                0;
+            }
+
+            const count =
+              Math.max(
+                0,
+                safeInteger(
+                  user.dailyAdCount,
+                ),
+              );
+
+            if (
+              count >=
+              CONFIG.maximumDailyAds
+            ) {
+              return;
+            }
+
+            const nextCount =
+              count + 1;
+
+            const nextBoost =
+              Math.min(
+                CONFIG.maximumAdBoost,
+
+                nextCount *
+                  CONFIG.adBoostPerAd,
+              );
+
+            user.dailyAdCount =
+              nextCount;
+
+            user.dailyAdBoost =
+              Number(
+                nextBoost.toFixed(
+                  8,
+                ),
+              );
+
+            user.miningRate =
+              calculateMiningRate(
+                user,
+              );
+
+            user.updatedAt =
+              now();
+
+            newCount =
+              nextCount;
+
+            newBoost =
+              user.dailyAdBoost;
+
+            newRate =
+              user.miningRate;
+
             return user;
-          }
-
-          const date =
-            todayKey();
-
-          if (
-            user.dailyAdDate !== date
-          ) {
-            user.dailyAdDate = date;
-            user.dailyAdCount = 0;
-            user.dailyAdBoost = 0;
-          }
-
-          const count =
-            safeNumber(
-              user.dailyAdCount,
-            );
-
-          if (
-            count >=
-            CONFIG.maximumDailyAds
-          ) {
-            return;
-          }
-
-          const nextCount =
-            count + 1;
-
-          const nextBoost =
-            Math.min(
-              CONFIG.maximumAdBoost,
-              nextCount *
-                CONFIG.adBoostPerAd,
-            );
-
-          user.dailyAdCount =
-            nextCount;
-
-          user.dailyAdBoost =
-            Number(
-              nextBoost.toFixed(4),
-            );
-
-          user.miningRate =
-            calculateMiningRate(user);
-
-          user.updatedAt =
-            now();
-
-          newCount =
-            nextCount;
-
-          newBoost =
-            nextBoost;
-
-          return user;
-        });
+          },
+        );
 
       if (!result.committed) {
-        const user =
+        const currentUser =
           await getUser(uid);
 
         if (
-          user &&
-          safeNumber(
-            user.dailyAdCount,
+          currentUser &&
+          safeInteger(
+            currentUser.dailyAdCount,
           ) >=
             CONFIG.maximumDailyAds
         ) {
           return res.status(400).json({
             success: false,
+
             error:
               "daily_ad_limit_reached",
+
             dailyAdCount:
-              user.dailyAdCount,
+              currentUser.dailyAdCount,
+
             dailyAdBoost:
-              user.dailyAdBoost,
+              currentUser.dailyAdBoost,
+
+            miningRate:
+              calculateMiningRate(
+                currentUser,
+              ),
           });
         }
 
         return res.status(400).json({
           success: false,
-          error: "ad_claim_failed",
+
+          error:
+            "ad_claim_failed",
         });
       }
 
       return res.json({
         success: true,
+
         message:
           "Mining boost added.",
 
@@ -1069,13 +2224,13 @@ app.post(
 
         dailyAdBoost:
           Number(
-            newBoost.toFixed(4),
+            newBoost.toFixed(
+              8,
+            ),
           ),
 
         miningRate:
-          calculateMiningRate(
-            result.snapshot.val(),
-          ),
+          newRate,
       });
     } catch (error) {
       console.error(
@@ -1085,7 +2240,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1094,69 +2251,145 @@ app.post(
 // ============================================================
 // MINING — START
 // ============================================================
+//
+// The rate is SNAPSHOTTED at session start.
+//
+// This means the 24-hour session has a fixed accounting rate.
+// This prevents the final reward from changing unexpectedly
+// while the session is already running.
+//
+// User can start another session after claiming the current
+// session.
+// ============================================================
 
 app.post(
   "/api/mining/start",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
         req.user.uid;
 
       const userRef =
-        db.ref(`users/${uid}`);
+        db.ref(
+          `users/${uid}`,
+        );
 
-      const snapshot =
-        await userRef.once("value");
+      let startedAt =
+        0;
 
-      if (!snapshot.exists()) {
-        return res.status(404).json({
-          success: false,
-          error: "user_not_found",
-        });
-      }
+      let endsAt =
+        0;
 
-      const user =
-        snapshot.val();
+      let sessionRate =
+        0;
 
-      if (user.miningActive === true) {
+      const result =
+        await userRef.transaction(
+          (user) => {
+            if (!user) {
+              return user;
+            }
+
+            const currentTime =
+              now();
+
+            // --------------------------------------------------
+            // If an old session exists and has already ended,
+            // do not automatically pay it here.
+            // User must claim it.
+            // --------------------------------------------------
+
+            if (
+              user.miningActive ===
+              true
+            ) {
+              return;
+            }
+
+            const rate =
+              calculateMiningRate(
+                user,
+              );
+
+            const endTime =
+              currentTime +
+              CONFIG.miningSessionHours *
+                60 *
+                60 *
+                1000;
+
+            user.miningActive =
+              true;
+
+            user.miningStartedAt =
+              currentTime;
+
+            user.miningEndsAt =
+              endTime;
+
+            user.miningSessionStartedAt =
+              currentTime;
+
+            user.miningSessionEndsAt =
+              endTime;
+
+            user.miningSessionRate =
+              rate;
+
+            user.miningRate =
+              rate;
+
+            user.updatedAt =
+              currentTime;
+
+            startedAt =
+              currentTime;
+
+            endsAt =
+              endTime;
+
+            sessionRate =
+              rate;
+
+            return user;
+          },
+        );
+
+      if (!result.committed) {
+        const user =
+          await getUser(uid);
+
+        if (
+          user &&
+          user.miningActive ===
+            true
+        ) {
+          return res.status(400).json({
+            success: false,
+
+            error:
+              "mining_already_active",
+
+            miningEndsAt:
+              user.miningEndsAt,
+
+            miningRate:
+              safeNumber(
+                user.miningSessionRate,
+              ),
+          });
+        }
+
         return res.status(400).json({
           success: false,
+
           error:
-            "mining_already_active",
-          miningEndsAt:
-            user.miningEndsAt,
+            "mining_start_failed",
         });
       }
-
-      const timestamp =
-        now();
-
-      const endsAt =
-        timestamp +
-        CONFIG.miningSessionHours *
-          60 *
-          60 *
-          1000;
-
-      const rate =
-        calculateMiningRate(user);
-
-      await userRef.update({
-        miningActive: true,
-
-        miningStartedAt:
-          timestamp,
-
-        miningEndsAt:
-          endsAt,
-
-        miningRate:
-          rate,
-
-        updatedAt:
-          timestamp,
-      });
 
       return res.json({
         success: true,
@@ -1168,13 +2401,16 @@ app.post(
           CONFIG.miningCoin,
 
         miningRate:
-          rate,
+          sessionRate,
 
         miningStartedAt:
-          timestamp,
+          startedAt,
 
         miningEndsAt:
           endsAt,
+
+        sessionHours:
+          CONFIG.miningSessionHours,
       });
     } catch (error) {
       console.error(
@@ -1184,7 +2420,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1196,21 +2434,28 @@ app.post(
 
 app.get(
   "/api/mining/status",
+
   authenticate,
+
   async (req, res) => {
     try {
       const user =
-        await getUser(req.user.uid);
+        await getUser(
+          req.user.uid,
+        );
 
       if (!user) {
         return res.status(404).json({
           success: false,
-          error: "user_not_found",
+
+          error:
+            "user_not_found",
         });
       }
 
       const active =
-        user.miningActive === true;
+        user.miningActive ===
+        true;
 
       const endsAt =
         safeNumber(
@@ -1225,14 +2470,68 @@ app.get(
             )
           : 0;
 
+      const sessionRate =
+        safeNumber(
+          user.miningSessionRate,
+          calculateMiningRate(
+            user,
+          ),
+        );
+
+      const completed =
+        active &&
+        endsAt > 0 &&
+        now() >= endsAt;
+
+      const estimatedEarned =
+        active
+          ? Number(
+              (
+                sessionRate *
+                Math.min(
+                  CONFIG.miningSessionHours,
+                  Math.max(
+                    0,
+                    (
+                      Math.min(
+                        now(),
+                        endsAt,
+                      ) -
+                        safeNumber(
+                          user.miningStartedAt,
+                          now(),
+                        )
+                    ) /
+                      (
+                        60 *
+                        60 *
+                        1000
+                      ),
+                  ),
+                )
+              ).toFixed(8),
+            )
+          : 0;
+
       return res.json({
         success: true,
 
         miningActive:
           active,
 
+        miningCompleted:
+          completed,
+
         miningRate:
-          calculateMiningRate(user),
+          sessionRate,
+
+        currentMiningRate:
+          calculateMiningRate(
+            user,
+          ),
+
+        sessionMiningRate:
+          sessionRate,
 
         miningStartedAt:
           user.miningStartedAt ||
@@ -1245,15 +2544,25 @@ app.get(
         remainingMilliseconds:
           remaining,
 
+        estimatedEarned:
+          estimatedEarned,
+
         fanBalance:
           safeNumber(
             user.fanBalance,
           ),
       });
     } catch (error) {
+      console.error(
+        "Mining status error:",
+        error,
+      );
+
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1262,100 +2571,201 @@ app.get(
 // ============================================================
 // MINING — CLAIM
 // ============================================================
+//
+// THIS IS THE IMPORTANT PART.
+//
+// Backend checks:
+//   1. Mining exists.
+//   2. Mining is active.
+//   3. Server time >= miningEndsAt.
+//   4. Session rate is taken from backend.
+//   5. Reward is calculated on backend.
+//   6. FAN balance is updated inside a transaction.
+//   7. Mining session is closed in the same transaction.
+//
+// Flutter cannot send:
+//   earned = 100000
+//
+// The backend completely ignores any client-supplied reward.
+// ============================================================
 
 app.post(
   "/api/mining/claim",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
         req.user.uid;
 
       const userRef =
-        db.ref(`users/${uid}`);
+        db.ref(
+          `users/${uid}`,
+        );
 
-      let earnedAmount = 0;
+      let earnedAmount =
+        0;
+
+      let finalBalance =
+        0;
+
+      let claimedRate =
+        0;
+
+      let sessionStartedAt =
+        0;
+
+      let sessionEndedAt =
+        0;
 
       const result =
-        await userRef.transaction((user) => {
-          if (!user) {
-            return user;
-          }
+        await userRef.transaction(
+          (user) => {
+            if (!user) {
+              return user;
+            }
 
-          if (
-            user.miningActive !== true
-          ) {
-            return;
-          }
+            if (
+              user.miningActive !==
+              true
+            ) {
+              return;
+            }
 
-          const currentTime =
-            now();
+            const currentTime =
+              now();
 
-          const endsAt =
-            safeNumber(
-              user.miningEndsAt,
-            );
+            const startedAt =
+              safeNumber(
+                user.miningSessionStartedAt ||
+                  user.miningStartedAt,
+              );
 
-          if (
-            currentTime <
-            endsAt
-          ) {
-            return;
-          }
+            const endsAt =
+              safeNumber(
+                user.miningSessionEndsAt ||
+                  user.miningEndsAt,
+              );
 
-          const startedAt =
-            safeNumber(
-              user.miningStartedAt,
-              currentTime,
-            );
+            if (
+              !startedAt ||
+              !endsAt
+            ) {
+              return;
+            }
 
-          const elapsedHours =
-            Math.min(
-              CONFIG.miningSessionHours,
+            if (
+              currentTime <
+              endsAt
+            ) {
+              return;
+            }
+
+            // --------------------------------------------------
+            // IMPORTANT:
+            // Use session snapshot rate.
+            // --------------------------------------------------
+
+            const rate =
               Math.max(
                 0,
-                (endsAt -
-                  startedAt) /
-                  (60 *
-                    60 *
-                    1000),
-              ),
-            );
+                safeNumber(
+                  user.miningSessionRate,
+                  calculateMiningRate(
+                    user,
+                  ),
+                ),
+              );
 
-          const rate =
-            calculateMiningRate(user);
+            const elapsedHours =
+              Math.min(
+                CONFIG.miningSessionHours,
 
-          earnedAmount =
-            Number(
-              (
-                rate *
-                elapsedHours
-              ).toFixed(8),
-            );
+                Math.max(
+                  0,
 
-          user.fanBalance =
-            Number(
-              user.fanBalance || 0,
-            ) +
-            earnedAmount;
+                  (
+                    endsAt -
+                      startedAt
+                  ) /
+                    (
+                      60 *
+                      60 *
+                      1000
+                    ),
+                ),
+              );
 
-          user.miningActive =
-            false;
+            const reward =
+              Number(
+                (
+                  rate *
+                  elapsedHours
+                ).toFixed(8),
+              );
 
-          user.miningStartedAt =
-            null;
+            const currentBalance =
+              safeNumber(
+                user.fanBalance,
+              );
 
-          user.miningEndsAt =
-            null;
+            const nextBalance =
+              Number(
+                (
+                  currentBalance +
+                  reward
+                ).toFixed(8),
+              );
 
-          user.miningRate =
-            rate;
+            user.fanBalance =
+              nextBalance;
 
-          user.updatedAt =
-            currentTime;
+            user.miningActive =
+              false;
 
-          return user;
-        });
+            user.miningStartedAt =
+              null;
+
+            user.miningEndsAt =
+              null;
+
+            user.miningSessionStartedAt =
+              null;
+
+            user.miningSessionEndsAt =
+              null;
+
+            user.miningSessionRate =
+              null;
+
+            // Current rate after session.
+            user.miningRate =
+              calculateMiningRate(
+                user,
+              );
+
+            user.updatedAt =
+              currentTime;
+
+            earnedAmount =
+              reward;
+
+            finalBalance =
+              nextBalance;
+
+            claimedRate =
+              rate;
+
+            sessionStartedAt =
+              startedAt;
+
+            sessionEndedAt =
+              endsAt;
+
+            return user;
+          },
+        );
 
       if (!result.committed) {
         const user =
@@ -1364,30 +2774,81 @@ app.post(
         if (!user) {
           return res.status(404).json({
             success: false,
-            error: "user_not_found",
+
+            error:
+              "user_not_found",
           });
         }
 
         if (
-          user.miningActive === true
+          user.miningActive ===
+          true
         ) {
           return res.status(400).json({
             success: false,
+
             error:
               "mining_not_finished",
+
             miningEndsAt:
               user.miningEndsAt,
+
+            remainingMilliseconds:
+              Math.max(
+                0,
+
+                safeNumber(
+                  user.miningEndsAt,
+                ) - now(),
+              ),
           });
         }
 
         return res.status(400).json({
           success: false,
-          error: "nothing_to_claim",
+
+          error:
+            "nothing_to_claim",
         });
       }
 
-      const finalUser =
-        result.snapshot.val();
+      // --------------------------------------------------------
+      // AUDIT RECORD
+      // --------------------------------------------------------
+
+      const claimId =
+        crypto
+          .randomBytes(16)
+          .toString("hex");
+
+      await db
+        .ref(
+          `miningClaims/${uid}/${claimId}`,
+        )
+        .set({
+          uid,
+
+          type:
+            "mining",
+
+          coin:
+            CONFIG.miningCoin,
+
+          amount:
+            earnedAmount,
+
+          rate:
+            claimedRate,
+
+          startedAt:
+            sessionStartedAt,
+
+          endedAt:
+            sessionEndedAt,
+
+          claimedAt:
+            now(),
+        });
 
       return res.json({
         success: true,
@@ -1398,10 +2859,11 @@ app.post(
         coin:
           CONFIG.miningCoin,
 
+        miningRate:
+          claimedRate,
+
         fanBalance:
-          safeNumber(
-            finalUser.fanBalance,
-          ),
+          finalBalance,
 
         miningActive:
           false,
@@ -1414,7 +2876,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1423,10 +2887,26 @@ app.post(
 // ============================================================
 // REFERRAL — APPLY
 // ============================================================
+//
+// Rewards:
+//
+// New user:
+//   +20 FAN
+//
+// Inviter:
+//   +5 FAN
+//
+// Inviter mining:
+//   +0.02 FAN/H
+//
+// NO referral limit.
+// ============================================================
 
 app.post(
   "/api/referral/apply",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
@@ -1440,30 +2920,42 @@ app.post(
       if (!code) {
         return res.status(400).json({
           success: false,
+
           error:
             "referral_code_required",
         });
       }
 
       const userRef =
-        db.ref(`users/${uid}`);
+        db.ref(
+          `users/${uid}`,
+        );
 
       const userSnapshot =
-        await userRef.once("value");
+        await userRef.once(
+          "value",
+        );
 
-      if (!userSnapshot.exists()) {
+      if (
+        !userSnapshot.exists()
+      ) {
         return res.status(404).json({
           success: false,
-          error: "user_not_found",
+
+          error:
+            "user_not_found",
         });
       }
 
       const user =
         userSnapshot.val();
 
-      if (user.referrerUid) {
+      if (
+        user.referrerUid
+      ) {
         return res.status(400).json({
           success: false,
+
           error:
             "referral_already_used",
         });
@@ -1471,12 +2963,17 @@ app.post(
 
       const inviterSnapshot =
         await db
-          .ref(`referralCodes/${code}`)
+          .ref(
+            `referralCodes/${code}`,
+          )
           .once("value");
 
-      if (!inviterSnapshot.exists()) {
+      if (
+        !inviterSnapshot.exists()
+      ) {
         return res.status(400).json({
           success: false,
+
           error:
             "invalid_referral_code",
         });
@@ -1485,25 +2982,33 @@ app.post(
       const inviterUid =
         inviterSnapshot.val();
 
-      if (inviterUid === uid) {
+      if (
+        inviterUid === uid
+      ) {
         return res.status(400).json({
           success: false,
+
           error:
             "cannot_refer_yourself",
         });
       }
 
       const inviterRef =
-        db.ref(`users/${inviterUid}`);
+        db.ref(
+          `users/${inviterUid}`,
+        );
 
       const inviterSnapshotUser =
-        await inviterRef.once("value");
+        await inviterRef.once(
+          "value",
+        );
 
       if (
         !inviterSnapshotUser.exists()
       ) {
         return res.status(400).json({
           success: false,
+
           error:
             "inviter_not_found",
         });
@@ -1512,64 +3017,178 @@ app.post(
       const inviter =
         inviterSnapshotUser.val();
 
+      // --------------------------------------------------------
+      // ATOMIC LOCK ON THE NEW USER
+      //
+      // This prevents two simultaneous referral requests from
+      // rewarding the same new user twice.
+      // --------------------------------------------------------
+
+      const referralLockResult =
+        await userRef
+          .child(
+            "referrerUid",
+          )
+          .transaction(
+            (existing) => {
+              if (existing) {
+                return;
+              }
+
+              return inviterUid;
+            },
+          );
+
+      if (
+        !referralLockResult.committed
+      ) {
+        return res.status(400).json({
+          success: false,
+
+          error:
+            "referral_already_used",
+        });
+      }
+
       const timestamp =
         now();
 
-      const updates = {};
+      // --------------------------------------------------------
+      // UPDATE NEW USER
+      // --------------------------------------------------------
 
-      updates[
-        `users/${uid}/referrerUid`
-      ] = inviterUid;
-
-      updates[
-        `users/${uid}/fanBalance`
-      ] =
-        safeNumber(user.fanBalance) +
+      const newUserBalance =
+        safeNumber(
+          user.fanBalance,
+        ) +
         CONFIG.newUserReferralReward;
 
-      updates[
-        `users/${uid}/updatedAt`
-      ] = timestamp;
+      // --------------------------------------------------------
+      // UPDATE INVITER
+      // --------------------------------------------------------
 
-      updates[
-        `users/${inviterUid}/fanBalance`
-      ] =
+      const nextReferralCount =
+        safeInteger(
+          inviter.activeReferralCount,
+        ) + 1;
+
+      const inviterNewBalance =
         safeNumber(
           inviter.fanBalance,
         ) +
         CONFIG.inviterReferralReward;
 
+      const inviterNewRate =
+        calculateMiningRate({
+          ...inviter,
+
+          activeReferralCount:
+            nextReferralCount,
+        });
+
+      const updates = {};
+
+      updates[
+        `users/${uid}/fanBalance`
+      ] =
+        Number(
+          newUserBalance.toFixed(
+            8,
+          ),
+        );
+
+      updates[
+        `users/${uid}/updatedAt`
+      ] =
+        timestamp;
+
+      updates[
+        `users/${inviterUid}/fanBalance`
+      ] =
+        Number(
+          inviterNewBalance.toFixed(
+            8,
+          ),
+        );
+
       updates[
         `users/${inviterUid}/activeReferralCount`
       ] =
-        safeNumber(
-          inviter.activeReferralCount,
-        ) + 1;
+        nextReferralCount;
 
       updates[
         `users/${inviterUid}/miningRate`
       ] =
-        calculateMiningRate({
-          ...inviter,
-          activeReferralCount:
-            safeNumber(
-              inviter.activeReferralCount,
-            ) + 1,
-        });
+        inviterNewRate;
 
       updates[
         `users/${inviterUid}/updatedAt`
-      ] = timestamp;
+      ] =
+        timestamp;
 
       updates[
         `referrals/${inviterUid}/${uid}`
       ] = {
         uid,
-        active: true,
-        createdAt: timestamp,
+
+        active:
+          true,
+
+        createdAt:
+          timestamp,
       };
 
-      await db.ref().update(updates);
+      // --------------------------------------------------------
+      // AUDIT RECORDS
+      // --------------------------------------------------------
+
+      const referralId =
+        crypto
+          .randomBytes(16)
+          .toString("hex");
+
+      updates[
+        `referralTransactions/${referralId}`
+      ] = {
+        referralId,
+
+        newUserUid:
+          uid,
+
+        inviterUid,
+
+        newUserReward:
+          CONFIG.newUserReferralReward,
+
+        inviterReward:
+          CONFIG.inviterReferralReward,
+
+        miningBonus:
+          CONFIG.activeReferralMiningBonus,
+
+        createdAt:
+          timestamp,
+      };
+
+      try {
+        await db
+          .ref()
+          .update(updates);
+      } catch (updateError) {
+        // ------------------------------------------------------
+        // COMPENSATION:
+        // If the reward update fails, remove the referral lock
+        // so the user can safely retry.
+        // ------------------------------------------------------
+
+        await userRef
+          .child(
+            "referrerUid",
+          )
+          .remove();
+
+        throw updateError;
+      }
 
       return res.json({
         success: true,
@@ -1585,6 +3204,12 @@ app.post(
 
         activeReferralMiningBonus:
           CONFIG.activeReferralMiningBonus,
+
+        activeReferralCount:
+          nextReferralCount,
+
+        miningRate:
+          inviterNewRate,
       });
     } catch (error) {
       console.error(
@@ -1594,7 +3219,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1606,7 +3233,9 @@ app.post(
 
 app.get(
   "/api/referral/list",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
@@ -1614,23 +3243,31 @@ app.get(
 
       const snapshot =
         await db
-          .ref(`referrals/${uid}`)
+          .ref(
+            `referrals/${uid}`,
+          )
           .once("value");
 
       const data =
         snapshot.val() || {};
 
       const referrals =
-        Object.values(data);
+        Object.values(
+          data,
+        );
+
+      const activeReferralCount =
+        referrals.filter(
+          (item) =>
+            item &&
+            item.active ===
+              true,
+        ).length;
 
       return res.json({
         success: true,
 
-        activeReferralCount:
-          referrals.filter(
-            (item) =>
-              item.active === true,
-          ).length,
+        activeReferralCount,
 
         referrals,
       });
@@ -1642,7 +3279,9 @@ app.get(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1651,10 +3290,19 @@ app.get(
 // ============================================================
 // SOCIAL — DAILY CLAIM
 // ============================================================
+//
+// Backend guarantees:
+//   One claim per user per UTC day.
+//
+// Reward:
+//   +10 FAN
+// ============================================================
 
 app.post(
   "/api/social/claim",
+
   authenticate,
+
   async (req, res) => {
     try {
       const uid =
@@ -1688,30 +3336,24 @@ app.post(
           },
         );
 
-      if (!claimResult.committed) {
+      if (
+        !claimResult.committed
+      ) {
         return res.status(400).json({
           success: false,
+
           error:
             "social_reward_already_claimed",
         });
       }
 
       const userRef =
-        db.ref(`users/${uid}`);
+        db.ref(
+          `users/${uid}`,
+        );
 
-      const userSnapshot =
-        await userRef.once("value");
-
-      if (!userSnapshot.exists()) {
-        await claimRef.remove();
-
-        return res.status(404).json({
-          success: false,
-          error: "user_not_found",
-        });
-      }
-
-      let finalBalance = 0;
+      let finalBalance =
+        0;
 
       const balanceResult =
         await userRef.transaction(
@@ -1720,31 +3362,75 @@ app.post(
               return user;
             }
 
-            user.fanBalance =
+            const currentBalance =
               safeNumber(
                 user.fanBalance,
-              ) +
-              CONFIG.dailySocialReward;
+              );
+
+            const nextBalance =
+              Number(
+                (
+                  currentBalance +
+                  CONFIG.dailySocialReward
+                ).toFixed(8),
+              );
+
+            user.fanBalance =
+              nextBalance;
 
             user.updatedAt =
               now();
 
             finalBalance =
-              user.fanBalance;
+              nextBalance;
 
             return user;
           },
         );
 
-      if (!balanceResult.committed) {
+      if (
+        !balanceResult.committed
+      ) {
         await claimRef.remove();
 
         return res.status(500).json({
           success: false,
+
           error:
             "social_reward_failed",
         });
       }
+
+      // --------------------------------------------------------
+      // AUDIT
+      // --------------------------------------------------------
+
+      const transactionId =
+        crypto
+          .randomBytes(16)
+          .toString("hex");
+
+      await db
+        .ref(
+          `rewardTransactions/${uid}/${transactionId}`,
+        )
+        .set({
+          transactionId,
+
+          type:
+            "daily_social",
+
+          amount:
+            CONFIG.dailySocialReward,
+
+          coin:
+            CONFIG.miningCoin,
+
+          date,
+
+          createdAt:
+            now(),
+        });
 
       return res.json({
         success: true,
@@ -1766,7 +3452,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
@@ -1778,16 +3466,22 @@ app.post(
 
 app.get(
   "/api/wallet",
+
   authenticate,
+
   async (req, res) => {
     try {
       const user =
-        await getUser(req.user.uid);
+        await getUser(
+          req.user.uid,
+        );
 
       if (!user) {
         return res.status(404).json({
           success: false,
-          error: "user_not_found",
+
+          error:
+            "user_not_found",
         });
       }
 
@@ -1808,29 +3502,39 @@ app.get(
           "COMING SOON",
       });
     } catch (error) {
+      console.error(
+        "Wallet error:",
+        error,
+      );
+
       return res.status(500).json({
         success: false,
-        error: "server_error",
+
+        error:
+          "server_error",
       });
     }
   },
 );
 
 // ============================================================
-// LOGOUT
+// AUTH — LOGOUT
 // ============================================================
 
 app.post(
   "/api/auth/logout",
+
   authenticate,
+
   async (req, res) => {
     try {
-      await auth.revokeRefreshTokens(
-        req.user.uid,
+      await revokeSession(
+        req.session.rawToken,
       );
 
       return res.json({
         success: true,
+
         message:
           "Session revoked.",
       });
@@ -1842,7 +3546,9 @@ app.post(
 
       return res.status(500).json({
         success: false,
-        error: "logout_failed",
+
+        error:
+          "logout_failed",
       });
     }
   },
@@ -1852,14 +3558,19 @@ app.post(
 // 404
 // ============================================================
 
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "not_found",
-    message:
-      "API endpoint not found.",
-  });
-});
+app.use(
+  (req, res) => {
+    res.status(404).json({
+      success: false,
+
+      error:
+        "not_found",
+
+      message:
+        "API endpoint not found.",
+    });
+  },
+);
 
 // ============================================================
 // GLOBAL ERROR HANDLER
@@ -1877,12 +3588,15 @@ app.use(
       error,
     );
 
-    if (res.headersSent) {
+    if (
+      res.headersSent
+    ) {
       return next(error);
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
+
       error:
         "internal_server_error",
     });
@@ -1895,10 +3609,64 @@ app.use(
 
 app.listen(
   PORT,
+
   "0.0.0.0",
+
   () => {
     console.log(
+      "============================================================",
+    );
+
+    console.log(
       `POWER FAN NETWORK API running on port ${PORT}`,
+    );
+
+    console.log(
+      `Version: ${CONFIG.version}`,
+    );
+
+    console.log(
+      "Authentication: POWER FAN NETWORK Backend",
+    );
+
+    console.log(
+      "Firebase Authentication: DISABLED",
+    );
+
+    console.log(
+      "Database: Firebase Realtime Database",
+    );
+
+    console.log(
+      `Base mining rate: ${CONFIG.baseMiningRate} FAN/H`,
+    );
+
+    console.log(
+      `Mining session: ${CONFIG.miningSessionHours} hours`,
+    );
+
+    console.log(
+      `Ad boost: +${CONFIG.adBoostPerAd} FAN/H per ad`,
+    );
+
+    console.log(
+      `Maximum ads/day: ${CONFIG.maximumDailyAds}`,
+    );
+
+    console.log(
+      `Referral bonus: +${CONFIG.activeReferralMiningBonus} FAN/H per active referral`,
+    );
+
+    console.log(
+      "Referral count limit: NONE",
+    );
+
+    console.log(
+      "Maximum mining rate: NONE",
+    );
+
+    console.log(
+      "============================================================",
     );
   },
 );
