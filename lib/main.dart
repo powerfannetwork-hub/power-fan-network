@@ -1,14 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firebase_options.dart';
-
-const Color primaryPurple = Color(0xFF3B159B);
-const Color deepPurple = Color(0xFF241064);
-const Color lightBackground = Color(0xFFF8F8FC);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +14,17 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await GoogleSignIn.instance.initialize();
+  // App Check - debug provider for development/build testing.
+  // We will change this to Play Integrity before production.
+  await FirebaseAppCheck.instance.activate(
+    providerAndroid: const AndroidDebugProvider(),
+  );
+
+  // Google Sign-In initialization for google_sign_in 7.x
+  await GoogleSignIn.instance.initialize(
+    serverClientId:
+        '983417377998-05hpo983dh5kiatsbhl75caaj6venbj8.apps.googleusercontent.com',
+  );
 
   runApp(const PowerFanNetworkApp());
 }
@@ -33,9 +40,9 @@ class PowerFanNetworkApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: primaryPurple,
+          seedColor: const Color(0xFF3B159B),
         ),
-        scaffoldBackgroundColor: lightBackground,
+        scaffoldBackgroundColor: const Color(0xFFF8F8FC),
       ),
       home: const AuthGate(),
     );
@@ -55,11 +62,11 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashPage();
+          return const SplashScreen();
         }
 
         if (snapshot.hasData) {
-          return const MainNavigationPage();
+          return const HomePlaceholder();
         }
 
         return const LoginPage();
@@ -69,72 +76,26 @@ class AuthGate extends StatelessWidget {
 }
 
 // ============================================================
-// FIRESTORE USER PROFILE
-// ============================================================
-
-class UserProfileService {
-  static final FirebaseFirestore firestore =
-      FirebaseFirestore.instance;
-
-  static Future<void> createOrUpdateProfile(User user) async {
-    final ref = firestore.collection('users').doc(user.uid);
-    final snapshot = await ref.get();
-
-    final Map<String, dynamic> data = {
-      'uid': user.uid,
-      'email': user.email,
-      'displayName': user.displayName,
-      'photoUrl': user.photoURL,
-      'emailVerified': user.emailVerified,
-      'lastLoginAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    if (!snapshot.exists) {
-      data.addAll({
-        'fanBalance': 0.0,
-        'afamBalance': 0.0,
-        'baseMiningRate': 0.2,
-        'miningRate': 0.2,
-        'adBoostRate': 0.0,
-        'activeReferralCount': 0,
-        'referralCode': _makeReferralCode(user.uid),
-        'referredBy': null,
-        'referralRewardReceived': false,
-        'biometricVerified': false,
-        'kycStatus': 'COMING_SOON',
-        'deviceLinked': false,
-        'accountStatus': 'active',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
-
-    await ref.set(
-      data,
-      SetOptions(merge: true),
-    );
-  }
-
-  static String _makeReferralCode(String uid) {
-    final length = uid.length >= 8 ? 8 : uid.length;
-    return uid.substring(0, length).toUpperCase();
-  }
-}
-
-// ============================================================
 // SPLASH
 // ============================================================
 
-class SplashPage extends StatelessWidget {
-  const SplashPage({super.key});
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: lightBackground,
+      backgroundColor: Color(0xFFF8F8FC),
       body: Center(
-        child: CircularProgressIndicator(
-          color: primaryPurple,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            PowerFanLogo(),
+            SizedBox(height: 24),
+            CircularProgressIndicator(
+              color: Color(0xFF3B159B),
+            ),
+          ],
         ),
       ),
     );
@@ -142,7 +103,59 @@ class SplashPage extends StatelessWidget {
 }
 
 // ============================================================
-// LOGIN
+// LOGO
+// ============================================================
+
+class PowerFanLogo extends StatelessWidget {
+  const PowerFanLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 90,
+          height: 90,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF3B159B),
+                Color(0xFF241064),
+              ],
+            ),
+          ),
+          child: const Icon(
+            Icons.bolt_rounded,
+            color: Colors.white,
+            size: 50,
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'POWER FAN',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF241064),
+          ),
+        ),
+        const Text(
+          'NETWORK',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 4,
+            color: Color(0xFF3B159B),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// LOGIN PAGE
 // ============================================================
 
 class LoginPage extends StatefulWidget {
@@ -181,19 +194,33 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final credential =
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-
-      final user = credential.user;
-
-      if (user != null) {
-        await UserProfileService.createOrUpdateProfile(user);
-      }
     } on FirebaseAuthException catch (e) {
-      showMessage(authErrorMessage(e.code));
+      String message;
+
+      switch (e.code) {
+        case 'invalid-credential':
+        case 'wrong-password':
+        case 'user-not-found':
+          message = 'Invalid email or password.';
+          break;
+        case 'invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'user-disabled':
+          message = 'This account has been disabled.';
+          break;
+        case 'too-many-requests':
+          message = 'Too many attempts. Please try again later.';
+          break;
+        default:
+          message = e.message ?? 'Login failed. Please try again.';
+      }
+
+      showMessage(message);
     } catch (_) {
       showMessage('Login failed. Please try again.');
     }
@@ -219,42 +246,37 @@ class _LoginPageState extends State<LoginPage> {
       final GoogleSignInAuthentication googleAuth =
           googleUser.authentication;
 
-      final idToken = googleAuth.idToken;
-
-      if (idToken == null) {
-        throw Exception('Google ID token unavailable.');
-      }
-
       final credential = GoogleAuthProvider.credential(
-        idToken: idToken,
+        idToken: googleAuth.idToken,
       );
 
       final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
+          await FirebaseAuth.instance.signInWithCredential(credential);
 
-      final user = userCredential.user;
-
-      if (user != null) {
-        await UserProfileService.createOrUpdateProfile(user);
-      }
+      await createUserDocumentIfNeeded(userCredential.user);
     } on GoogleSignInException catch (e) {
-      if (e.code != GoogleSignInExceptionCode.canceled) {
-        showMessage('Google Sign-In failed.');
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        // User cancelled Google login.
+        return;
       }
+
+      showMessage(
+        'Google Sign-In failed. Please check your Google/Firebase setup.',
+      );
     } on FirebaseAuthException catch (e) {
-      showMessage(authErrorMessage(e.code));
+      showMessage(
+        e.message ?? 'Google authentication failed.',
+      );
     } catch (_) {
       showMessage(
-        'Google Sign-In failed. Please check your connection.',
+        'Google Sign-In failed. Please try again.',
       );
-    }
-
-    if (mounted) {
-      setState(() {
-        googleLoading = false;
-      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          googleLoading = false;
+        });
+      }
     }
   }
 
@@ -272,51 +294,70 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       showMessage(
-        'Password reset email sent.',
-        success: true,
+        'Password reset email sent. Check your inbox.',
       );
     } on FirebaseAuthException catch (e) {
-      showMessage(authErrorMessage(e.code));
-    } catch (_) {
-      showMessage('Unable to send reset email.');
+      showMessage(
+        e.message ?? 'Could not send password reset email.',
+      );
     }
   }
 
-  String authErrorMessage(String code) {
-    switch (code) {
-      case 'invalid-email':
-        return 'The email address is not valid.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'user-not-found':
-        return 'No account was found with this email.';
-      case 'wrong-password':
-      case 'invalid-credential':
-        return 'Email or password is incorrect.';
-      case 'too-many-requests':
-        return 'Too many attempts. Try again later.';
-      case 'network-request-failed':
-        return 'Check your internet connection.';
-      case 'operation-not-allowed':
-        return 'This sign-in method is not enabled.';
-      default:
-        return 'Authentication failed. Please try again.';
+  Future<void> createUserDocumentIfNeeded(User? user) async {
+    if (user == null) return;
+
+    final ref =
+        FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+    final existing = await ref.get();
+
+    if (!existing.exists) {
+      await ref.set({
+        'uid': user.uid,
+        'email': user.email ?? '',
+        'displayName': user.displayName ?? '',
+        'photoURL': user.photoURL,
+        'referralCode': generateReferralCode(user.uid),
+        'referralCount': 0,
+        'fanBalance': 0.0,
+        'afamBalance': 0.0,
+        'baseMiningRate': 0.2,
+        'miningRate': 0.2,
+        'adBoost': 0.0,
+        'miningSession': false,
+        'miningStartTime': null,
+        'miningEndTime': null,
+        'biometricVerified': false,
+        'kycLevel': 0,
+        'verified': false,
+        'socialTasksCompleted': 0,
+        'socialReward': 0.0,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     }
   }
 
-  void showMessage(
-    String message, {
-    bool success = false,
-  }) {
+  String generateReferralCode(String uid) {
+    final clean = uid.replaceAll('-', '').toUpperCase();
+
+    if (clean.length >= 8) {
+      return 'PF${clean.substring(0, 8)}';
+    }
+
+    return 'PF$clean';
+  }
+
+  void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            success ? Colors.green.shade700 : Colors.red.shade700,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   @override
@@ -332,7 +373,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
               child: Column(
                 children: [
-                  const LogoSection(),
+                  const PowerFanLogo(),
 
                   const SizedBox(height: 32),
 
@@ -350,8 +391,7 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Welcome Back',
@@ -372,7 +412,12 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 26),
 
-                        const FieldLabel(text: 'Email'),
+                        const Text(
+                          'Email',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
 
                         const SizedBox(height: 8),
 
@@ -388,7 +433,12 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 18),
 
-                        const FieldLabel(text: 'Password'),
+                        const Text(
+                          'Password',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
 
                         const SizedBox(height: 8),
 
@@ -398,7 +448,8 @@ class _LoginPageState extends State<LoginPage> {
                           decoration: inputDecoration(
                             hint: 'Enter your password',
                             icon: Icons.lock_outline,
-                            suffix: IconButton(
+                          ).copyWith(
+                            suffixIcon: IconButton(
                               onPressed: () {
                                 setState(() {
                                   obscurePassword =
@@ -420,10 +471,10 @@ class _LoginPageState extends State<LoginPage> {
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
-                            onPressed:
-                                loading ? null : login,
+                            onPressed: loading ? null : login,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryPurple,
+                              backgroundColor:
+                                  const Color(0xFF3B159B),
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
@@ -433,8 +484,8 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                             child: loading
                                 ? const SizedBox(
-                                    width: 23,
-                                    height: 23,
+                                    width: 22,
+                                    height: 22,
                                     child:
                                         CircularProgressIndicator(
                                       strokeWidth: 2.5,
@@ -445,26 +496,24 @@ class _LoginPageState extends State<LoginPage> {
                                     'LOGIN',
                                     style: TextStyle(
                                       fontSize: 16,
-                                      fontWeight:
-                                          FontWeight.bold,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                           ),
                         ),
 
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
 
                         SizedBox(
                           width: double.infinity,
                           height: 52,
                           child: OutlinedButton.icon(
-                            onPressed: googleLoading
-                                ? null
-                                : googleLogin,
+                            onPressed:
+                                googleLoading ? null : googleLogin,
                             icon: googleLoading
                                 ? const SizedBox(
-                                    width: 21,
-                                    height: 21,
+                                    width: 22,
+                                    height: 22,
                                     child:
                                         CircularProgressIndicator(
                                       strokeWidth: 2,
@@ -473,9 +522,9 @@ class _LoginPageState extends State<LoginPage> {
                                 : const Text(
                                     'G',
                                     style: TextStyle(
-                                      fontSize: 22,
-                                      fontWeight:
-                                          FontWeight.bold,
+                                      fontSize: 25,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF3B159B),
                                     ),
                                   ),
                             label: const Text(
@@ -493,7 +542,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
 
                         Center(
                           child: TextButton(
@@ -501,30 +550,44 @@ class _LoginPageState extends State<LoginPage> {
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color: primaryPurple,
+                                color: Color(0xFF3B159B),
                               ),
                             ),
                           ),
                         ),
 
+                        const SizedBox(height: 8),
+
                         Center(
-                          child: TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const RegisterPage(),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "Don't have an account?",
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
                                 ),
-                              );
-                            },
-                            child: const Text(
-                              "Don't have an account? Register",
-                              style: TextStyle(
-                                color: primaryPurple,
-                                fontWeight: FontWeight.w600,
                               ),
-                            ),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const RegisterPage(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  'Register',
+                                  style: TextStyle(
+                                    color: Color(0xFF3B159B),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -548,10 +611,29 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+
+  InputDecoration inputDecoration({
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(
+        icon,
+        color: const Color(0xFF3B159B),
+      ),
+      filled: true,
+      fillColor: const Color(0xFFF7F7FA),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
 }
 
 // ============================================================
-// REGISTER
+// REGISTER PAGE
 // ============================================================
 
 class RegisterPage extends StatefulWidget {
@@ -562,9 +644,11 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmController = TextEditingController();
+  final referralController = TextEditingController();
 
   bool obscurePassword = true;
   bool obscureConfirm = true;
@@ -572,28 +656,31 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   void dispose() {
+    nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     confirmController.dispose();
+    referralController.dispose();
     super.dispose();
   }
 
   Future<void> register() async {
+    final name = nameController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text;
     final confirm = confirmController.text;
+    final referral = referralController.text.trim();
 
-    if (email.isEmpty ||
+    if (name.isEmpty ||
+        email.isEmpty ||
         password.isEmpty ||
         confirm.isEmpty) {
-      showMessage('Please fill all fields.');
+      showMessage('Please complete all required fields.');
       return;
     }
 
     if (password.length < 6) {
-      showMessage(
-        'Password must be at least 6 characters.',
-      );
+      showMessage('Password must be at least 6 characters.');
       return;
     }
 
@@ -615,13 +702,60 @@ class _RegisterPageState extends State<RegisterPage> {
 
       final user = credential.user;
 
+      await user?.updateDisplayName(name);
+
       if (user != null) {
-        await UserProfileService.createOrUpdateProfile(user);
+        final referralCode = 'PF${user.uid.substring(0, 8).toUpperCase()}';
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({
+          'uid': user.uid,
+          'displayName': name,
+          'email': email,
+          'photoURL': null,
+          'referralCode': referralCode,
+          'referredBy': referral,
+          'referralCount': 0,
+          'fanBalance': 20.0,
+          'afamBalance': 0.0,
+          'baseMiningRate': 0.2,
+          'miningRate': 0.2,
+          'adBoost': 0.0,
+          'miningSession': false,
+          'miningStartTime': null,
+          'miningEndTime': null,
+          'biometricVerified': false,
+          'kycLevel': 0,
+          'verified': false,
+          'socialTasksCompleted': 0,
+          'socialReward': 0.0,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
       }
     } on FirebaseAuthException catch (e) {
-      showMessage(registerErrorMessage(e.code));
+      String message;
+
+      switch (e.code) {
+        case 'email-already-in-use':
+          message =
+              'An account with this email already exists.';
+          break;
+        case 'invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'weak-password':
+          message = 'Please choose a stronger password.';
+          break;
+        default:
+          message =
+              e.message ?? 'Registration failed. Please try again.';
+      }
+
+      showMessage(message);
     } catch (_) {
-      showMessage('Registration failed.');
+      showMessage('Registration failed. Please try again.');
     }
 
     if (mounted) {
@@ -631,34 +765,34 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  String registerErrorMessage(String code) {
-    switch (code) {
-      case 'invalid-email':
-        return 'The email address is not valid.';
-      case 'email-already-in-use':
-        return 'An account already exists with this email.';
-      case 'weak-password':
-        return 'Please choose a stronger password.';
-      case 'network-request-failed':
-        return 'Check your internet connection.';
-      case 'operation-not-allowed':
-        return 'Email/Password is not enabled.';
-      default:
-        return 'Registration failed. Please try again.';
-    }
-  }
-
-  void showMessage(
-    String message, {
-    bool success = false,
-  }) {
+  void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            success ? Colors.green.shade700 : Colors.red.shade700,
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  InputDecoration decoration({
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(
+        icon,
+        color: const Color(0xFF3B159B),
+      ),
+      filled: true,
+      fillColor: const Color(0xFFF7F7FA),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide.none,
       ),
     );
   }
@@ -667,183 +801,211 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        title: const Text('Create Account'),
         backgroundColor: Colors.transparent,
-        elevation: 0,
       ),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 430,
-              ),
-              child: Column(
-                children: [
-                  const LogoSection(),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
+          child: Column(
+            children: [
+              const PowerFanLogo(),
 
-                  const SizedBox(height: 28),
+              const SizedBox(height: 30),
 
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius:
-                          BorderRadius.circular(24),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Join POWER FAN',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Create Account',
-                          style: TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
 
-                        const SizedBox(height: 8),
+                    const SizedBox(height: 8),
 
-                        Text(
-                          'Join POWER FAN NETWORK.',
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-
-                        const SizedBox(height: 26),
-
-                        const FieldLabel(text: 'Email'),
-
-                        const SizedBox(height: 8),
-
-                        TextField(
-                          controller: emailController,
-                          keyboardType:
-                              TextInputType.emailAddress,
-                          decoration: inputDecoration(
-                            hint: 'Enter your email',
-                            icon: Icons.email_outlined,
-                          ),
-                        ),
-
-                        const SizedBox(height: 18),
-
-                        const FieldLabel(text: 'Password'),
-
-                        const SizedBox(height: 8),
-
-                        TextField(
-                          controller: passwordController,
-                          obscureText: obscurePassword,
-                          decoration: inputDecoration(
-                            hint: 'Create a password',
-                            icon: Icons.lock_outline,
-                            suffix: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  obscurePassword =
-                                      !obscurePassword;
-                                });
-                              },
-                              icon: Icon(
-                                obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 18),
-
-                        const FieldLabel(
-                          text: 'Confirm Password',
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        TextField(
-                          controller: confirmController,
-                          obscureText: obscureConfirm,
-                          decoration: inputDecoration(
-                            hint: 'Confirm your password',
-                            icon: Icons.lock_outline,
-                            suffix: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  obscureConfirm =
-                                      !obscureConfirm;
-                                });
-                              },
-                              icon: Icon(
-                                obscureConfirm
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        SizedBox(
-                          width: double.infinity,
-                          height: 54,
-                          child: ElevatedButton(
-                            onPressed:
-                                loading ? null : register,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryPurple,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape:
-                                  RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(15),
-                              ),
-                            ),
-                            child: loading
-                                ? const SizedBox(
-                                    width: 23,
-                                    height: 23,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    'CREATE ACCOUNT',
-                                    style: TextStyle(
-                                      fontWeight:
-                                          FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        Center(
-                          child: TextButton(
-                            onPressed: () =>
-                                Navigator.pop(context),
-                            child: const Text(
-                              'Already have an account? Login',
-                              style: TextStyle(
-                                color: primaryPurple,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'Create your FAN mining account.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                      ),
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 24),
+
+                    const Text(
+                      'Full Name',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: nameController,
+                      decoration: decoration(
+                        hint: 'Enter your name',
+                        icon: Icons.person_outline,
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    const Text(
+                      'Email',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: emailController,
+                      keyboardType:
+                          TextInputType.emailAddress,
+                      decoration: decoration(
+                        hint: 'Enter your email',
+                        icon: Icons.email_outlined,
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    const Text(
+                      'Password',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: passwordController,
+                      obscureText: obscurePassword,
+                      decoration: decoration(
+                        hint: 'Create password',
+                        icon: Icons.lock_outline,
+                      ).copyWith(
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setState(() {
+                              obscurePassword =
+                                  !obscurePassword;
+                            });
+                          },
+                          icon: Icon(
+                            obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    const Text(
+                      'Confirm Password',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: confirmController,
+                      obscureText: obscureConfirm,
+                      decoration: decoration(
+                        hint: 'Confirm password',
+                        icon: Icons.lock_outline,
+                      ).copyWith(
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setState(() {
+                              obscureConfirm =
+                                  !obscureConfirm;
+                            });
+                          },
+                          icon: Icon(
+                            obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    const Text(
+                      'Referral Code (Optional)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    TextField(
+                      controller: referralController,
+                      textCapitalization:
+                          TextCapitalization.characters,
+                      decoration: decoration(
+                        hint: 'Enter referral code',
+                        icon: Icons.people_outline,
+                      ),
+                    ),
+
+                    const SizedBox(height: 26),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: ElevatedButton(
+                        onPressed: loading ? null : register,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              const Color(0xFF3B159B),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(15),
+                          ),
+                        ),
+                        child: loading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'CREATE ACCOUNT',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -852,88 +1014,25 @@ class _RegisterPageState extends State<RegisterPage> {
 }
 
 // ============================================================
-// MAIN NAVIGATION
+// TEMPORARY HOME
 // ============================================================
+// This is only the first real authenticated screen.
+// We will replace it with the complete mining dashboard.
 
-class MainNavigationPage extends StatefulWidget {
-  const MainNavigationPage({super.key});
+class HomePlaceholder extends StatelessWidget {
+  const HomePlaceholder({super.key});
 
-  @override
-  State<MainNavigationPage> createState() =>
-      _MainNavigationPageState();
-}
+  Future<void> logout() async {
+    await FirebaseAuth.instance.signOut();
 
-class _MainNavigationPageState
-    extends State<MainNavigationPage> {
-  int selectedIndex = 0;
-
-  final pages = const [
-    HomePage(),
-    ReferralPage(),
-    WalletPage(),
-    SettingsPage(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: selectedIndex,
-        children: pages,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Referral',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon:
-                Icon(Icons.account_balance_wallet),
-            label: 'Wallet',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
-    );
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
   }
-}
-
-// ============================================================
-// HOME PAGE
-// ============================================================
-
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return const LoginPage();
-    }
-
-    final userRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid);
 
     return Scaffold(
       appBar: AppBar(
@@ -943,953 +1042,62 @@ class HomePage extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: StreamBuilder<
-          DocumentSnapshot<Map<String, dynamic>>>(
-        stream: userRef.snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(
-                color: primaryPurple,
-              ),
-            );
-          }
-
-          final data = snapshot.data?.data();
-
-          final fanBalance =
-              (data?['fanBalance'] as num?)?.toDouble() ?? 0.0;
-
-          final afamBalance =
-              (data?['afamBalance'] as num?)?.toDouble() ?? 0.0;
-
-          final miningRate =
-              (data?['miningRate'] as num?)?.toDouble() ?? 0.2;
-
-          final adBoost =
-              (data?['adBoostRate'] as num?)?.toDouble() ?? 0.0;
-
-          final referrals =
-              (data?['activeReferralCount'] as num?)?.toInt() ?? 0;
-
-          return RefreshIndicator(
-            color: primaryPurple,
-            onRefresh: () async {
-              await userRef.get();
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  _WelcomeCard(
-                    email: user.email ?? '',
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  const Text(
-                    'FAN Balance',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  _BalanceCard(
-                    balance: fanBalance,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SmallBalanceCard(
-                          title: 'AFAM',
-                          value:
-                              afamBalance.toStringAsFixed(4),
-                          icon: Icons.token_outlined,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SmallBalanceCard(
-                          title: 'Mining Rate',
-                          value:
-                              '${miningRate.toStringAsFixed(2)} FAN/H',
-                          icon: Icons.speed,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _SmallBalanceCard(
-                          title: 'Ad Boost',
-                          value:
-                              '+${adBoost.toStringAsFixed(2)} FAN/H',
-                          icon: Icons.ads_click,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _SmallBalanceCard(
-                          title: 'Referrals',
-                          value: '$referrals',
-                          icon: Icons.people_outline,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  const MiningCard(),
-
-                  const SizedBox(height: 16),
-
-                  const SocialTaskCard(),
-
-                  const SizedBox(height: 16),
-
-                  const KycComingSoonCard(),
-
-                  const SizedBox(height: 30),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ============================================================
-// WELCOME CARD
-// ============================================================
-
-class _WelcomeCard extends StatelessWidget {
-  final String email;
-
-  const _WelcomeCard({
-    required this.email,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            primaryPurple,
-            deepPurple,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Welcome to',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 5),
-          const Text(
-            'POWER FAN NETWORK',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            email,
-            style: const TextStyle(
-              color: Colors.white70,
-            ),
+        actions: [
+          IconButton(
+            onPressed: logout,
+            icon: const Icon(Icons.logout),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// BALANCE CARD
-// ============================================================
-
-class _BalanceCard extends StatelessWidget {
-  final double balance;
-
-  const _BalanceCard({
-    required this.balance,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: primaryPurple.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.bolt,
-              color: primaryPurple,
-              size: 30,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              '${balance.toStringAsFixed(4)} FAN',
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: primaryPurple,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// SMALL BALANCE CARD
-// ============================================================
-
-class _SmallBalanceCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-
-  const _SmallBalanceCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            color: primaryPurple,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 15,
-              color: deepPurple,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// MINING CARD
-// ============================================================
-
-class MiningCard extends StatelessWidget {
-  const MiningCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 45,
-                height: 45,
-                decoration: BoxDecoration(
-                  color: primaryPurple.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.bolt,
-                  color: primaryPurple,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Mining',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const Chip(
-                label: Text('READY'),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          const Text(
-            'Base mining rate',
-            style: TextStyle(
-              color: Colors.grey,
-            ),
-          ),
-
-          const SizedBox(height: 5),
-
-          const Text(
-            '0.20 FAN / H',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: primaryPurple,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          Text(
-            'The secure mining engine will be connected '
-            'through the server in the next stage.',
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// SOCIAL TASK
-// ============================================================
-
-class SocialTaskCard extends StatelessWidget {
-  const SocialTaskCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.public,
-                color: primaryPurple,
-              ),
-              SizedBox(width: 10),
-              Text(
-                'Daily Social Task',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-
-          SizedBox(height: 12),
-
-          Text(
-            'Complete the official social-media task '
-            'to become eligible for the daily reward.',
-            style: TextStyle(
-              color: Colors.grey,
-              height: 1.4,
-            ),
-          ),
-
-          SizedBox(height: 12),
-
-          Text(
-            'Reward: 10 FAN',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: primaryPurple,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// KYC / BIOMETRIC COMING SOON
-// ============================================================
-
-class KycComingSoonCard extends StatelessWidget {
-  const KycComingSoonCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Row(
-        children: [
-          Icon(
-            Icons.fingerprint,
-            color: primaryPurple,
-            size: 30,
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Biometric Verification',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Coming Soon',
-                  style: TextStyle(
-                    color: primaryPurple,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// REFERRAL PAGE
-// ============================================================
-
-class ReferralPage extends StatelessWidget {
-  const ReferralPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return const LoginPage();
-    }
-
-    final ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Referral',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: StreamBuilder<
-          DocumentSnapshot<Map<String, dynamic>>>(
-        stream: ref.snapshots(),
-        builder: (context, snapshot) {
-          final data = snapshot.data?.data();
-
-          final code =
-              data?['referralCode']?.toString() ?? 'N/A';
-
-          final count =
-              (data?['activeReferralCount'] as num?)?.toInt() ?? 0;
-
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      primaryPurple,
-                      deepPurple,
-                    ],
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(24),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.people,
-                      color: Colors.white,
-                      size: 45,
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Invite Friends',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Active referrals: $count',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Your Referral Code',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SelectableText(
-                      code,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: primaryPurple,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-                    const Text(
-                      'Referral rewards and activation will '
-                      'be connected securely in the next stage.',
-                      style: TextStyle(
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ============================================================
-// WALLET PAGE
-// ============================================================
-
-class WalletPage extends StatelessWidget {
-  const WalletPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Wallet',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
       ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(24),
-            ),
-            child: const Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.account_balance_wallet,
-                  color: primaryPurple,
-                  size: 60,
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Wallet',
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'COMING SOON',
-                  style: TextStyle(
-                    color: primaryPurple,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const PowerFanLogo(),
 
-// ============================================================
-// SETTINGS PAGE
-// ============================================================
+              const SizedBox(height: 30),
 
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
-
-  Future<void> logout() async {
-    await FirebaseAuth.instance.signOut();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(20),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor:
-                      primaryPurple.withValues(alpha: 0.1),
-                  backgroundImage:
-                      user?.photoURL != null
-                          ? NetworkImage(user!.photoURL!)
-                          : null,
-                  child: user?.photoURL == null
-                      ? const Icon(
-                          Icons.person,
-                          color: primaryPurple,
-                          size: 30,
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Text(
-                    user?.email ?? '',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 15),
-
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(20),
-            ),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(
-                    Icons.fingerprint,
-                    color: primaryPurple,
-                  ),
-                  title: const Text(
-                    'Biometric Verification',
-                  ),
-                  subtitle: const Text(
-                    'Coming Soon',
-                  ),
-                  trailing: const Icon(
-                    Icons.lock_outline,
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(
-                    Icons.security,
-                    color: primaryPurple,
-                  ),
-                  title: const Text(
-                    'Account Security',
-                  ),
-                  subtitle: const Text(
-                    'Protected by Firebase',
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          SizedBox(
-            height: 52,
-            child: OutlinedButton.icon(
-              onPressed: logout,
-              icon: const Icon(Icons.logout),
-              label: const Text(
-                'LOGOUT',
+              const Text(
+                'Welcome to POWER FAN NETWORK',
+                textAlign: TextAlign.center,
                 style: TextStyle(
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-          ),
 
-          const SizedBox(height: 30),
+              const SizedBox(height: 12),
 
-          Center(
-            child: Text(
-              'POWER FAN NETWORK • AFAM\nVersion 1.0.0',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 11,
+              Text(
+                user?.email ?? '',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                ),
               ),
-            ),
+
+              const SizedBox(height: 30),
+
+              const Text(
+                'Authentication successful.',
+                style: TextStyle(
+                  color: Color(0xFF159B61),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              const Text(
+                'Mining dashboard will be added next.',
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
-}
-
-// ============================================================
-// LOGO
-// ============================================================
-
-class LogoSection extends StatelessWidget {
-  const LogoSection({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 90,
-          height: 90,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [
-                primaryPurple,
-                deepPurple,
-              ],
-            ),
-          ),
-          child: const Icon(
-            Icons.bolt_rounded,
-            color: Colors.white,
-            size: 50,
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'POWER FAN',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: deepPurple,
-          ),
-        ),
-        const Text(
-          'NETWORK',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 4,
-            color: primaryPurple,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ============================================================
-// FIELD LABEL
-// ============================================================
-
-class FieldLabel extends StatelessWidget {
-  final String text;
-
-  const FieldLabel({
-    super.key,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-}
-
-// ============================================================
-// INPUT DECORATION
-// ============================================================
-
-InputDecoration inputDecoration({
-  required String hint,
-  required IconData icon,
-  Widget? suffix,
-}) {
-  return InputDecoration(
-    hintText: hint,
-    prefixIcon: Icon(
-      icon,
-      color: primaryPurple,
-    ),
-    suffixIcon: suffix,
-    filled: true,
-    fillColor: const Color(0xFFF7F7FA),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: BorderSide.none,
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: BorderSide.none,
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(15),
-      borderSide: const BorderSide(
-        color: primaryPurple,
-        width: 1.5,
-      ),
-    ),
-  );
 }
