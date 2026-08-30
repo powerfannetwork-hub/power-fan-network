@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -14,17 +14,9 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // App Check - debug provider for development/build testing.
-  // We will change this to Play Integrity before production.
-  await FirebaseAppCheck.instance.activate(
-    providerAndroid: const AndroidDebugProvider(),
-  );
-
-  // Google Sign-In initialization for google_sign_in 7.x
-  await GoogleSignIn.instance.initialize(
-    serverClientId:
-        '983417377998-05hpo983dh5kiatsbhl75caaj6venbj8.apps.googleusercontent.com',
-  );
+  // google_sign_in 7.x:
+  // initialize() must be called before authentication.
+  await GoogleSignIn.instance.initialize();
 
   runApp(const PowerFanNetworkApp());
 }
@@ -62,11 +54,11 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
+          return const SplashPage();
         }
 
         if (snapshot.hasData) {
-          return const HomePlaceholder();
+          return const HomePage();
         }
 
         return const LoginPage();
@@ -79,77 +71,18 @@ class AuthGate extends StatelessWidget {
 // SPLASH
 // ============================================================
 
-class SplashScreen extends StatelessWidget {
-  const SplashScreen({super.key});
+class SplashPage extends StatelessWidget {
+  const SplashPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: Color(0xFFF8F8FC),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            PowerFanLogo(),
-            SizedBox(height: 24),
-            CircularProgressIndicator(
-              color: Color(0xFF3B159B),
-            ),
-          ],
+        child: CircularProgressIndicator(
+          color: Color(0xFF3B159B),
         ),
       ),
-    );
-  }
-}
-
-// ============================================================
-// LOGO
-// ============================================================
-
-class PowerFanLogo extends StatelessWidget {
-  const PowerFanLogo({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 90,
-          height: 90,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: [
-                Color(0xFF3B159B),
-                Color(0xFF241064),
-              ],
-            ),
-          ),
-          child: const Icon(
-            Icons.bolt_rounded,
-            color: Colors.white,
-            size: 50,
-          ),
-        ),
-        const SizedBox(height: 18),
-        const Text(
-          'POWER FAN',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF241064),
-          ),
-        ),
-        const Text(
-          'NETWORK',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 4,
-            color: Color(0xFF3B159B),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -180,7 +113,11 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  Future<void> login() async {
+  // ==========================================================
+  // EMAIL LOGIN
+  // ==========================================================
+
+  Future<void> loginWithEmail() async {
     final email = emailController.text.trim();
     final password = passwordController.text;
 
@@ -199,40 +136,23 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
     } on FirebaseAuthException catch (e) {
-      String message;
-
-      switch (e.code) {
-        case 'invalid-credential':
-        case 'wrong-password':
-        case 'user-not-found':
-          message = 'Invalid email or password.';
-          break;
-        case 'invalid-email':
-          message = 'Please enter a valid email address.';
-          break;
-        case 'user-disabled':
-          message = 'This account has been disabled.';
-          break;
-        case 'too-many-requests':
-          message = 'Too many attempts. Please try again later.';
-          break;
-        default:
-          message = e.message ?? 'Login failed. Please try again.';
+      showMessage(firebaseAuthMessage(e));
+    } catch (e) {
+      showMessage('Login failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
       }
-
-      showMessage(message);
-    } catch (_) {
-      showMessage('Login failed. Please try again.');
-    }
-
-    if (mounted) {
-      setState(() {
-        loading = false;
-      });
     }
   }
 
-  Future<void> googleLogin() async {
+  // ==========================================================
+  // GOOGLE LOGIN
+  // ==========================================================
+
+  Future<void> loginWithGoogle() async {
     if (googleLoading) return;
 
     setState(() {
@@ -240,37 +160,46 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // Make sure GoogleSignIn has been initialized.
+      await GoogleSignIn.instance.initialize();
+
       final GoogleSignInAccount googleUser =
           await GoogleSignIn.instance.authenticate();
 
       final GoogleSignInAuthentication googleAuth =
           googleUser.authentication;
 
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
+      final String? idToken = googleAuth.idToken;
 
-      final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-
-      await createUserDocumentIfNeeded(userCredential.user);
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        // User cancelled Google login.
-        return;
+      if (idToken == null || idToken.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'missing-google-id-token',
+          message: 'Google did not return an ID token.',
+        );
       }
 
-      showMessage(
-        'Google Sign-In failed. Please check your Google/Firebase setup.',
+      final OAuthCredential credential =
+          GoogleAuthProvider.credential(
+        idToken: idToken,
       );
+
+      await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        showMessage('Google Sign-In was cancelled.');
+      } else {
+        showMessage(
+          'Google Sign-In error: ${e.code} ${e.description ?? ''}',
+        );
+      }
     } on FirebaseAuthException catch (e) {
       showMessage(
-        e.message ?? 'Google authentication failed.',
+        'Firebase Google Sign-In error:\n${e.code}\n${e.message ?? ''}',
       );
-    } catch (_) {
-      showMessage(
-        'Google Sign-In failed. Please try again.',
-      );
+    } catch (e) {
+      showMessage('Google Sign-In failed:\n$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -279,6 +208,10 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
   }
+
+  // ==========================================================
+  // FORGOT PASSWORD
+  // ==========================================================
 
   Future<void> forgotPassword() async {
     final email = emailController.text.trim();
@@ -297,68 +230,28 @@ class _LoginPageState extends State<LoginPage> {
         'Password reset email sent. Check your inbox.',
       );
     } on FirebaseAuthException catch (e) {
-      showMessage(
-        e.message ?? 'Could not send password reset email.',
-      );
+      showMessage(firebaseAuthMessage(e));
     }
   }
 
-  Future<void> createUserDocumentIfNeeded(User? user) async {
-    if (user == null) return;
-
-    final ref =
-        FirebaseFirestore.instance.collection('users').doc(user.uid);
-
-    final existing = await ref.get();
-
-    if (!existing.exists) {
-      await ref.set({
-        'uid': user.uid,
-        'email': user.email ?? '',
-        'displayName': user.displayName ?? '',
-        'photoURL': user.photoURL,
-        'referralCode': generateReferralCode(user.uid),
-        'referralCount': 0,
-        'fanBalance': 0.0,
-        'afamBalance': 0.0,
-        'baseMiningRate': 0.2,
-        'miningRate': 0.2,
-        'adBoost': 0.0,
-        'miningSession': false,
-        'miningStartTime': null,
-        'miningEndTime': null,
-        'biometricVerified': false,
-        'kycLevel': 0,
-        'verified': false,
-        'socialTasksCompleted': 0,
-        'socialReward': 0.0,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-    }
-  }
-
-  String generateReferralCode(String uid) {
-    final clean = uid.replaceAll('-', '').toUpperCase();
-
-    if (clean.length >= 8) {
-      return 'PF${clean.substring(0, 8)}';
-    }
-
-    return 'PF$clean';
-  }
+  // ==========================================================
+  // MESSAGE
+  // ==========================================================
 
   void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
@@ -373,10 +266,52 @@ class _LoginPageState extends State<LoginPage> {
               ),
               child: Column(
                 children: [
-                  const PowerFanLogo(),
+                  const SizedBox(height: 20),
+
+                  // LOGO
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          Color(0xFF3B159B),
+                          Color(0xFF241064),
+                        ],
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.bolt_rounded,
+                      color: Colors.white,
+                      size: 50,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  const Text(
+                    'POWER FAN',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF241064),
+                    ),
+                  ),
+
+                  const Text(
+                    'NETWORK',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
+                      color: Color(0xFF3B159B),
+                    ),
+                  ),
 
                   const SizedBox(height: 32),
 
+                  // CARD
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -384,14 +319,17 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.06),
+                          color: Colors.black.withValues(
+                            alpha: 0.06,
+                          ),
                           blurRadius: 25,
                           offset: const Offset(0, 10),
                         ),
                       ],
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Welcome Back',
@@ -425,9 +363,20 @@ class _LoginPageState extends State<LoginPage> {
                           controller: emailController,
                           keyboardType:
                               TextInputType.emailAddress,
-                          decoration: inputDecoration(
-                            hint: 'Enter your email',
-                            icon: Icons.email_outlined,
+                          decoration: InputDecoration(
+                            hintText: 'Enter your email',
+                            prefixIcon: const Icon(
+                              Icons.email_outlined,
+                              color: Color(0xFF3B159B),
+                            ),
+                            filled: true,
+                            fillColor:
+                                const Color(0xFFF7F7FA),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
 
@@ -445,10 +394,12 @@ class _LoginPageState extends State<LoginPage> {
                         TextField(
                           controller: passwordController,
                           obscureText: obscurePassword,
-                          decoration: inputDecoration(
-                            hint: 'Enter your password',
-                            icon: Icons.lock_outline,
-                          ).copyWith(
+                          decoration: InputDecoration(
+                            hintText: 'Enter your password',
+                            prefixIcon: const Icon(
+                              Icons.lock_outline,
+                              color: Color(0xFF3B159B),
+                            ),
                             suffixIcon: IconButton(
                               onPressed: () {
                                 setState(() {
@@ -458,34 +409,47 @@ class _LoginPageState extends State<LoginPage> {
                               },
                               icon: Icon(
                                 obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
+                                    ? Icons
+                                        .visibility_outlined
+                                    : Icons
+                                        .visibility_off_outlined,
                               ),
+                            ),
+                            filled: true,
+                            fillColor:
+                                const Color(0xFFF7F7FA),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(15),
+                              borderSide: BorderSide.none,
                             ),
                           ),
                         ),
 
                         const SizedBox(height: 24),
 
+                        // LOGIN BUTTON
                         SizedBox(
                           width: double.infinity,
                           height: 54,
                           child: ElevatedButton(
-                            onPressed: loading ? null : login,
+                            onPressed:
+                                loading ? null : loginWithEmail,
                             style: ElevatedButton.styleFrom(
                               backgroundColor:
                                   const Color(0xFF3B159B),
                               foregroundColor: Colors.white,
                               elevation: 0,
-                              shape: RoundedRectangleBorder(
+                              shape:
+                                  RoundedRectangleBorder(
                                 borderRadius:
                                     BorderRadius.circular(15),
                               ),
                             ),
                             child: loading
                                 ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
+                                    width: 24,
+                                    height: 24,
                                     child:
                                         CircularProgressIndicator(
                                       strokeWidth: 2.5,
@@ -496,7 +460,8 @@ class _LoginPageState extends State<LoginPage> {
                                     'LOGIN',
                                     style: TextStyle(
                                       fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                      fontWeight:
+                                          FontWeight.bold,
                                     ),
                                   ),
                           ),
@@ -504,12 +469,14 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 16),
 
+                        // GOOGLE
                         SizedBox(
                           width: double.infinity,
                           height: 52,
                           child: OutlinedButton.icon(
-                            onPressed:
-                                googleLoading ? null : googleLogin,
+                            onPressed: googleLoading
+                                ? null
+                                : loginWithGoogle,
                             icon: googleLoading
                                 ? const SizedBox(
                                     width: 22,
@@ -523,13 +490,17 @@ class _LoginPageState extends State<LoginPage> {
                                     'G',
                                     style: TextStyle(
                                       fontSize: 25,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF3B159B),
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      color:
+                                          Color(0xFF3B159B),
                                     ),
                                   ),
-                            label: const Text(
-                              'Continue with Google',
-                              style: TextStyle(
+                            label: Text(
+                              googleLoading
+                                  ? 'Signing in...'
+                                  : 'Continue with Google',
+                              style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -544,6 +515,7 @@ class _LoginPageState extends State<LoginPage> {
 
                         const SizedBox(height: 10),
 
+                        // FORGOT
                         Center(
                           child: TextButton(
                             onPressed: forgotPassword,
@@ -556,15 +528,16 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
 
+                        // REGISTER
                         Center(
                           child: Row(
                             mainAxisAlignment:
                                 MainAxisAlignment.center,
                             children: [
                               Text(
-                                "Don't have an account?",
+                                "Don't have an account? ",
                                 style: TextStyle(
                                   color: Colors.grey.shade600,
                                 ),
@@ -582,8 +555,10 @@ class _LoginPageState extends State<LoginPage> {
                                 child: const Text(
                                   'Register',
                                   style: TextStyle(
-                                    color: Color(0xFF3B159B),
-                                    fontWeight: FontWeight.bold,
+                                    color:
+                                        Color(0xFF3B159B),
+                                    fontWeight:
+                                        FontWeight.bold,
                                   ),
                                 ),
                               ),
@@ -611,25 +586,6 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
-  InputDecoration inputDecoration({
-    required String hint,
-    required IconData icon,
-  }) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: Icon(
-        icon,
-        color: const Color(0xFF3B159B),
-      ),
-      filled: true,
-      fillColor: const Color(0xFFF7F7FA),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide.none,
-      ),
-    );
-  }
 }
 
 // ============================================================
@@ -648,7 +604,6 @@ class _RegisterPageState extends State<RegisterPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmController = TextEditingController();
-  final referralController = TextEditingController();
 
   bool obscurePassword = true;
   bool obscureConfirm = true;
@@ -660,7 +615,6 @@ class _RegisterPageState extends State<RegisterPage> {
     emailController.dispose();
     passwordController.dispose();
     confirmController.dispose();
-    referralController.dispose();
     super.dispose();
   }
 
@@ -669,18 +623,19 @@ class _RegisterPageState extends State<RegisterPage> {
     final email = emailController.text.trim();
     final password = passwordController.text;
     final confirm = confirmController.text;
-    final referral = referralController.text.trim();
 
     if (name.isEmpty ||
         email.isEmpty ||
         password.isEmpty ||
         confirm.isEmpty) {
-      showMessage('Please complete all required fields.');
+      showMessage('Please fill all fields.');
       return;
     }
 
     if (password.length < 6) {
-      showMessage('Password must be at least 6 characters.');
+      showMessage(
+        'Password must contain at least 6 characters.',
+      );
       return;
     }
 
@@ -694,105 +649,37 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
-      final credential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final user = credential.user;
+      await credential.user?.updateDisplayName(name);
 
-      await user?.updateDisplayName(name);
+      if (!mounted) return;
 
-      if (user != null) {
-        final referralCode = 'PF${user.uid.substring(0, 8).toUpperCase()}';
-
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({
-          'uid': user.uid,
-          'displayName': name,
-          'email': email,
-          'photoURL': null,
-          'referralCode': referralCode,
-          'referredBy': referral,
-          'referralCount': 0,
-          'fanBalance': 20.0,
-          'afamBalance': 0.0,
-          'baseMiningRate': 0.2,
-          'miningRate': 0.2,
-          'adBoost': 0.0,
-          'miningSession': false,
-          'miningStartTime': null,
-          'miningEndTime': null,
-          'biometricVerified': false,
-          'kycLevel': 0,
-          'verified': false,
-          'socialTasksCompleted': 0,
-          'socialReward': 0.0,
-          'createdAt': FieldValue.serverTimestamp(),
+      Navigator.pop(context);
+    } on FirebaseAuthException catch (e) {
+      showMessage(firebaseAuthMessage(e));
+    } catch (e) {
+      showMessage('Registration failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
         });
       }
-    } on FirebaseAuthException catch (e) {
-      String message;
-
-      switch (e.code) {
-        case 'email-already-in-use':
-          message =
-              'An account with this email already exists.';
-          break;
-        case 'invalid-email':
-          message = 'Please enter a valid email address.';
-          break;
-        case 'weak-password':
-          message = 'Please choose a stronger password.';
-          break;
-        default:
-          message =
-              e.message ?? 'Registration failed. Please try again.';
-      }
-
-      showMessage(message);
-    } catch (_) {
-      showMessage('Registration failed. Please try again.');
-    }
-
-    if (mounted) {
-      setState(() {
-        loading = false;
-      });
     }
   }
 
   void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-  }
-
-  InputDecoration decoration({
-    required String hint,
-    required IconData icon,
-  }) {
-    return InputDecoration(
-      hintText: hint,
-      prefixIcon: Icon(
-        icon,
-        color: const Color(0xFF3B159B),
-      ),
-      filled: true,
-      fillColor: const Color(0xFFF7F7FA),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide.none,
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -802,207 +689,159 @@ class _RegisterPageState extends State<RegisterPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Account'),
-        backgroundColor: Colors.transparent,
+        foregroundColor: const Color(0xFF241064),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
+          padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              const PowerFanLogo(),
+              const SizedBox(height: 20),
+
+              const Icon(
+                Icons.person_add_alt_1_rounded,
+                size: 70,
+                color: Color(0xFF3B159B),
+              ),
+
+              const SizedBox(height: 20),
+
+              const Text(
+                'Create your POWER FAN account',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
 
               const SizedBox(height: 30),
 
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'Full Name',
+                  prefixIcon: const Icon(
+                    Icons.person_outline,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF7F7FA),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Join POWER FAN',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: const Icon(
+                    Icons.email_outlined,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF7F7FA),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(
+                    Icons.lock_outline,
+                  ),
+                  suffixIcon: IconButton(
+                    onPressed: () {
+                      setState(() {
+                        obscurePassword =
+                            !obscurePassword;
+                      });
+                    },
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
                     ),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF7F7FA),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
 
-                    const SizedBox(height: 8),
+              const SizedBox(height: 16),
 
-                    Text(
-                      'Create your FAN mining account.',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
+              TextField(
+                controller: confirmController,
+                obscureText: obscureConfirm,
+                decoration: InputDecoration(
+                  labelText: 'Confirm Password',
+                  prefixIcon: const Icon(
+                    Icons.lock_outline,
+                  ),
+                  suffixIcon: IconButton(
+                    onPressed: () {
+                      setState(() {
+                        obscureConfirm =
+                            !obscureConfirm;
+                      });
+                    },
+                    icon: Icon(
+                      obscureConfirm
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
                     ),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF7F7FA),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
 
-                    const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-                    const Text(
-                      'Full Name',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: loading ? null : register,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        const Color(0xFF3B159B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(15),
                     ),
-
-                    const SizedBox(height: 8),
-
-                    TextField(
-                      controller: nameController,
-                      decoration: decoration(
-                        hint: 'Enter your name',
-                        icon: Icons.person_outline,
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    const Text(
-                      'Email',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    TextField(
-                      controller: emailController,
-                      keyboardType:
-                          TextInputType.emailAddress,
-                      decoration: decoration(
-                        hint: 'Enter your email',
-                        icon: Icons.email_outlined,
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    const Text(
-                      'Password',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    TextField(
-                      controller: passwordController,
-                      obscureText: obscurePassword,
-                      decoration: decoration(
-                        hint: 'Create password',
-                        icon: Icons.lock_outline,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() {
-                              obscurePassword =
-                                  !obscurePassword;
-                            });
-                          },
-                          icon: Icon(
-                            obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+                  ),
+                  child: loading
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                        )
+                      : const Text(
+                          'CREATE ACCOUNT',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    const Text(
-                      'Confirm Password',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    TextField(
-                      controller: confirmController,
-                      obscureText: obscureConfirm,
-                      decoration: decoration(
-                        hint: 'Confirm password',
-                        icon: Icons.lock_outline,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() {
-                              obscureConfirm =
-                                  !obscureConfirm;
-                            });
-                          },
-                          icon: Icon(
-                            obscureConfirm
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    const Text(
-                      'Referral Code (Optional)',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    TextField(
-                      controller: referralController,
-                      textCapitalization:
-                          TextCapitalization.characters,
-                      decoration: decoration(
-                        hint: 'Enter referral code',
-                        icon: Icons.people_outline,
-                      ),
-                    ),
-
-                    const SizedBox(height: 26),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: loading ? null : register,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFF3B159B),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(15),
-                          ),
-                        ),
-                        child: loading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'CREATE ACCOUNT',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ],
@@ -1014,21 +853,11 @@ class _RegisterPageState extends State<RegisterPage> {
 }
 
 // ============================================================
-// TEMPORARY HOME
+// HOME
 // ============================================================
-// This is only the first real authenticated screen.
-// We will replace it with the complete mining dashboard.
 
-class HomePlaceholder extends StatelessWidget {
-  const HomePlaceholder({super.key});
-
-  Future<void> logout() async {
-    await FirebaseAuth.instance.signOut();
-
-    try {
-      await GoogleSignIn.instance.signOut();
-    } catch (_) {}
-  }
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -1036,15 +865,13 @@ class HomePlaceholder extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'POWER FAN',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        title: const Text('POWER FAN NETWORK'),
         actions: [
           IconButton(
-            onPressed: logout,
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              await GoogleSignIn.instance.signOut();
+            },
             icon: const Icon(Icons.logout),
           ),
         ],
@@ -1053,17 +880,22 @@ class HomePlaceholder extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+                MainAxisAlignment.center,
             children: [
-              const PowerFanLogo(),
+              const Icon(
+                Icons.bolt_rounded,
+                size: 80,
+                color: Color(0xFF3B159B),
+              ),
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 20),
 
               const Text(
                 'Welcome to POWER FAN NETWORK',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1081,17 +913,7 @@ class HomePlaceholder extends StatelessWidget {
               const SizedBox(height: 30),
 
               const Text(
-                'Authentication successful.',
-                style: TextStyle(
-                  color: Color(0xFF159B61),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              const Text(
-                'Mining dashboard will be added next.',
+                'Your account is successfully connected to Firebase.',
                 textAlign: TextAlign.center,
               ),
             ],
@@ -1099,5 +921,46 @@ class HomePlaceholder extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ============================================================
+// FIREBASE ERROR MESSAGES
+// ============================================================
+
+String firebaseAuthMessage(
+  FirebaseAuthException e,
+) {
+  switch (e.code) {
+    case 'invalid-email':
+      return 'The email address is invalid.';
+
+    case 'user-not-found':
+      return 'No account was found with this email.';
+
+    case 'wrong-password':
+    case 'invalid-credential':
+      return 'Incorrect email or password.';
+
+    case 'email-already-in-use':
+      return 'This email is already registered.';
+
+    case 'weak-password':
+      return 'Password is too weak.';
+
+    case 'network-request-failed':
+      return 'Network error. Check your internet connection.';
+
+    case 'too-many-requests':
+      return 'Too many attempts. Please try again later.';
+
+    case 'operation-not-allowed':
+      return 'This sign-in method is not enabled in Firebase.';
+
+    case 'missing-google-id-token':
+      return 'Google did not return an ID token.';
+
+    default:
+      return 'Authentication error: ${e.code}\n${e.message ?? ''}';
   }
 }
