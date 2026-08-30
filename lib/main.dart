@@ -1,14 +1,8 @@
-import 'dart:async';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 import 'firebase_options.dart';
-
-const String webClientId =
-    '983417377998-oaptk186cjkb7pk8pfhma2nbtsindbkf.apps.googleusercontent.com';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,17 +13,6 @@ Future<void> main() async {
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // ============================================================
-  // GOOGLE SIGN-IN
-  // IMPORTANT:
-  // This is the WEB OAuth Client ID from Firebase/Google Cloud.
-  // Initialize ONCE here.
-  // ============================================================
-
-  await GoogleSignIn.instance.initialize(
-    serverClientId: webClientId,
   );
 
   runApp(const PowerFanNetworkApp());
@@ -122,7 +105,6 @@ class _LoginPageState extends State<LoginPage> {
 
   bool obscurePassword = true;
   bool loading = false;
-  bool googleLoading = false;
 
   @override
   void dispose() {
@@ -167,86 +149,6 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         setState(() {
           loading = false;
-        });
-      }
-    }
-  }
-
-  // ==========================================================
-  // GOOGLE LOGIN
-  // ==========================================================
-
-  Future<void> loginWithGoogle() async {
-    if (googleLoading) return;
-
-    setState(() {
-      googleLoading = true;
-    });
-
-    try {
-      // IMPORTANT:
-      // DO NOT call initialize() here.
-      // It has already been initialized in main().
-      //
-      // This starts the Google account selection/sign-in.
-
-      final GoogleSignInAccount googleUser =
-          await GoogleSignIn.instance.authenticate();
-
-      final GoogleSignInAuthentication googleAuth =
-          googleUser.authentication;
-
-      final String? idToken = googleAuth.idToken;
-
-      if (idToken == null || idToken.isEmpty) {
-        throw FirebaseAuthException(
-          code: 'missing-google-id-token',
-          message: 'Google did not return an ID token.',
-        );
-      }
-
-      // ========================================================
-      // FIREBASE CREDENTIAL
-      // ========================================================
-
-      final OAuthCredential credential =
-          GoogleAuthProvider.credential(
-        idToken: idToken,
-      );
-
-      // ========================================================
-      // SIGN IN TO FIREBASE
-      // ========================================================
-
-      await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        showMessage(
-          'Google Sign-In was cancelled.',
-        );
-      } else {
-        showMessage(
-          'Google Sign-In error:\n'
-          '${e.code}\n'
-          '${e.description ?? ''}',
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      showMessage(
-        'Firebase Google Sign-In error:\n'
-        '${e.code}\n'
-        '${e.message ?? ''}',
-      );
-    } catch (e) {
-      showMessage(
-        'Google Sign-In failed:\n$e',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          googleLoading = false;
         });
       }
     }
@@ -548,58 +450,6 @@ class _LoginPageState extends State<LoginPage> {
                                           FontWeight.bold,
                                     ),
                                   ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // ==================================================
-                        // GOOGLE BUTTON
-                        // ==================================================
-
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: OutlinedButton.icon(
-                            onPressed: googleLoading
-                                ? null
-                                : loginWithGoogle,
-                            icon: googleLoading
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text(
-                                    'G',
-                                    style: TextStyle(
-                                      fontSize: 25,
-                                      fontWeight:
-                                          FontWeight.bold,
-                                      color:
-                                          Color(0xFF3B159B),
-                                    ),
-                                  ),
-                            label: Text(
-                              googleLoading
-                                  ? 'Signing in...'
-                                  : 'Continue with Google',
-                              style: const TextStyle(
-                                fontWeight:
-                                    FontWeight.w600,
-                              ),
-                            ),
-                            style:
-                                OutlinedButton.styleFrom(
-                              shape:
-                                  RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(15),
-                              ),
-                            ),
                           ),
                         ),
 
@@ -1055,17 +905,7 @@ class HomePage extends StatelessWidget {
         actions: [
           IconButton(
             onPressed: () async {
-              try {
-                await FirebaseAuth.instance
-                    .signOut();
-
-                if (GoogleSignIn.instance.supportsAuthenticate()) {
-                  await GoogleSignIn.instance
-                      .signOut();
-                }
-              } catch (_) {
-                // Firebase sign-out has already happened.
-              }
+              await FirebaseAuth.instance.signOut();
             },
             icon: const Icon(
               Icons.logout,
@@ -1155,10 +995,7 @@ String firebaseAuthMessage(
       return 'Too many attempts. Please try again later.';
 
     case 'operation-not-allowed':
-      return 'This sign-in method is not enabled in Firebase.';
-
-    case 'missing-google-id-token':
-      return 'Google did not return an ID token.';
+      return 'Email/Password sign-in is not enabled in Firebase.';
 
     default:
       return 'Authentication error: '
