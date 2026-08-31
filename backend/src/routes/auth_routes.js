@@ -2,14 +2,20 @@
 // POWER FAN NETWORK
 // FILE: backend/src/routes/auth_routes.js
 // ============================================================
-// Authentication:
-//   Custom JWT + bcrypt
+// CUSTOM AUTHENTICATION
+// Database: Firestore
+// Firebase Authentication: NOT USED
 //
-// Database:
-//   Firestore
-//
-// Firebase Authentication:
-//   NOT USED
+// Features:
+// - Register
+// - Login
+// - Current user (/me)
+// - Logout
+// - Logout from all sessions
+// - Change password
+// - JWT authentication
+// - bcrypt password hashing
+// - Referral registration rewards
 // ============================================================
 
 const express = require("express");
@@ -26,67 +32,76 @@ const JWT_SECRET =
   process.env.JWT_SECRET ||
   "CHANGE_THIS_SECRET_IN_PRODUCTION";
 
-const JWT_EXPIRES_IN = "30d";
+const JWT_EXPIRES_IN =
+  process.env.JWT_EXPIRES_IN || "30d";
 
 // ============================================================
 // FIRESTORE
 // ============================================================
 
-let db;
+let db = null;
 
-function getDatabase() {
-  if (db) {
-    return db;
-  }
+try {
+  const admin = require("firebase-admin");
 
-  try {
-    const admin = require("firebase-admin");
+  if (admin.apps.length === 0) {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(
+        process.env.FIREBASE_SERVICE_ACCOUNT
+      );
 
-    if (!admin.apps.length) {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        const serviceAccount = JSON.parse(
-          process.env.FIREBASE_SERVICE_ACCOUNT
-        );
-
-        admin.initializeApp({
-          credential: admin.credential.cert(
-            serviceAccount
-          ),
-        });
-      } else {
-        admin.initializeApp();
-      }
+      admin.initializeApp({
+        credential: admin.credential.cert(
+          serviceAccount
+        ),
+      });
+    } else {
+      admin.initializeApp();
     }
-
-    db = admin.firestore();
-
-    return db;
-  } catch (error) {
-    console.error(
-      "Firestore initialization error:",
-      error.message
-    );
-
-    return null;
   }
+
+  db = admin.firestore();
+
+  console.log(
+    "AUTH ROUTES: Firestore initialized."
+  );
+} catch (error) {
+  console.error(
+    "AUTH ROUTES: Firestore initialization failed:",
+    error.message
+  );
 }
 
 // ============================================================
 // HELPERS
 // ============================================================
 
-function cleanEmail(email) {
-  return String(email || "")
+function databaseRequired(res) {
+  if (!db) {
+    res.status(503).json({
+      success: false,
+      error: "database_unavailable",
+      message: "Database is not connected.",
+    });
+
+    return false;
+  }
+
+  return true;
+}
+
+function cleanName(value) {
+  return String(value || "").trim();
+}
+
+function cleanEmail(value) {
+  return String(value || "")
     .trim()
     .toLowerCase();
 }
 
-function cleanName(name) {
-  return String(name || "").trim();
-}
-
-function cleanReferralCode(code) {
-  return String(code || "")
+function cleanReferralCode(value) {
+  return String(value || "")
     .trim()
     .toUpperCase();
 }
@@ -115,29 +130,6 @@ function generateReferralCode(name) {
   return `${prefix || "FAN"}${random}`;
 }
 
-async function generateUniqueReferralCode(
-  database,
-  name
-) {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const code = generateReferralCode(name);
-
-    const result = await database
-      .collection("users")
-      .where("referralCode", "==", code)
-      .limit(1)
-      .get();
-
-    if (result.empty) {
-      return code;
-    }
-  }
-
-  throw new Error(
-    "Could not generate a unique referral code."
-  );
-}
-
 function createToken(user) {
   return jwt.sign(
     {
@@ -152,8 +144,12 @@ function createToken(user) {
 }
 
 function publicUser(user) {
+  if (!user) {
+    return null;
+  }
+
   return {
-    id: user.id,
+    id: user.id || "",
     name: user.name || "",
     email: user.email || "",
 
@@ -163,32 +159,26 @@ function publicUser(user) {
     referredBy:
       user.referredBy || null,
 
-    fanBalance: Number(
-      user.fanBalance || 0
-    ),
+    fanBalance:
+      Number(user.fanBalance || 0),
 
-    afamBalance: Number(
-      user.afamBalance || 0
-    ),
+    afamBalance:
+      Number(user.afamBalance || 0),
 
-    miningRate: Number(
-      user.miningRate || 0.2
-    ),
+    miningRate:
+      Number(user.miningRate || 0.2),
 
-    activeReferrals: Number(
-      user.activeReferrals || 0
-    ),
+    activeReferrals:
+      Number(user.activeReferrals || 0),
 
-    dailyAdsWatched: Number(
-      user.dailyAdsWatched || 0
-    ),
+    dailyAdsWatched:
+      Number(user.dailyAdsWatched || 0),
 
-    adBoost: Number(
-      user.adBoost || 0
-    ),
+    adBoost:
+      Number(user.adBoost || 0),
 
     miningActive:
-      user.miningActive === true,
+      Boolean(user.miningActive),
 
     miningStartedAt:
       user.miningStartedAt || null,
@@ -196,24 +186,23 @@ function publicUser(user) {
     miningEndsAt:
       user.miningEndsAt || null,
 
-    consecutiveCheckIns: Number(
-      user.consecutiveCheckIns || 0
-    ),
+    consecutiveCheckIns:
+      Number(user.consecutiveCheckIns || 0),
 
     kyc1Eligible:
-      user.kyc1Eligible === true,
+      Boolean(user.kyc1Eligible),
 
     kyc1Verified:
-      user.kyc1Verified === true,
+      Boolean(user.kyc1Verified),
 
     kyc2Eligible:
-      user.kyc2Eligible === true,
+      Boolean(user.kyc2Eligible),
 
     kyc2Verified:
-      user.kyc2Verified === true,
+      Boolean(user.kyc2Verified),
 
     kyc3Verified:
-      user.kyc3Verified === true,
+      Boolean(user.kyc3Verified),
 
     createdAt:
       user.createdAt || null,
@@ -223,525 +212,551 @@ function publicUser(user) {
   };
 }
 
-function errorMessage(error) {
-  if (
-    error &&
-    typeof error.message === "string"
-  ) {
-    return error.message;
-  }
+// ============================================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================================
 
-  return "An unexpected error occurred.";
+async function authenticate(req, res, next) {
+  try {
+    if (!databaseRequired(res)) {
+      return;
+    }
+
+    const authorization =
+      req.headers.authorization || "";
+
+    if (
+      !authorization.startsWith("Bearer ")
+    ) {
+      return res.status(401).json({
+        success: false,
+        error: "missing_token",
+        message:
+          "Authentication token is required.",
+      });
+    }
+
+    const token =
+      authorization
+        .substring(7)
+        .trim();
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "missing_token",
+        message:
+          "Authentication token is required.",
+      });
+    }
+
+    const decoded =
+      jwt.verify(token, JWT_SECRET);
+
+    if (!decoded.userId) {
+      return res.status(401).json({
+        success: false,
+        error: "invalid_token",
+        message:
+          "Invalid authentication token.",
+      });
+    }
+
+    const userDoc =
+      await db
+        .collection("users")
+        .doc(decoded.userId)
+        .get();
+
+    if (!userDoc.exists) {
+      return res.status(401).json({
+        success: false,
+        error: "user_not_found",
+        message:
+          "User account no longer exists.",
+      });
+    }
+
+    const user = {
+      id: userDoc.id,
+      ...userDoc.data(),
+    };
+
+    req.user = user;
+    req.token = token;
+    req.tokenPayload = decoded;
+
+    next();
+  } catch (error) {
+    if (
+      error &&
+      error.name === "TokenExpiredError"
+    ) {
+      return res.status(401).json({
+        success: false,
+        error: "token_expired",
+        message:
+          "Your session has expired. Please login again.",
+      });
+    }
+
+    console.error(
+      "AUTHENTICATION ERROR:",
+      error.message
+    );
+
+    return res.status(401).json({
+      success: false,
+      error: "invalid_token",
+      message:
+        "Invalid or expired authentication token.",
+    });
+  }
 }
 
 // ============================================================
 // REGISTER
 // ============================================================
 
-router.post("/register", async (req, res) => {
-  try {
-    const database = getDatabase();
+router.post(
+  "/register",
+  async (req, res) => {
+    try {
+      if (!databaseRequired(res)) {
+        return;
+      }
 
-    if (!database) {
-      return res.status(503).json({
-        success: false,
-        message:
-          "Database is not connected.",
-      });
-    }
+      const name =
+        cleanName(req.body.name);
 
-    const name = cleanName(
-      req.body.name
-    );
+      const email =
+        cleanEmail(req.body.email);
 
-    const email = cleanEmail(
-      req.body.email
-    );
+      const password =
+        String(req.body.password || "");
 
-    const password = String(
-      req.body.password || ""
-    );
+      const referralCode =
+        cleanReferralCode(
+          req.body.referralCode
+        );
 
-    const referralCode =
-      cleanReferralCode(
-        req.body.referralCode
-      );
+      // --------------------------------------------------------
+      // VALIDATION
+      // --------------------------------------------------------
 
-    // --------------------------------------------------------
-    // VALIDATION
-    // --------------------------------------------------------
+      if (
+        !name ||
+        !email ||
+        !password
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "missing_fields",
+          message:
+            "Name, email and password are required.",
+        });
+      }
 
-    if (
-      !name ||
-      !email ||
-      !password
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Name, email and password are required.",
-      });
-    }
+      if (name.length < 2) {
+        return res.status(400).json({
+          success: false,
+          error: "invalid_name",
+          message:
+            "Name must contain at least 2 characters.",
+        });
+      }
 
-    if (name.length < 2) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Name must contain at least 2 characters.",
-      });
-    }
+      if (name.length > 100) {
+        return res.status(400).json({
+          success: false,
+          error: "invalid_name",
+          message:
+            "Name is too long.",
+        });
+      }
 
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Password must contain at least 6 characters.",
-      });
-    }
+      if (
+        !email.includes("@") ||
+        !email.includes(".")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "invalid_email",
+          message:
+            "Please enter a valid email address.",
+        });
+      }
 
-    if (
-      !email.includes("@") ||
-      !email.includes(".")
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid email address.",
-      });
-    }
+      if (password.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: "weak_password",
+          message:
+            "Password must contain at least 6 characters.",
+        });
+      }
 
-    // --------------------------------------------------------
-    // CHECK EMAIL
-    // --------------------------------------------------------
+      // --------------------------------------------------------
+      // CHECK EMAIL
+      // --------------------------------------------------------
 
-    const existingUser = await database
-      .collection("users")
-      .where("email", "==", email)
-      .limit(1)
-      .get();
-
-    if (!existingUser.empty) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "This email is already registered.",
-      });
-    }
-
-    // --------------------------------------------------------
-    // FIND REFERRER
-    // --------------------------------------------------------
-
-    let referrerDoc = null;
-
-    if (referralCode) {
-      const referrerQuery =
-        await database
+      const existingUser =
+        await db
           .collection("users")
           .where(
-            "referralCode",
+            "email",
             "==",
-            referralCode
+            email
           )
           .limit(1)
           .get();
 
-      if (referrerQuery.empty) {
-        return res.status(400).json({
+      if (!existingUser.empty) {
+        return res.status(409).json({
           success: false,
+          error: "email_exists",
           message:
-            "Invalid referral code.",
+            "This email is already registered.",
         });
       }
 
-      referrerDoc =
-        referrerQuery.docs[0];
-    }
+      // --------------------------------------------------------
+      // FIND REFERRER
+      // --------------------------------------------------------
 
-    // --------------------------------------------------------
-    // PASSWORD HASH
-    // --------------------------------------------------------
+      let referrerDoc = null;
 
-    const passwordHash =
-      await bcrypt.hash(
-        password,
-        12
-      );
-
-    // --------------------------------------------------------
-    // USER DATA
-    // --------------------------------------------------------
-
-    const userId =
-      generateUserId();
-
-    const newReferralCode =
-      await generateUniqueReferralCode(
-        database,
-        name
-      );
-
-    const now =
-      new Date().toISOString();
-
-    const newUser = {
-      id: userId,
-
-      name,
-      email,
-
-      passwordHash,
-
-      referralCode:
-        newReferralCode,
-
-      referredBy:
-        referrerDoc
-          ? referrerDoc.id
-          : null,
-
-      // New user receives 20 FAN
-      fanBalance:
-        referrerDoc ? 20 : 0,
-
-      afamBalance: 0,
-
-      // Base mining rate
-      miningRate: 0.2,
-
-      activeReferrals: 0,
-
-      dailyAdsWatched: 0,
-
-      adBoost: 0,
-
-      miningActive: false,
-
-      miningStartedAt: null,
-
-      miningEndsAt: null,
-
-      consecutiveCheckIns: 0,
-
-      kyc1Eligible: false,
-
-      kyc1Verified: false,
-
-      kyc2Eligible: false,
-
-      kyc2Verified: false,
-
-      kyc3Verified: false,
-
-      createdAt: now,
-
-      updatedAt: now,
-    };
-
-    // --------------------------------------------------------
-    // TRANSACTION
-    // --------------------------------------------------------
-
-    await database.runTransaction(
-      async (transaction) => {
-        const userRef =
-          database
+      if (referralCode) {
+        const referralQuery =
+          await db
             .collection("users")
-            .doc(userId);
+            .where(
+              "referralCode",
+              "==",
+              referralCode
+            )
+            .limit(1)
+            .get();
 
-        // Create new user
-        transaction.set(
-          userRef,
-          newUser
+        if (referralQuery.empty) {
+          return res.status(400).json({
+            success: false,
+            error: "invalid_referral",
+            message:
+              "Invalid referral code.",
+          });
+        }
+
+        referrerDoc =
+          referralQuery.docs[0];
+      }
+
+      // --------------------------------------------------------
+      // PASSWORD HASH
+      // --------------------------------------------------------
+
+      const passwordHash =
+        await bcrypt.hash(
+          password,
+          12
         );
 
-        // ----------------------------------------------------
-        // REFERRER REWARD
-        // ----------------------------------------------------
+      // --------------------------------------------------------
+      // USER DATA
+      // --------------------------------------------------------
 
-        if (referrerDoc) {
-          const referrer =
-            referrerDoc.data();
+      const userId =
+        generateUserId();
 
-          const currentBalance =
-            Number(
-              referrer.fanBalance || 0
-            );
+      const newReferralCode =
+        generateReferralCode(name);
 
-          const currentReferrals =
-            Number(
-              referrer.activeReferrals ||
-                0
-            );
+      const now =
+        new Date().toISOString();
 
-          const newReferrals =
-            currentReferrals + 1;
+      const newUser = {
+        id: userId,
 
-          const newMiningRate =
-            0.2 +
-            newReferrals * 0.02;
+        name,
+        email,
 
-          transaction.update(
-            referrerDoc.ref,
-            {
-              fanBalance:
-                currentBalance + 5,
+        passwordHash,
 
-              activeReferrals:
-                newReferrals,
+        referralCode:
+          newReferralCode,
 
-              miningRate:
-                newMiningRate,
+        referredBy:
+          referrerDoc
+            ? referrerDoc.id
+            : null,
 
-              updatedAt: now,
-            }
+        // New user receives 20 FAN
+        fanBalance:
+          referrerDoc ? 20 : 0,
+
+        afamBalance: 0,
+
+        // Base mining rate
+        miningRate: 0.2,
+
+        activeReferrals: 0,
+
+        dailyAdsWatched: 0,
+
+        adBoost: 0,
+
+        miningActive: false,
+
+        miningStartedAt: null,
+
+        miningEndsAt: null,
+
+        consecutiveCheckIns: 0,
+
+        kyc1Eligible: false,
+
+        kyc1Verified: false,
+
+        kyc2Eligible: false,
+
+        kyc2Verified: false,
+
+        kyc3Verified: false,
+
+        createdAt: now,
+
+        updatedAt: now,
+      };
+
+      // --------------------------------------------------------
+      // TRANSACTION
+      // --------------------------------------------------------
+
+      await db.runTransaction(
+        async (transaction) => {
+          const userRef =
+            db
+              .collection("users")
+              .doc(userId);
+
+          transaction.set(
+            userRef,
+            newUser
           );
+
+          // ----------------------------------------------------
+          // REFERRER REWARD
+          // ----------------------------------------------------
+
+          if (referrerDoc) {
+            const referrerData =
+              referrerDoc.data();
+
+            const currentBalance =
+              Number(
+                referrerData.fanBalance || 0
+              );
+
+            const currentReferrals =
+              Number(
+                referrerData.activeReferrals ||
+                  0
+              );
+
+            const newReferrals =
+              currentReferrals + 1;
+
+            const newMiningRate =
+              0.2 +
+              newReferrals * 0.02;
+
+            transaction.update(
+              referrerDoc.ref,
+              {
+                fanBalance:
+                  currentBalance + 5,
+
+                activeReferrals:
+                  newReferrals,
+
+                miningRate:
+                  newMiningRate,
+
+                updatedAt: now,
+              }
+            );
+          }
         }
-      }
-    );
+      );
 
-    // --------------------------------------------------------
-    // TOKEN
-    // --------------------------------------------------------
+      // --------------------------------------------------------
+      // TOKEN
+      // --------------------------------------------------------
 
-    const token =
-      createToken(newUser);
+      const token =
+        createToken(newUser);
 
-    return res.status(201).json({
-      success: true,
+      return res.status(201).json({
+        success: true,
 
-      message:
-        "Account created successfully.",
+        message:
+          "Account created successfully.",
 
-      token,
+        token,
 
-      user:
-        publicUser(newUser),
-    });
-  } catch (error) {
-    console.error(
-      "REGISTER ERROR:",
-      error
-    );
+        user:
+          publicUser(newUser),
+      });
+    } catch (error) {
+      console.error(
+        "REGISTER ERROR:",
+        error
+      );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Registration failed.",
-    });
+      return res.status(500).json({
+        success: false,
+        error: "registration_failed",
+        message:
+          "Registration failed. Please try again.",
+      });
+    }
   }
-});
+);
 
 // ============================================================
 // LOGIN
 // ============================================================
 
-router.post("/login", async (req, res) => {
-  try {
-    const database = getDatabase();
-
-    if (!database) {
-      return res.status(503).json({
-        success: false,
-        message:
-          "Database is not connected.",
-      });
-    }
-
-    const email = cleanEmail(
-      req.body.email
-    );
-
-    const password = String(
-      req.body.password || ""
-    );
-
-    if (
-      !email ||
-      !password
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Email and password are required.",
-      });
-    }
-
-    // --------------------------------------------------------
-    // FIND USER
-    // --------------------------------------------------------
-
-    const result = await database
-      .collection("users")
-      .where("email", "==", email)
-      .limit(1)
-      .get();
-
-    if (result.empty) {
-      return res.status(401).json({
-        success: false,
-        message:
-          "Incorrect email or password.",
-      });
-    }
-
-    const document =
-      result.docs[0];
-
-    const user = {
-      id: document.id,
-      ...document.data(),
-    };
-
-    // --------------------------------------------------------
-    // CHECK PASSWORD
-    // --------------------------------------------------------
-
-    const passwordValid =
-      await bcrypt.compare(
-        password,
-        user.passwordHash || ""
-      );
-
-    if (!passwordValid) {
-      return res.status(401).json({
-        success: false,
-        message:
-          "Incorrect email or password.",
-      });
-    }
-
-    // --------------------------------------------------------
-    // TOKEN
-    // --------------------------------------------------------
-
-    const token =
-      createToken(user);
-
-    return res.json({
-      success: true,
-
-      message:
-        "Login successful.",
-
-      token,
-
-      user:
-        publicUser(user),
-    });
-  } catch (error) {
-    console.error(
-      "LOGIN ERROR:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Login failed.",
-    });
-  }
-});
-
-// ============================================================
-// VERIFY TOKEN / CURRENT USER
-// ============================================================
-
-router.get(
-  "/me",
+router.post(
+  "/login",
   async (req, res) => {
     try {
-      const database =
-        getDatabase();
+      if (!databaseRequired(res)) {
+        return;
+      }
 
-      if (!database) {
-        return res.status(503).json({
+      const email =
+        cleanEmail(req.body.email);
+
+      const password =
+        String(req.body.password || "");
+
+      // --------------------------------------------------------
+      // VALIDATION
+      // --------------------------------------------------------
+
+      if (!email || !password) {
+        return res.status(400).json({
           success: false,
+          error: "missing_fields",
           message:
-            "Database is not connected.",
+            "Email and password are required.",
         });
       }
 
-      const authorization =
-        req.headers.authorization ||
-        "";
+      // --------------------------------------------------------
+      // FIND USER
+      // --------------------------------------------------------
 
-      if (
-        !authorization.startsWith(
-          "Bearer "
-        )
-      ) {
+      const query =
+        await db
+          .collection("users")
+          .where(
+            "email",
+            "==",
+            email
+          )
+          .limit(1)
+          .get();
+
+      if (query.empty) {
         return res.status(401).json({
           success: false,
+          error: "invalid_credentials",
           message:
-            "Authentication token is required.",
-        });
-      }
-
-      const token =
-        authorization
-          .substring(7)
-          .trim();
-
-      if (!token) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Authentication token is required.",
-        });
-      }
-
-      let decoded;
-
-      try {
-        decoded =
-          jwt.verify(
-            token,
-            JWT_SECRET
-          );
-      } catch (_) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Invalid or expired authentication token.",
-        });
-      }
-
-      if (!decoded.userId) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Invalid authentication token.",
+            "Incorrect email or password.",
         });
       }
 
       const userDoc =
-        await database
-          .collection("users")
-          .doc(decoded.userId)
-          .get();
-
-      if (!userDoc.exists) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "User account no longer exists.",
-        });
-      }
+        query.docs[0];
 
       const user = {
         id: userDoc.id,
         ...userDoc.data(),
       };
 
+      // --------------------------------------------------------
+      // PASSWORD CHECK
+      // --------------------------------------------------------
+
+      const validPassword =
+        await bcrypt.compare(
+          password,
+          user.passwordHash || ""
+        );
+
+      if (!validPassword) {
+        return res.status(401).json({
+          success: false,
+          error: "invalid_credentials",
+          message:
+            "Incorrect email or password.",
+        });
+      }
+
+      // --------------------------------------------------------
+      // TOKEN
+      // --------------------------------------------------------
+
+      const token =
+        createToken(user);
+
       return res.json({
         success: true,
+
+        message:
+          "Login successful.",
+
+        token,
+
         user:
           publicUser(user),
       });
     } catch (error) {
       console.error(
-        "ME ERROR:",
+        "LOGIN ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: "login_failed",
+        message:
+          "Login failed. Please try again.",
+      });
+    }
+  }
+);
+
+// ============================================================
+// CURRENT USER
+// ============================================================
+
+router.get(
+  "/me",
+  authenticate,
+  async (req, res) => {
+    try {
+      return res.json({
+        success: true,
+
+        user:
+          publicUser(req.user),
+      });
+    } catch (error) {
+      console.error(
+        "GET ME ERROR:",
         error
       );
 
@@ -755,71 +770,47 @@ router.get(
 );
 
 // ============================================================
+// LOGOUT
+// ============================================================
+// JWT logout is handled client-side by deleting the token.
+//
+// Since JWT is stateless, this endpoint confirms logout,
+// while the Flutter app must remove the saved token.
+// ============================================================
+
+router.post(
+  "/logout",
+  authenticate,
+  async (req, res) => {
+    return res.json({
+      success: true,
+      message:
+        "Logged out successfully.",
+    });
+  }
+);
+
+// ============================================================
 // CHANGE PASSWORD
 // ============================================================
 
 router.post(
   "/change-password",
+  authenticate,
   async (req, res) => {
     try {
-      const database =
-        getDatabase();
-
-      if (!database) {
-        return res.status(503).json({
-          success: false,
-          message:
-            "Database is not connected.",
-        });
-      }
-
-      const authorization =
-        req.headers.authorization ||
-        "";
-
-      if (
-        !authorization.startsWith(
-          "Bearer "
-        )
-      ) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Authentication token is required.",
-        });
-      }
-
-      const token =
-        authorization
-          .substring(7)
-          .trim();
-
-      let decoded;
-
-      try {
-        decoded =
-          jwt.verify(
-            token,
-            JWT_SECRET
-          );
-      } catch (_) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Invalid or expired authentication token.",
-        });
+      if (!databaseRequired(res)) {
+        return;
       }
 
       const currentPassword =
         String(
-          req.body.currentPassword ||
-            ""
+          req.body.currentPassword || ""
         );
 
       const newPassword =
         String(
-          req.body.newPassword ||
-            ""
+          req.body.newPassword || ""
         );
 
       if (
@@ -828,6 +819,7 @@ router.post(
       ) {
         return res.status(400).json({
           success: false,
+          error: "missing_fields",
           message:
             "Current password and new password are required.",
         });
@@ -836,40 +828,34 @@ router.post(
       if (newPassword.length < 6) {
         return res.status(400).json({
           success: false,
+          error: "weak_password",
           message:
             "New password must contain at least 6 characters.",
         });
       }
 
-      const userDoc =
-        await database
-          .collection("users")
-          .doc(decoded.userId)
-          .get();
-
-      if (!userDoc.exists) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "User account not found.",
-        });
-      }
-
-      const user = userDoc.data();
+      // --------------------------------------------------------
+      // CHECK CURRENT PASSWORD
+      // --------------------------------------------------------
 
       const valid =
         await bcrypt.compare(
           currentPassword,
-          user.passwordHash || ""
+          req.user.passwordHash || ""
         );
 
       if (!valid) {
         return res.status(401).json({
           success: false,
+          error: "wrong_password",
           message:
             "Current password is incorrect.",
         });
       }
+
+      // --------------------------------------------------------
+      // HASH NEW PASSWORD
+      // --------------------------------------------------------
 
       const passwordHash =
         await bcrypt.hash(
@@ -877,9 +863,9 @@ router.post(
           12
         );
 
-      await database
+      await db
         .collection("users")
-        .doc(decoded.userId)
+        .doc(req.user.id)
         .update({
           passwordHash,
 
@@ -900,6 +886,7 @@ router.post(
 
       return res.status(500).json({
         success: false,
+        error: "password_change_failed",
         message:
           "Could not change password.",
       });
@@ -908,22 +895,52 @@ router.post(
 );
 
 // ============================================================
-// LOGOUT
+// LOGOUT ALL DEVICES
+// ============================================================
+// With pure JWT, already-issued tokens remain valid until
+// expiration unless a server-side token blacklist/session
+// system is added.
+//
+// This endpoint is therefore intentionally limited.
 // ============================================================
 
 router.post(
-  "/logout",
+  "/logout-all",
+  authenticate,
   async (req, res) => {
-    // JWT logout is completed by
-    // deleting the token from the app.
-    //
-    // There is no Firebase Auth session here.
+    try {
+      if (!databaseRequired(res)) {
+        return;
+      }
 
-    return res.json({
-      success: true,
-      message:
-        "Logged out successfully.",
-    });
+      const now =
+        new Date().toISOString();
+
+      await db
+        .collection("users")
+        .doc(req.user.id)
+        .update({
+          sessionsRevokedAt: now,
+          updatedAt: now,
+        });
+
+      return res.json({
+        success: true,
+        message:
+          "All sessions have been marked for revocation.",
+      });
+    } catch (error) {
+      console.error(
+        "LOGOUT ALL ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Could not logout all sessions.",
+      });
+    }
   }
 );
 
@@ -931,4 +948,8 @@ router.post(
 // EXPORT
 // ============================================================
 
-module.exports = router;
+module.exports = {
+  router,
+  authenticate,
+  publicUser,
+};
