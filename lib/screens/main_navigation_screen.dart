@@ -24,11 +24,13 @@ class _MainNavigationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F8FC),
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
       bottomNavigationBar: NavigationBar(
+        backgroundColor: Colors.white,
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() {
@@ -47,8 +49,12 @@ class _MainNavigationScreenState
             label: 'Referral',
           ),
           NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
+            icon: Icon(
+              Icons.account_balance_wallet_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.account_balance_wallet,
+            ),
             label: 'Wallet',
           ),
           NavigationDestination(
@@ -63,7 +69,7 @@ class _MainNavigationScreenState
 }
 
 // ============================================================
-// HOME
+// HOME TAB
 // ============================================================
 
 class HomeTab extends StatefulWidget {
@@ -89,6 +95,8 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   Future<void> _loadDashboard() async {
+    if (!mounted) return;
+
     setState(() {
       _loading = true;
       _error = null;
@@ -230,8 +238,7 @@ class _HomeTabState extends State<HomeTab> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor:
-            error ? Colors.red : null,
+        backgroundColor: error ? Colors.red : null,
       ),
     );
   }
@@ -241,7 +248,9 @@ class _HomeTabState extends State<HomeTab> {
     if (_loading) {
       return const SafeArea(
         child: Center(
-          child: CircularProgressIndicator(),
+          child: CircularProgressIndicator(
+            color: Color(0xFF3B159B),
+          ),
         ),
       );
     }
@@ -251,6 +260,7 @@ class _HomeTabState extends State<HomeTab> {
         child: RefreshIndicator(
           onRefresh: _loadDashboard,
           child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(24),
             children: [
               const SizedBox(height: 120),
@@ -287,17 +297,20 @@ class _HomeTabState extends State<HomeTab> {
       );
     }
 
+    final dashboard =
+        _dashboard ?? <String, dynamic>{};
+
     final user =
-        _dashboard?['user'] is Map
+        dashboard['user'] is Map
             ? Map<String, dynamic>.from(
-                _dashboard!['user'],
+                dashboard['user'],
               )
             : <String, dynamic>{};
 
     final rules =
-        _dashboard?['rules'] is Map
+        dashboard['rules'] is Map
             ? Map<String, dynamic>.from(
-                _dashboard!['rules'],
+                dashboard['rules'],
               )
             : <String, dynamic>{};
 
@@ -309,9 +322,9 @@ class _HomeTabState extends State<HomeTab> {
 
     final miningRate =
         _toDouble(
-          user['miningRate'],
-          fallback: 0.2,
-        );
+      user['miningRate'],
+      fallback: 0.2,
+    );
 
     final activeReferrals =
         _toInt(user['activeReferrals']);
@@ -327,14 +340,15 @@ class _HomeTabState extends State<HomeTab> {
 
     final maxAds =
         _toInt(
-          rules['maxDailyAds'],
-          fallback: 7,
-        );
+      rules['maxDailyAds'],
+      fallback: 7,
+    );
 
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadDashboard,
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(
             16,
             18,
@@ -342,6 +356,10 @@ class _HomeTabState extends State<HomeTab> {
             30,
           ),
           children: [
+            // ==================================================
+            // HEADER
+            // ==================================================
+
             Row(
               children: [
                 Expanded(
@@ -353,18 +371,15 @@ class _HomeTabState extends State<HomeTab> {
                         'POWER FAN NETWORK',
                         style: TextStyle(
                           fontSize: 22,
-                          fontWeight:
-                              FontWeight.bold,
-                          color:
-                              Color(0xFF241064),
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF241064),
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Mining Dashboard',
                         style: TextStyle(
-                          color:
-                              Colors.grey.shade600,
+                          color: Colors.grey.shade600,
                         ),
                       ),
                     ],
@@ -374,14 +389,10 @@ class _HomeTabState extends State<HomeTab> {
                   backgroundColor:
                       const Color(0xFF3B159B),
                   child: Text(
-                    _firstLetter(
-                      user['name'],
-                    ),
-                    style:
-                        const TextStyle(
+                    _firstLetter(user['name']),
+                    style: const TextStyle(
                       color: Colors.white,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -395,30 +406,24 @@ class _HomeTabState extends State<HomeTab> {
             // ==================================================
 
             Container(
-              padding:
-                  const EdgeInsets.all(22),
-              decoration:
-                  BoxDecoration(
-                gradient:
-                    const LinearGradient(
-                  begin:
-                      Alignment.topLeft,
-                  end:
-                      Alignment.bottomRight,
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                   colors: [
                     Color(0xFF3B159B),
                     Color(0xFF241064),
                   ],
                 ),
-                borderRadius:
-                    BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
                     blurRadius: 18,
-                    offset:
-                        const Offset(0, 8),
-                    color: Colors.black
-                        .withOpacity(0.15),
+                    offset: const Offset(0, 8),
+                    color: Colors.black.withValues(
+                      alpha: 0.15,
+                    ),
                   ),
                 ],
               ),
@@ -443,37 +448,27 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 10),
-
                   Text(
                     '${fanBalance.toStringAsFixed(4)} FAN',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 31,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 18),
-
                   Row(
                     children: [
                       Expanded(
-                        child:
-                            _balanceMiniCard(
+                        child: _balanceMiniCard(
                           'AFAM',
-                          afamBalance
-                              .toStringAsFixed(
-                            4,
-                          ),
+                          afamBalance.toStringAsFixed(4),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child:
-                            _balanceMiniCard(
+                        child: _balanceMiniCard(
                           'Mining Rate',
                           '${miningRate.toStringAsFixed(2)} FAN/H',
                         ),
@@ -487,7 +482,7 @@ class _HomeTabState extends State<HomeTab> {
             const SizedBox(height: 18),
 
             // ==================================================
-            // MINING STATUS
+            // MINING SESSION
             // ==================================================
 
             _sectionCard(
@@ -499,8 +494,7 @@ class _HomeTabState extends State<HomeTab> {
                     children: [
                       const Icon(
                         Icons.speed_rounded,
-                        color:
-                            Color(0xFF3B159B),
+                        color: Color(0xFF3B159B),
                       ),
                       const SizedBox(width: 10),
                       const Expanded(
@@ -508,34 +502,25 @@ class _HomeTabState extends State<HomeTab> {
                           'Mining Session',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                       Container(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 6,
                         ),
-                        decoration:
-                            BoxDecoration(
+                        decoration: BoxDecoration(
                           color: miningActive
-                              ? Colors.green
-                                  .withOpacity(
-                                  0.12,
+                              ? Colors.green.withValues(
+                                  alpha: 0.12,
                                 )
-                              : Colors.grey
-                                  .withOpacity(
-                                  0.12,
+                              : Colors.grey.withValues(
+                                  alpha: 0.12,
                                 ),
                           borderRadius:
-                              BorderRadius
-                                  .circular(
-                            20,
-                          ),
+                              BorderRadius.circular(20),
                         ),
                         child: Text(
                           miningActive
@@ -543,12 +528,10 @@ class _HomeTabState extends State<HomeTab> {
                               : 'STOPPED',
                           style: TextStyle(
                             fontSize: 11,
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                             color: miningActive
                                 ? Colors.green
-                                : Colors.grey
-                                    .shade700,
+                                : Colors.grey.shade700,
                           ),
                         ),
                       ),
@@ -586,41 +569,48 @@ class _HomeTabState extends State<HomeTab> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
-                      onPressed:
-                          miningActive
-                              ? _claiming
-                                  ? null
-                                  : _claimMining
-                              : _starting
-                                  ? null
-                                  : _startMining,
-                      icon: Icon(
-                        miningActive
-                            ? Icons
-                                .check_circle_outline
-                            : Icons
-                                .play_arrow_rounded,
-                      ),
+                      onPressed: miningActive
+                          ? (_claiming
+                              ? null
+                              : _claimMining)
+                          : (_starting
+                              ? null
+                              : _startMining),
+                      icon: _starting || _claiming
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Icon(
+                              miningActive
+                                  ? Icons
+                                      .check_circle_outline
+                                  : Icons
+                                      .play_arrow_rounded,
+                            ),
                       label: Text(
-                        miningActive
-                            ? 'CLAIM MINING'
-                            : 'START MINING',
+                        _starting
+                            ? 'STARTING...'
+                            : _claiming
+                                ? 'CLAIMING...'
+                                : miningActive
+                                    ? 'CLAIM MINING'
+                                    : 'START MINING',
                       ),
                       style:
-                          ElevatedButton
-                              .styleFrom(
+                          ElevatedButton.styleFrom(
                         backgroundColor:
-                            const Color(
-                          0xFF3B159B,
-                        ),
-                        foregroundColor:
-                            Colors.white,
+                            const Color(0xFF3B159B),
+                        foregroundColor: Colors.white,
                         shape:
                             RoundedRectangleBorder(
                           borderRadius:
-                              BorderRadius.circular(
-                            14,
-                          ),
+                              BorderRadius.circular(14),
                         ),
                       ),
                     ),
@@ -644,49 +634,39 @@ class _HomeTabState extends State<HomeTab> {
                     children: [
                       Container(
                         padding:
-                            const EdgeInsets.all(
-                          10,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color: Colors.orange
-                              .withOpacity(
-                            0.12,
+                            const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color:
+                              Colors.orange.withValues(
+                            alpha: 0.12,
                           ),
-                          shape:
-                              BoxShape.circle,
+                          shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons
                               .ondemand_video_rounded,
-                          color:
-                              Colors.orange,
+                          color: Colors.orange,
                         ),
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Column(
                           crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                              CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Mining Boost',
-                              style:
-                                  TextStyle(
+                              style: TextStyle(
                                 fontSize: 17,
                                 fontWeight:
-                                    FontWeight
-                                        .bold,
+                                    FontWeight.bold,
                               ),
                             ),
                             SizedBox(height: 3),
                             Text(
                               '+0.1 FAN/H per completed ad',
-                              style:
-                                  TextStyle(
-                                color:
-                                    Colors.grey,
+                              style: TextStyle(
+                                color: Colors.grey,
                                 fontSize: 12,
                               ),
                             ),
@@ -701,8 +681,7 @@ class _HomeTabState extends State<HomeTab> {
                   Text(
                     '$dailyAds / $maxAds ads watched today',
                     style: const TextStyle(
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
 
@@ -715,9 +694,7 @@ class _HomeTabState extends State<HomeTab> {
                         : 0,
                     minHeight: 7,
                     borderRadius:
-                        BorderRadius.circular(
-                      10,
-                    ),
+                        BorderRadius.circular(10),
                   ),
 
                   const SizedBox(height: 16),
@@ -747,7 +724,9 @@ class _HomeTabState extends State<HomeTab> {
                       label: Text(
                         dailyAds >= maxAds
                             ? 'DAILY LIMIT REACHED'
-                            : 'APPLY AD REWARD',
+                            : _watchingAd
+                                ? 'PROCESSING...'
+                                : 'APPLY AD REWARD',
                       ),
                     ),
                   ),
@@ -766,26 +745,19 @@ class _HomeTabState extends State<HomeTab> {
                 children: [
                   Container(
                     padding:
-                        const EdgeInsets.all(
-                      12,
-                    ),
-                    decoration:
-                        BoxDecoration(
+                        const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
                       color:
-                          const Color(
-                        0xFF3B159B,
-                      ).withOpacity(
-                        0.10,
+                          const Color(0xFF3B159B)
+                              .withValues(
+                        alpha: 0.10,
                       ),
                       borderRadius:
-                          BorderRadius.circular(
-                        14,
-                      ),
+                          BorderRadius.circular(14),
                     ),
                     child: const Icon(
                       Icons.groups_rounded,
-                      color:
-                          Color(0xFF3B159B),
+                      color: Color(0xFF3B159B),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -797,16 +769,14 @@ class _HomeTabState extends State<HomeTab> {
                         const Text(
                           'Active Referrals',
                           style: TextStyle(
-                            fontWeight:
-                                FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '$activeReferrals active referral${activeReferrals == 1 ? '' : 's'}',
-                          style:
-                              const TextStyle(
+                          style: const TextStyle(
                             color: Colors.grey,
                           ),
                         ),
@@ -814,12 +784,10 @@ class _HomeTabState extends State<HomeTab> {
                     ),
                   ),
                   Text(
-                    '+${(activeReferrals * 0.02).toStringAsFixed(2)}',
+                    '+${(activeReferrals * 0.02).toStringAsFixed(2)} FAN/H',
                     style: const TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
-                      color:
-                          Color(0xFF159B61),
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF159B61),
                     ),
                   ),
                 ],
@@ -848,13 +816,12 @@ class _HomeTabState extends State<HomeTab> {
     String value,
   ) {
     return Container(
-      padding:
-          const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white
-            .withOpacity(0.10),
-        borderRadius:
-            BorderRadius.circular(14),
+        color: Colors.white.withValues(
+          alpha: 0.10,
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment:
@@ -872,8 +839,7 @@ class _HomeTabState extends State<HomeTab> {
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
               fontSize: 14,
             ),
           ),
@@ -886,15 +852,12 @@ class _HomeTabState extends State<HomeTab> {
     required Widget child,
   }) {
     return Container(
-      padding:
-          const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color:
-              Colors.grey.shade200,
+          color: Colors.grey.shade200,
         ),
       ),
       child: child,
@@ -917,11 +880,9 @@ class _HomeTabState extends State<HomeTab> {
         const SizedBox(height: 5),
         Text(
           value,
-          textAlign:
-              TextAlign.center,
+          textAlign: TextAlign.center,
           style: const TextStyle(
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
             fontSize: 14,
           ),
         ),
@@ -957,9 +918,7 @@ class _HomeTabState extends State<HomeTab> {
         fallback;
   }
 
-  String _firstLetter(
-    dynamic value,
-  ) {
+  String _firstLetter(dynamic value) {
     final name =
         value?.toString().trim() ?? '';
 
@@ -967,9 +926,7 @@ class _HomeTabState extends State<HomeTab> {
       return 'P';
     }
 
-    return name
-        .substring(0, 1)
-        .toUpperCase();
+    return name.substring(0, 1).toUpperCase();
   }
 }
 
@@ -1003,6 +960,8 @@ class _ReferralTabState
   }
 
   Future<void> _loadReferrals() async {
+    if (!mounted) return;
+
     setState(() {
       _loading = true;
       _error = null;
@@ -1019,19 +978,23 @@ class _ReferralTabState
 
       setState(() {
         _loading = false;
+
         _referralCode =
             result['referralCode']
                     ?.toString() ??
                 '';
+
         _activeReferrals =
             _toInt(
           result['activeReferrals'],
         );
+
         _miningRate =
             _toDouble(
           result['miningRate'],
           fallback: 0.2,
         );
+
         _referrals =
             referrals is List
                 ? referrals
@@ -1047,7 +1010,8 @@ class _ReferralTabState
             .replaceFirst(
               'Exception: ',
               '',
-            );
+            )
+            .trim();
       });
     }
   }
@@ -1057,8 +1021,9 @@ class _ReferralTabState
     if (_loading) {
       return const SafeArea(
         child: Center(
-          child:
-              CircularProgressIndicator(),
+          child: CircularProgressIndicator(
+            color: Color(0xFF3B159B),
+          ),
         ),
       );
     }
@@ -1067,35 +1032,24 @@ class _ReferralTabState
       return SafeArea(
         child: Center(
           child: Padding(
-            padding:
-                const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
                   Icons.error_outline,
                   size: 60,
                   color: Colors.grey,
                 ),
-                const SizedBox(
-                  height: 15,
-                ),
+                const SizedBox(height: 15),
                 Text(
                   _error!,
-                  textAlign:
-                      TextAlign.center,
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(
-                  height: 20,
-                ),
+                const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed:
-                      _loadReferrals,
-                  child:
-                      const Text(
-                    'TRY AGAIN',
-                  ),
+                  onPressed: _loadReferrals,
+                  child: const Text('TRY AGAIN'),
                 ),
               ],
             ),
@@ -1106,20 +1060,18 @@ class _ReferralTabState
 
     return SafeArea(
       child: RefreshIndicator(
-        onRefresh:
-            _loadReferrals,
+        onRefresh: _loadReferrals,
         child: ListView(
-          padding:
-              const EdgeInsets.all(16),
+          physics:
+              const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
           children: [
             const Text(
               'Referral',
               style: TextStyle(
                 fontSize: 25,
-                fontWeight:
-                    FontWeight.bold,
-                color:
-                    Color(0xFF241064),
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF241064),
               ),
             ),
 
@@ -1134,22 +1086,21 @@ class _ReferralTabState
 
             const SizedBox(height: 20),
 
+            // ==================================================
+            // REFERRAL CODE
+            // ==================================================
+
             Container(
-              padding:
-                  const EdgeInsets.all(22),
-              decoration:
-                  BoxDecoration(
-                gradient:
-                    const LinearGradient(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
                   colors: [
                     Color(0xFF3B159B),
                     Color(0xFF241064),
                   ],
                 ),
                 borderRadius:
-                    BorderRadius.circular(
-                  22,
-                ),
+                    BorderRadius.circular(22),
               ),
               child: Column(
                 children: [
@@ -1160,29 +1111,22 @@ class _ReferralTabState
                       fontSize: 12,
                     ),
                   ),
-                  const SizedBox(
-                    height: 10,
-                  ),
+                  const SizedBox(height: 10),
                   SelectableText(
                     _referralCode.isEmpty
                         ? 'N/A'
                         : _referralCode,
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                       letterSpacing: 1,
                     ),
                   ),
-                  const SizedBox(
-                    height: 15,
-                  ),
+                  const SizedBox(height: 15),
                   Text(
                     '$_activeReferrals active referrals',
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       color: Colors.white70,
                     ),
                   ),
@@ -1192,46 +1136,40 @@ class _ReferralTabState
 
             const SizedBox(height: 18),
 
+            // ==================================================
+            // RATE
+            // ==================================================
+
             Container(
-              padding:
-                  const EdgeInsets.all(18),
-              decoration:
-                  BoxDecoration(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius:
-                    BorderRadius.circular(
-                  18,
-                ),
+                    BorderRadius.circular(18),
                 border: Border.all(
-                  color:
-                      Colors.grey.shade200,
+                  color: Colors.grey.shade200,
                 ),
               ),
               child: Row(
                 children: [
                   const Icon(
                     Icons.trending_up,
-                    color:
-                        Color(0xFF159B61),
+                    color: Color(0xFF159B61),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
                       'Current Mining Rate',
                       style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   Text(
                     '${_miningRate.toStringAsFixed(2)} FAN/H',
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
-                      color:
-                          Color(0xFF159B61),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF159B61),
                     ),
                   ),
                 ],
@@ -1244,8 +1182,7 @@ class _ReferralTabState
               'Your Referrals',
               style: TextStyle(
                 fontSize: 18,
-                fontWeight:
-                    FontWeight.bold,
+                fontWeight: FontWeight.bold,
               ),
             ),
 
@@ -1253,17 +1190,11 @@ class _ReferralTabState
 
             if (_referrals.isEmpty)
               Container(
-                padding:
-                    const EdgeInsets.all(
-                  30,
-                ),
-                decoration:
-                    BoxDecoration(
+                padding: const EdgeInsets.all(30),
+                decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius:
-                      BorderRadius.circular(
-                    18,
-                  ),
+                      BorderRadius.circular(18),
                 ),
                 child: const Column(
                   children: [
@@ -1287,12 +1218,10 @@ class _ReferralTabState
                 (item) {
                   final referral =
                       item is Map
-                          ? Map<String,
-                              dynamic>.from(
+                          ? Map<String, dynamic>.from(
                               item,
                             )
-                          : <String,
-                              dynamic>{};
+                          : <String, dynamic>{};
 
                   final name =
                       referral['name']
@@ -1309,71 +1238,50 @@ class _ReferralTabState
                       bottom: 10,
                     ),
                     padding:
-                        const EdgeInsets.all(
-                      15,
-                    ),
-                    decoration:
-                        BoxDecoration(
+                        const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius:
-                          BorderRadius.circular(
-                        16,
-                      ),
+                          BorderRadius.circular(16),
                       border: Border.all(
-                        color:
-                            Colors.grey.shade200,
+                        color: Colors.grey.shade200,
                       ),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
                           backgroundColor:
-                              const Color(
-                            0xFF3B159B,
-                          ),
+                              const Color(0xFF3B159B),
                           child: Text(
-                            name
-                                .substring(
-                                  0,
-                                  1,
-                                )
-                                .toUpperCase(),
-                            style:
-                                const TextStyle(
-                              color:
-                                  Colors.white,
+                            _firstLetter(name),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                         ),
-                        const SizedBox(
-                          width: 12,
-                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
+                                CrossAxisAlignment.start,
                             children: [
                               Text(
                                 name,
-                                style:
-                                    const TextStyle(
+                                style: const TextStyle(
                                   fontWeight:
-                                      FontWeight
-                                          .bold,
+                                      FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(
-                                height: 3,
-                              ),
+                              const SizedBox(height: 3),
                               Text(
                                 referral['email']
                                         ?.toString() ??
                                     '',
                                 style:
                                     const TextStyle(
-                                  color:
-                                      Colors.grey,
+                                  color: Colors.grey,
                                   fontSize: 12,
                                 ),
                               ),
@@ -1428,6 +1336,16 @@ class _ReferralTabState
         ) ??
         0;
   }
+
+  String _firstLetter(String value) {
+    final name = value.trim();
+
+    if (name.isEmpty) {
+      return 'U';
+    }
+
+    return name.substring(0, 1).toUpperCase();
+  }
 }
 
 // ============================================================
@@ -1442,65 +1360,49 @@ class WalletTab extends StatelessWidget {
     return SafeArea(
       child: Center(
         child: Padding(
-          padding:
-              const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 padding:
-                    const EdgeInsets.all(
-                  20,
-                ),
-                decoration:
-                    BoxDecoration(
+                    const EdgeInsets.all(20),
+                decoration: BoxDecoration(
                   color:
-                      const Color(
-                    0xFF3B159B,
-                  ).withOpacity(0.10),
-                  shape:
-                      BoxShape.circle,
+                      const Color(0xFF3B159B)
+                          .withValues(
+                    alpha: 0.10,
+                  ),
+                  shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons
                       .account_balance_wallet_rounded,
                   size: 55,
-                  color:
-                      Color(0xFF3B159B),
+                  color: Color(0xFF3B159B),
                 ),
               ),
-              const SizedBox(
-                height: 20,
-              ),
+              const SizedBox(height: 20),
               const Text(
                 'Wallet',
                 style: TextStyle(
                   fontSize: 26,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(
-                height: 8,
-              ),
+              const SizedBox(height: 8),
               const Text(
                 'COMING SOON',
                 style: TextStyle(
-                  color:
-                      Color(0xFF3B159B),
-                  fontWeight:
-                      FontWeight.bold,
+                  color: Color(0xFF3B159B),
+                  fontWeight: FontWeight.bold,
                   letterSpacing: 1,
                 ),
               ),
-              const SizedBox(
-                height: 12,
-              ),
+              const SizedBox(height: 12),
               const Text(
                 'Wallet and withdrawal features will be available in a future update.',
-                textAlign:
-                    TextAlign.center,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
                 ),
@@ -1524,16 +1426,11 @@ class SettingsTab extends StatelessWidget {
     BuildContext context,
   ) async {
     try {
-      final prefs =
-          await SharedPreferencesHelper
-              .instance();
-
-      await prefs.clear();
+      await ApiService.clearToken();
 
       if (!context.mounted) return;
 
-      Navigator.of(context)
-          .pushAndRemoveUntil(
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) =>
               const LoginFallbackScreen(),
@@ -1559,38 +1456,83 @@ class SettingsTab extends StatelessWidget {
     }
   }
 
+  Future<void> _showLogoutDialog(
+    BuildContext context,
+  ) async {
+    final shouldLogout =
+        await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Log out?',
+          ),
+          content: const Text(
+            'Are you sure you want to log out of POWER FAN NETWORK?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext)
+                    .pop(false);
+              },
+              child: const Text(
+                'CANCEL',
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext)
+                    .pop(true);
+              },
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    Colors.red,
+                foregroundColor:
+                    Colors.white,
+              ),
+              child: const Text(
+                'LOG OUT',
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout == true &&
+        context.mounted) {
+      await _logout(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: ListView(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         children: [
           const Text(
             'Settings',
             style: TextStyle(
               fontSize: 25,
-              fontWeight:
-                  FontWeight.bold,
-              color:
-                  Color(0xFF241064),
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF241064),
             ),
           ),
 
           const SizedBox(height: 20),
 
           _settingTile(
-            icon:
-                Icons.person_outline,
+            icon: Icons.person_outline,
             title: 'Account',
-            subtitle:
-                'Manage your account',
+            subtitle: 'Manage your account',
             onTap: () {},
           ),
 
           _settingTile(
-            icon:
-                Icons.security_outlined,
+            icon: Icons.security_outlined,
             title: 'Security',
             subtitle:
                 'Password and account security',
@@ -1598,8 +1540,7 @@ class SettingsTab extends StatelessWidget {
           ),
 
           _settingTile(
-            icon:
-                Icons.language_outlined,
+            icon: Icons.language_outlined,
             title: 'Language',
             subtitle:
                 'App language settings',
@@ -1607,8 +1548,7 @@ class SettingsTab extends StatelessWidget {
           ),
 
           _settingTile(
-            icon:
-                Icons.info_outline,
+            icon: Icons.info_outline,
             title: 'About',
             subtitle:
                 'POWER FAN NETWORK',
@@ -1642,8 +1582,7 @@ class SettingsTab extends StatelessWidget {
                 'LOG OUT',
                 style: TextStyle(
                   color: Colors.red,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               style:
@@ -1654,9 +1593,7 @@ class SettingsTab extends StatelessWidget {
                 shape:
                     RoundedRectangleBorder(
                   borderRadius:
-                      BorderRadius.circular(
-                    14,
-                  ),
+                      BorderRadius.circular(14),
                 ),
               ),
             ),
@@ -1674,27 +1611,141 @@ class SettingsTab extends StatelessWidget {
   }) {
     return Container(
       margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
+          const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
             BorderRadius.circular(16),
         border: Border.all(
-          color:
-              Colors.grey.shade200,
+          color: Colors.grey.shade200,
         ),
       ),
       child: ListTile(
         onTap: onTap,
         leading: Icon(
           icon,
-          color:
-              const Color(0xFF3B159B),
+          color: const Color(0xFF3B159B),
         ),
         title: Text(
           title,
           style: const TextStyle(
-            fontWeight:
-               
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(
+            color: Colors.grey,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.chevron_right,
+          color: Colors.grey,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// LOGIN FALLBACK SCREEN
+// ============================================================
+//
+// This replaces the missing LoginFallbackScreen that caused
+// the previous analyzer error.
+//
+// If your project already has a real AuthPage/LoginPage,
+// you can later replace this screen with that page.
+//
+
+class LoginFallbackScreen extends StatelessWidget {
+  const LoginFallbackScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F8FC),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(0xFF3B159B)
+                            .withValues(
+                      alpha: 0.10,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons
+                        .account_circle_outlined,
+                    size: 70,
+                    color:
+                        Color(0xFF3B159B),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'POWER FAN NETWORK',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight:
+                        FontWeight.bold,
+                    color:
+                        Color(0xFF241064),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'You have been logged out.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context)
+                          .pop();
+                    },
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          const Color(
+                        0xFF3B159B,
+                      ),
+                      foregroundColor:
+                          Colors.white,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          14,
+                        ),
+                      ),
+                    ),
+                    child: const Text(
+                      'GO BACK',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
