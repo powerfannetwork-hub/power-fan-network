@@ -1,27 +1,75 @@
 // ============================================================
 // POWER FAN NETWORK
-// CUSTOM AUTH ROUTES
+// FILE: backend/src/routes/auth_routes.js
 // ============================================================
+// Authentication:
+//   Custom JWT + bcrypt
 //
-// Firebase Authentication: NOT USED
-// Authentication: JWT + bcrypt
-// Database: Firestore
+// Database:
+//   Firestore
+//
+// Firebase Authentication:
+//   NOT USED
 // ============================================================
 
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-const { getDb } = require("../firebase");
-const { authenticate } = require("../../middleware/auth");
-
 const router = express.Router();
+
+// ============================================================
+// CONFIG
+// ============================================================
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
   "CHANGE_THIS_SECRET_IN_PRODUCTION";
 
 const JWT_EXPIRES_IN = "30d";
+
+// ============================================================
+// FIRESTORE
+// ============================================================
+
+let db;
+
+function getDatabase() {
+  if (db) {
+    return db;
+  }
+
+  try {
+    const admin = require("firebase-admin");
+
+    if (!admin.apps.length) {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const serviceAccount = JSON.parse(
+          process.env.FIREBASE_SERVICE_ACCOUNT
+        );
+
+        admin.initializeApp({
+          credential: admin.credential.cert(
+            serviceAccount
+          ),
+        });
+      } else {
+        admin.initializeApp();
+      }
+    }
+
+    db = admin.firestore();
+
+    return db;
+  } catch (error) {
+    console.error(
+      "Firestore initialization error:",
+      error.message
+    );
+
+    return null;
+  }
+}
 
 // ============================================================
 // HELPERS
@@ -35,6 +83,12 @@ function cleanEmail(email) {
 
 function cleanName(name) {
   return String(name || "").trim();
+}
+
+function cleanReferralCode(code) {
+  return String(code || "")
+    .trim()
+    .toUpperCase();
 }
 
 function generateUserId() {
@@ -61,6 +115,29 @@ function generateReferralCode(name) {
   return `${prefix || "FAN"}${random}`;
 }
 
+async function generateUniqueReferralCode(
+  database,
+  name
+) {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateReferralCode(name);
+
+    const result = await database
+      .collection("users")
+      .where("referralCode", "==", code)
+      .limit(1)
+      .get();
+
+    if (result.empty) {
+      return code;
+    }
+  }
+
+  throw new Error(
+    "Could not generate a unique referral code."
+  );
+}
+
 function createToken(user) {
   return jwt.sign(
     {
@@ -75,8 +152,6 @@ function createToken(user) {
 }
 
 function publicUser(user) {
-  if (!user) return null;
-
   return {
     id: user.id,
     name: user.name || "",
@@ -88,26 +163,32 @@ function publicUser(user) {
     referredBy:
       user.referredBy || null,
 
-    fanBalance:
-      Number(user.fanBalance || 0),
+    fanBalance: Number(
+      user.fanBalance || 0
+    ),
 
-    afamBalance:
-      Number(user.afamBalance || 0),
+    afamBalance: Number(
+      user.afamBalance || 0
+    ),
 
-    miningRate:
-      Number(user.miningRate || 0.2),
+    miningRate: Number(
+      user.miningRate || 0.2
+    ),
 
-    activeReferrals:
-      Number(user.activeReferrals || 0),
+    activeReferrals: Number(
+      user.activeReferrals || 0
+    ),
 
-    dailyAdsWatched:
-      Number(user.dailyAdsWatched || 0),
+    dailyAdsWatched: Number(
+      user.dailyAdsWatched || 0
+    ),
 
-    adBoost:
-      Number(user.adBoost || 0),
+    adBoost: Number(
+      user.adBoost || 0
+    ),
 
     miningActive:
-      Boolean(user.miningActive),
+      user.miningActive === true,
 
     miningStartedAt:
       user.miningStartedAt || null,
@@ -115,25 +196,24 @@ function publicUser(user) {
     miningEndsAt:
       user.miningEndsAt || null,
 
-    consecutiveCheckIns:
-      Number(
-        user.consecutiveCheckIns || 0
-      ),
+    consecutiveCheckIns: Number(
+      user.consecutiveCheckIns || 0
+    ),
 
     kyc1Eligible:
-      Boolean(user.kyc1Eligible),
+      user.kyc1Eligible === true,
 
     kyc1Verified:
-      Boolean(user.kyc1Verified),
+      user.kyc1Verified === true,
 
     kyc2Eligible:
-      Boolean(user.kyc2Eligible),
+      user.kyc2Eligible === true,
 
     kyc2Verified:
-      Boolean(user.kyc2Verified),
+      user.kyc2Verified === true,
 
     kyc3Verified:
-      Boolean(user.kyc3Verified),
+      user.kyc3Verified === true,
 
     createdAt:
       user.createdAt || null,
@@ -143,307 +223,438 @@ function publicUser(user) {
   };
 }
 
-function validEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-    email
-  );
+function errorMessage(error) {
+  if (
+    error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+
+  return "An unexpected error occurred.";
 }
 
 // ============================================================
 // REGISTER
 // ============================================================
 
-router.post(
-  "/register",
-  async (req, res) => {
-    try {
-      const db = getDb();
+router.post("/register", async (req, res) => {
+  try {
+    const database = getDatabase();
 
-      if (!db) {
-        return res.status(503).json({
-          success: false,
-          message:
-            "Database is not connected.",
-        });
-      }
+    if (!database) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Database is not connected.",
+      });
+    }
 
-      const name =
-        cleanName(req.body.name);
+    const name = cleanName(
+      req.body.name
+    );
 
-      const email =
-        cleanEmail(req.body.email);
+    const email = cleanEmail(
+      req.body.email
+    );
 
-      const password =
-        String(req.body.password || "");
+    const password = String(
+      req.body.password || ""
+    );
 
-      const referralCode =
-        String(
-          req.body.referralCode || ""
-        )
-          .trim()
-          .toUpperCase();
+    const referralCode =
+      cleanReferralCode(
+        req.body.referralCode
+      );
 
-      // ------------------------------------------------------
-      // VALIDATION
-      // ------------------------------------------------------
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
 
-      if (!name || !email || !password) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Name, email and password are required.",
-        });
-      }
+    if (
+      !name ||
+      !email ||
+      !password
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Name, email and password are required.",
+      });
+    }
 
-      if (name.length < 2) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Name must contain at least 2 characters.",
-        });
-      }
+    if (name.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Name must contain at least 2 characters.",
+      });
+    }
 
-      if (!validEmail(email)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid email address.",
-        });
-      }
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Password must contain at least 6 characters.",
+      });
+    }
 
-      if (password.length < 6) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Password must contain at least 6 characters.",
-        });
-      }
+    if (
+      !email.includes("@") ||
+      !email.includes(".")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid email address.",
+      });
+    }
 
-      // ------------------------------------------------------
-      // CHECK EMAIL
-      // ------------------------------------------------------
+    // --------------------------------------------------------
+    // CHECK EMAIL
+    // --------------------------------------------------------
 
-      const existing =
-        await db
+    const existingUser = await database
+      .collection("users")
+      .where("email", "==", email)
+      .limit(1)
+      .get();
+
+    if (!existingUser.empty) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This email is already registered.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // FIND REFERRER
+    // --------------------------------------------------------
+
+    let referrerDoc = null;
+
+    if (referralCode) {
+      const referrerQuery =
+        await database
           .collection("users")
-          .where("email", "==", email)
+          .where(
+            "referralCode",
+            "==",
+            referralCode
+          )
           .limit(1)
           .get();
 
-      if (!existing.empty) {
-        return res.status(409).json({
+      if (referrerQuery.empty) {
+        return res.status(400).json({
           success: false,
           message:
-            "This email is already registered.",
+            "Invalid referral code.",
         });
       }
 
-      // ------------------------------------------------------
-      // REFERRER
-      // ------------------------------------------------------
+      referrerDoc =
+        referrerQuery.docs[0];
+    }
 
-      let referrerDoc = null;
+    // --------------------------------------------------------
+    // PASSWORD HASH
+    // --------------------------------------------------------
 
-      if (referralCode) {
-        const referrerQuery =
-          await db
+    const passwordHash =
+      await bcrypt.hash(
+        password,
+        12
+      );
+
+    // --------------------------------------------------------
+    // USER DATA
+    // --------------------------------------------------------
+
+    const userId =
+      generateUserId();
+
+    const newReferralCode =
+      await generateUniqueReferralCode(
+        database,
+        name
+      );
+
+    const now =
+      new Date().toISOString();
+
+    const newUser = {
+      id: userId,
+
+      name,
+      email,
+
+      passwordHash,
+
+      referralCode:
+        newReferralCode,
+
+      referredBy:
+        referrerDoc
+          ? referrerDoc.id
+          : null,
+
+      // New user receives 20 FAN
+      fanBalance:
+        referrerDoc ? 20 : 0,
+
+      afamBalance: 0,
+
+      // Base mining rate
+      miningRate: 0.2,
+
+      activeReferrals: 0,
+
+      dailyAdsWatched: 0,
+
+      adBoost: 0,
+
+      miningActive: false,
+
+      miningStartedAt: null,
+
+      miningEndsAt: null,
+
+      consecutiveCheckIns: 0,
+
+      kyc1Eligible: false,
+
+      kyc1Verified: false,
+
+      kyc2Eligible: false,
+
+      kyc2Verified: false,
+
+      kyc3Verified: false,
+
+      createdAt: now,
+
+      updatedAt: now,
+    };
+
+    // --------------------------------------------------------
+    // TRANSACTION
+    // --------------------------------------------------------
+
+    await database.runTransaction(
+      async (transaction) => {
+        const userRef =
+          database
             .collection("users")
-            .where(
-              "referralCode",
-              "==",
-              referralCode
-            )
-            .limit(1)
-            .get();
+            .doc(userId);
 
-        if (referrerQuery.empty) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Invalid referral code.",
-          });
-        }
-
-        referrerDoc =
-          referrerQuery.docs[0];
-      }
-
-      // ------------------------------------------------------
-      // PASSWORD HASH
-      // ------------------------------------------------------
-
-      const passwordHash =
-        await bcrypt.hash(
-          password,
-          12
+        // Create new user
+        transaction.set(
+          userRef,
+          newUser
         );
 
-      // ------------------------------------------------------
-      // USER
-      // ------------------------------------------------------
+        // ----------------------------------------------------
+        // REFERRER REWARD
+        // ----------------------------------------------------
 
-      const userId =
-        generateUserId();
+        if (referrerDoc) {
+          const referrer =
+            referrerDoc.data();
 
-      const newReferralCode =
-        generateReferralCode(name);
-
-      const now =
-        new Date().toISOString();
-
-      const newUser = {
-        id: userId,
-
-        name,
-        email,
-
-        passwordHash,
-
-        referralCode:
-          newReferralCode,
-
-        referredBy:
-          referrerDoc
-            ? referrerDoc.id
-            : null,
-
-        // New user receives 20 FAN
-        fanBalance:
-          referrerDoc ? 20 : 0,
-
-        afamBalance: 0,
-
-        // Base mining rate
-        miningRate: 0.2,
-
-        // Important:
-        // Referral is NOT active until
-        // the referred user starts mining.
-        activeReferrals: 0,
-
-        dailyAdsWatched: 0,
-
-        adBoost: 0,
-
-        miningActive: false,
-
-        miningStartedAt: null,
-
-        miningEndsAt: null,
-
-        // Used to prevent counting
-        // same mining session twice.
-        referralActiveForSession:
-          false,
-
-        consecutiveCheckIns: 0,
-
-        kyc1Eligible: false,
-        kyc1Verified: false,
-
-        kyc2Eligible: false,
-        kyc2Verified: false,
-
-        kyc3Verified: false,
-
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      // ------------------------------------------------------
-      // TRANSACTION
-      // ------------------------------------------------------
-
-      await db.runTransaction(
-        async (transaction) => {
-          const userRef =
-            db
-              .collection("users")
-              .doc(userId);
-
-          transaction.set(
-            userRef,
-            newUser
-          );
-
-          /*
-           * Important:
-           *
-           * Inviter gets 5 FAN for successful
-           * referral.
-           *
-           * But activeReferrals remains 0
-           * until the referred user actually
-           * starts mining.
-           */
-
-          if (referrerDoc) {
-            const referrerData =
-              referrerDoc.data();
-
-            const balance =
-              Number(
-                referrerData.fanBalance ||
-                  0
-              );
-
-            transaction.update(
-              referrerDoc.ref,
-              {
-                fanBalance:
-                  balance + 5,
-
-                updatedAt: now,
-              }
+          const currentBalance =
+            Number(
+              referrer.fanBalance || 0
             );
-          }
+
+          const currentReferrals =
+            Number(
+              referrer.activeReferrals ||
+                0
+            );
+
+          const newReferrals =
+            currentReferrals + 1;
+
+          const newMiningRate =
+            0.2 +
+            newReferrals * 0.02;
+
+          transaction.update(
+            referrerDoc.ref,
+            {
+              fanBalance:
+                currentBalance + 5,
+
+              activeReferrals:
+                newReferrals,
+
+              miningRate:
+                newMiningRate,
+
+              updatedAt: now,
+            }
+          );
         }
-      );
+      }
+    );
 
-      // ------------------------------------------------------
-      // TOKEN
-      // ------------------------------------------------------
+    // --------------------------------------------------------
+    // TOKEN
+    // --------------------------------------------------------
 
-      const token =
-        createToken(newUser);
+    const token =
+      createToken(newUser);
 
-      return res.status(201).json({
-        success: true,
+    return res.status(201).json({
+      success: true,
 
-        message:
-          "Account created successfully.",
+      message:
+        "Account created successfully.",
 
-        token,
+      token,
 
-        user:
-          publicUser(newUser),
-      });
-    } catch (error) {
-      console.error(
-        "REGISTER ERROR:",
-        error
-      );
+      user:
+        publicUser(newUser),
+    });
+  } catch (error) {
+    console.error(
+      "REGISTER ERROR:",
+      error
+    );
 
-      return res.status(500).json({
-        success: false,
-        message:
-          "Registration failed.",
-      });
-    }
+    return res.status(500).json({
+      success: false,
+      message:
+        "Registration failed.",
+    });
   }
-);
+});
 
 // ============================================================
 // LOGIN
 // ============================================================
 
-router.post(
-  "/login",
+router.post("/login", async (req, res) => {
+  try {
+    const database = getDatabase();
+
+    if (!database) {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Database is not connected.",
+      });
+    }
+
+    const email = cleanEmail(
+      req.body.email
+    );
+
+    const password = String(
+      req.body.password || ""
+    );
+
+    if (
+      !email ||
+      !password
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Email and password are required.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // FIND USER
+    // --------------------------------------------------------
+
+    const result = await database
+      .collection("users")
+      .where("email", "==", email)
+      .limit(1)
+      .get();
+
+    if (result.empty) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Incorrect email or password.",
+      });
+    }
+
+    const document =
+      result.docs[0];
+
+    const user = {
+      id: document.id,
+      ...document.data(),
+    };
+
+    // --------------------------------------------------------
+    // CHECK PASSWORD
+    // --------------------------------------------------------
+
+    const passwordValid =
+      await bcrypt.compare(
+        password,
+        user.passwordHash || ""
+      );
+
+    if (!passwordValid) {
+      return res.status(401).json({
+        success: false,
+        message:
+          "Incorrect email or password.",
+      });
+    }
+
+    // --------------------------------------------------------
+    // TOKEN
+    // --------------------------------------------------------
+
+    const token =
+      createToken(user);
+
+    return res.json({
+      success: true,
+
+      message:
+        "Login successful.",
+
+      token,
+
+      user:
+        publicUser(user),
+    });
+  } catch (error) {
+    console.error(
+      "LOGIN ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Login failed.",
+    });
+  }
+});
+
+// ============================================================
+// VERIFY TOKEN / CURRENT USER
+// ============================================================
+
+router.get(
+  "/me",
   async (req, res) => {
     try {
-      const db = getDb();
+      const database =
+        getDatabase();
 
-      if (!db) {
+      if (!database) {
         return res.status(503).json({
           success: false,
           message:
@@ -451,119 +662,95 @@ router.post(
         });
       }
 
-      const email =
-        cleanEmail(req.body.email);
+      const authorization =
+        req.headers.authorization ||
+        "";
 
-      const password =
-        String(req.body.password || "");
-
-      if (!email || !password) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Email and password are required.",
-        });
-      }
-
-      const query =
-        await db
-          .collection("users")
-          .where("email", "==", email)
-          .limit(1)
-          .get();
-
-      if (query.empty) {
+      if (
+        !authorization.startsWith(
+          "Bearer "
+        )
+      ) {
         return res.status(401).json({
           success: false,
           message:
-            "Incorrect email or password.",
-        });
-      }
-
-      const doc =
-        query.docs[0];
-
-      const user = {
-        id: doc.id,
-        ...doc.data(),
-      };
-
-      const valid =
-        await bcrypt.compare(
-          password,
-          user.passwordHash || ""
-        );
-
-      if (!valid) {
-        return res.status(401).json({
-          success: false,
-          message:
-            "Incorrect email or password.",
+            "Authentication token is required.",
         });
       }
 
       const token =
-        createToken(user);
+        authorization
+          .substring(7)
+          .trim();
+
+      if (!token) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Authentication token is required.",
+        });
+      }
+
+      let decoded;
+
+      try {
+        decoded =
+          jwt.verify(
+            token,
+            JWT_SECRET
+          );
+      } catch (_) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Invalid or expired authentication token.",
+        });
+      }
+
+      if (!decoded.userId) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Invalid authentication token.",
+        });
+      }
+
+      const userDoc =
+        await database
+          .collection("users")
+          .doc(decoded.userId)
+          .get();
+
+      if (!userDoc.exists) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "User account no longer exists.",
+        });
+      }
+
+      const user = {
+        id: userDoc.id,
+        ...userDoc.data(),
+      };
 
       return res.json({
         success: true,
-
-        message:
-          "Login successful.",
-
-        token,
-
         user:
           publicUser(user),
       });
     } catch (error) {
       console.error(
-        "LOGIN ERROR:",
+        "ME ERROR:",
         error
       );
 
       return res.status(500).json({
         success: false,
         message:
-          "Login failed.",
+          "Could not load account.",
       });
     }
-  }
-);
-
-// ============================================================
-// CURRENT USER
-// ============================================================
-
-router.get(
-  "/me",
-  authenticate,
-  async (req, res) => {
-    return res.json({
-      success: true,
-      user:
-        publicUser(req.user),
-    });
-  }
-);
-
-// ============================================================
-// LOGOUT
-// ============================================================
-//
-// JWT logout happens on the client by deleting
-// the locally stored token.
-// ============================================================
-
-router.post(
-  "/logout",
-  authenticate,
-  async (req, res) => {
-    return res.json({
-      success: true,
-      message:
-        "Logged out successfully.",
-    });
   }
 );
 
@@ -573,16 +760,53 @@ router.post(
 
 router.post(
   "/change-password",
-  authenticate,
   async (req, res) => {
     try {
-      const db = getDb();
+      const database =
+        getDatabase();
 
-      if (!db) {
+      if (!database) {
         return res.status(503).json({
           success: false,
           message:
             "Database is not connected.",
+        });
+      }
+
+      const authorization =
+        req.headers.authorization ||
+        "";
+
+      if (
+        !authorization.startsWith(
+          "Bearer "
+        )
+      ) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Authentication token is required.",
+        });
+      }
+
+      const token =
+        authorization
+          .substring(7)
+          .trim();
+
+      let decoded;
+
+      try {
+        decoded =
+          jwt.verify(
+            token,
+            JWT_SECRET
+          );
+      } catch (_) {
+        return res.status(401).json({
+          success: false,
+          message:
+            "Invalid or expired authentication token.",
         });
       }
 
@@ -594,7 +818,8 @@ router.post(
 
       const newPassword =
         String(
-          req.body.newPassword || ""
+          req.body.newPassword ||
+            ""
         );
 
       if (
@@ -616,11 +841,26 @@ router.post(
         });
       }
 
+      const userDoc =
+        await database
+          .collection("users")
+          .doc(decoded.userId)
+          .get();
+
+      if (!userDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "User account not found.",
+        });
+      }
+
+      const user = userDoc.data();
+
       const valid =
         await bcrypt.compare(
           currentPassword,
-          req.user.passwordHash ||
-            ""
+          user.passwordHash || ""
         );
 
       if (!valid) {
@@ -637,11 +877,12 @@ router.post(
           12
         );
 
-      await db
+      await database
         .collection("users")
-        .doc(req.userId)
+        .doc(decoded.userId)
         .update({
           passwordHash,
+
           updatedAt:
             new Date().toISOString(),
         });
@@ -665,5 +906,29 @@ router.post(
     }
   }
 );
+
+// ============================================================
+// LOGOUT
+// ============================================================
+
+router.post(
+  "/logout",
+  async (req, res) => {
+    // JWT logout is completed by
+    // deleting the token from the app.
+    //
+    // There is no Firebase Auth session here.
+
+    return res.json({
+      success: true,
+      message:
+        "Logged out successfully.",
+    });
+  }
+);
+
+// ============================================================
+// EXPORT
+// ============================================================
 
 module.exports = router;
