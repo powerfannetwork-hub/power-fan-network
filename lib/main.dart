@@ -11,12 +11,9 @@ import 'screens/main_navigation_screen.dart';
 /// MAIN.DART
 ///
 /// AUTHENTICATION:
-/// Custom Backend Authentication
+/// Supabase Authentication
 ///
-/// DATABASE:
-/// Firestore (handled by backend only)
-///
-/// FIREBASE AUTHENTICATION:
+/// FIREBASE AUTH:
 /// NOT USED
 /// ============================================================
 
@@ -35,40 +32,22 @@ void main() async {
 }
 
 /// ============================================================
-/// BACKEND CONFIG
-/// ============================================================
-///
-/// IMPORTANT:
-/// Bayan ka gama hosting backend, ka maye gurbin URL ɗin
-/// da actual backend URL ɗinka.
-///
-/// Misali:
-///
-/// https://power-fan-network-api.example.com
-///
-/// Kada ka saka /api a ƙarshen URL.
-///
-/// API routes za su kasance:
-///
-/// /api/auth/register
-/// /api/auth/login
-/// /api/auth/me
-/// /api/auth/logout
-///
+/// SUPABASE CONFIGURATION
 /// ============================================================
 
-class BackendConfig {
-  static const String baseUrl = String.fromEnvironment(
-    'BACKEND_URL',
-    defaultValue: 'https://YOUR-BACKEND-DOMAIN.com',
-  );
+class SupabaseConfig {
+  static const String url =
+      'https://fihtqejqpycuvebufjhc.supabase.co';
 
-  static const Duration requestTimeout =
+  static const String publishableKey =
+      'sb_publishable_KVf397QgYsgFi_D33mCcjw_5lV1ycCr';
+
+  static const Duration timeout =
       Duration(seconds: 30);
 }
 
 /// ============================================================
-/// USER MODEL
+/// BACKEND USER
 /// ============================================================
 
 class BackendUser {
@@ -80,18 +59,14 @@ class BackendUser {
 
   final double fanBalance;
   final double afamBalance;
-
   final double miningRate;
 
   final int activeReferrals;
-
   final int dailyAdsWatched;
+
   final double adBoost;
 
   final bool miningActive;
-
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
 
   BackendUser({
     required this.id,
@@ -106,8 +81,6 @@ class BackendUser {
     required this.dailyAdsWatched,
     required this.adBoost,
     required this.miningActive,
-    required this.createdAt,
-    required this.updatedAt,
   });
 
   factory BackendUser.fromJson(
@@ -130,9 +103,9 @@ class BackendUser {
 
       miningRate:
           _toDouble(
-            json['miningRate'],
-            fallback: 0.2,
-          ),
+        json['miningRate'],
+        fallback: 0.2,
+      ),
 
       activeReferrals:
           _toInt(json['activeReferrals']),
@@ -145,12 +118,6 @@ class BackendUser {
 
       miningActive:
           json['miningActive'] == true,
-
-      createdAt:
-          _parseDate(json['createdAt']),
-
-      updatedAt:
-          _parseDate(json['updatedAt']),
     );
   }
 
@@ -158,7 +125,9 @@ class BackendUser {
     dynamic value, {
     double fallback = 0,
   }) {
-    if (value == null) return fallback;
+    if (value == null) {
+      return fallback;
+    }
 
     if (value is num) {
       return value.toDouble();
@@ -170,8 +139,12 @@ class BackendUser {
         fallback;
   }
 
-  static int _toInt(dynamic value) {
-    if (value == null) return 0;
+  static int _toInt(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return 0;
+    }
 
     if (value is num) {
       return value.toInt();
@@ -182,45 +155,42 @@ class BackendUser {
         ) ??
         0;
   }
-
-  static DateTime? _parseDate(
-    dynamic value,
-  ) {
-    if (value == null) return null;
-
-    return DateTime.tryParse(
-      value.toString(),
-    );
-  }
 }
 
 /// ============================================================
-/// BACKEND SESSION
+/// AUTH SESSION
 /// ============================================================
 
 class BackendSession extends ChangeNotifier {
   static const String _tokenKey =
-      'power_fan_backend_token';
+      'power_fan_auth_token';
+
+  static const String _userKey =
+      'power_fan_user';
 
   String? _token;
   BackendUser? _user;
 
   bool _loading = true;
 
+  String? _error;
+
   String? get token => _token;
 
   BackendUser? get user => _user;
+
+  bool get loading => _loading;
+
+  String? get error => _error;
 
   bool get isAuthenticated =>
       _token != null &&
       _token!.isNotEmpty &&
       _user != null;
 
-  bool get loading => _loading;
-
-  /// ----------------------------------------------------------
-  /// INITIALIZE SESSION
-  /// ----------------------------------------------------------
+  /// ==========================================================
+  /// INITIALIZE
+  /// ==========================================================
 
   Future<void> initialize() async {
     _loading = true;
@@ -233,6 +203,9 @@ class BackendSession extends ChangeNotifier {
       final savedToken =
           prefs.getString(_tokenKey);
 
+      final savedUser =
+          prefs.getString(_userKey);
+
       if (savedToken == null ||
           savedToken.trim().isEmpty) {
         _token = null;
@@ -242,86 +215,120 @@ class BackendSession extends ChangeNotifier {
 
       _token = savedToken;
 
-      final user =
-          await BackendApi.getCurrentUser(
+      if (savedUser != null &&
+          savedUser.isNotEmpty) {
+        try {
+          final decoded =
+              jsonDecode(savedUser);
+
+          if (decoded is Map) {
+            _user =
+                BackendUser.fromJson(
+              Map<String, dynamic>.from(
+                decoded,
+              ),
+            );
+          }
+        } catch (error) {
+          debugPrint(
+            'Saved user decode error: $error',
+          );
+        }
+      }
+
+      final currentUser =
+          await SupabaseAuth.getCurrentUser(
         savedToken,
       );
 
-      if (user == null) {
+      if (currentUser == null) {
         await clearSession();
       } else {
-        _user = user;
+        _user =
+            _createUserFromSupabase(
+          currentUser,
+          oldUser: _user,
+        );
+
+        await _saveUser();
       }
     } catch (error) {
       debugPrint(
-        'Session initialization error: $error',
+        'AUTH INITIALIZE ERROR: $error',
       );
 
-      _token = null;
-      _user = null;
-
-      final prefs =
-          await SharedPreferences.getInstance();
-
-      await prefs.remove(_tokenKey);
+      // Kada mu hana app saboda network error.
+      // Za mu bar local session idan tana nan.
     } finally {
       _loading = false;
       notifyListeners();
     }
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// LOGIN
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   Future<String?> login({
     required String email,
     required String password,
   }) async {
+    _error = null;
+    notifyListeners();
+
     try {
       final result =
-          await BackendApi.login(
+          await SupabaseAuth.login(
         email: email,
         password: password,
       );
 
       if (result == null) {
-        return 'Login failed.';
+        return _setError(
+          'Login failed. Please check your email and password.',
+        );
       }
 
-      final token =
-          result['token']?.toString();
+      final accessToken =
+          result['access_token']?.toString();
 
       final userJson =
           result['user'];
 
-      if (token == null ||
-          token.isEmpty ||
+      if (accessToken == null ||
+          accessToken.isEmpty ||
           userJson is! Map) {
-        return 'Backend returned an invalid login response.';
+        return _setError(
+          'Invalid response from authentication server.',
+        );
       }
 
       final user =
-          BackendUser.fromJson(
+          _createUserFromSupabase(
         Map<String, dynamic>.from(
           userJson,
         ),
       );
 
       await saveSession(
-        token,
+        accessToken,
         user,
       );
 
+      _error = null;
+      notifyListeners();
+
       return null;
     } catch (error) {
-      return _friendlyError(error);
+      return _setError(
+        _friendlyError(error),
+      );
     }
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// REGISTER
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   Future<String?> register({
     required String name,
@@ -329,9 +336,12 @@ class BackendSession extends ChangeNotifier {
     required String password,
     String? referralCode,
   }) async {
+    _error = null;
+    notifyListeners();
+
     try {
       final result =
-          await BackendApi.register(
+          await SupabaseAuth.register(
         name: name,
         email: email,
         password: password,
@@ -339,42 +349,62 @@ class BackendSession extends ChangeNotifier {
       );
 
       if (result == null) {
-        return 'Registration failed.';
+        return _setError(
+          'Registration failed. Please try again.',
+        );
       }
 
-      final token =
-          result['token']?.toString();
+      final accessToken =
+          result['access_token']?.toString();
 
       final userJson =
           result['user'];
 
-      if (token == null ||
-          token.isEmpty ||
-          userJson is! Map) {
-        return 'Backend returned an invalid registration response.';
+      // --------------------------------------------------------
+      // EMAIL CONFIRMATION
+      // --------------------------------------------------------
+
+      if (accessToken == null ||
+          accessToken.isEmpty) {
+        return _setError(
+          'Account created successfully. Please check your email to confirm your account, then login.',
+        );
+      }
+
+      if (userJson is! Map) {
+        return _setError(
+          'Account was created but user information was not returned.',
+        );
       }
 
       final user =
-          BackendUser.fromJson(
+          _createUserFromSupabase(
         Map<String, dynamic>.from(
           userJson,
         ),
+        nameOverride: name,
+        referralOverride: referralCode,
       );
 
       await saveSession(
-        token,
+        accessToken,
         user,
       );
 
+      _error = null;
+      notifyListeners();
+
       return null;
     } catch (error) {
-      return _friendlyError(error);
+      return _setError(
+        _friendlyError(error),
+      );
     }
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// SAVE SESSION
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   Future<void> saveSession(
     String token,
@@ -391,12 +421,45 @@ class BackendSession extends ChangeNotifier {
       token,
     );
 
+    await prefs.setString(
+      _userKey,
+      jsonEncode({
+        'id': user.id,
+        'name': user.name,
+        'email': user.email,
+        'referralCode':
+            user.referralCode,
+        'referredBy':
+            user.referredBy,
+        'fanBalance':
+            user.fanBalance,
+        'afamBalance':
+            user.afamBalance,
+        'miningRate':
+            user.miningRate,
+        'activeReferrals':
+            user.activeReferrals,
+        'dailyAdsWatched':
+            user.dailyAdsWatched,
+        'adBoost':
+            user.adBoost,
+        'miningActive':
+            user.miningActive,
+      }),
+    );
+
+    // Compatibility with previous ApiService.
+    await prefs.setString(
+      'power_fan_backend_token',
+      token,
+    );
+
     notifyListeners();
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// REFRESH USER
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   Future<bool> refreshUser() async {
     if (_token == null ||
@@ -405,55 +468,62 @@ class BackendSession extends ChangeNotifier {
     }
 
     try {
-      final user =
-          await BackendApi.getCurrentUser(
+      final currentUser =
+          await SupabaseAuth.getCurrentUser(
         _token!,
       );
 
-      if (user == null) {
+      if (currentUser == null) {
         await clearSession();
         return false;
       }
 
-      _user = user;
+      _user =
+          _createUserFromSupabase(
+        currentUser,
+        oldUser: _user,
+      );
+
+      await _saveUser();
+
       notifyListeners();
 
       return true;
     } catch (error) {
       debugPrint(
-        'Refresh user error: $error',
+        'REFRESH USER ERROR: $error',
       );
 
       return false;
     }
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// LOGOUT
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   Future<void> logout() async {
-    final currentToken = _token;
+    final token = _token;
 
     try {
-      if (currentToken != null &&
-          currentToken.isNotEmpty) {
-        await BackendApi.logout(
-          currentToken,
+      if (token != null &&
+          token.isNotEmpty) {
+        await SupabaseAuth.logout(
+          token,
         );
       }
     } catch (error) {
       debugPrint(
-        'Backend logout error: $error',
+        'LOGOUT ERROR: $error',
       );
     }
 
     await clearSession();
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// CLEAR SESSION
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   Future<void> clearSession() async {
     _token = null;
@@ -463,13 +533,149 @@ class BackendSession extends ChangeNotifier {
         await SharedPreferences.getInstance();
 
     await prefs.remove(_tokenKey);
+    await prefs.remove(_userKey);
+    await prefs.remove(
+      'power_fan_backend_token',
+    );
+
+    _error = null;
 
     notifyListeners();
   }
 
-  /// ----------------------------------------------------------
-  /// FRIENDLY ERROR
-  /// ----------------------------------------------------------
+  /// ==========================================================
+  /// SAVE USER
+  /// ==========================================================
+
+  Future<void> _saveUser() async {
+    if (_user == null) {
+      return;
+    }
+
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    await prefs.setString(
+      _userKey,
+      jsonEncode({
+        'id': _user!.id,
+        'name': _user!.name,
+        'email': _user!.email,
+        'referralCode':
+            _user!.referralCode,
+        'referredBy':
+            _user!.referredBy,
+        'fanBalance':
+            _user!.fanBalance,
+        'afamBalance':
+            _user!.afamBalance,
+        'miningRate':
+            _user!.miningRate,
+        'activeReferrals':
+            _user!.activeReferrals,
+        'dailyAdsWatched':
+            _user!.dailyAdsWatched,
+        'adBoost':
+            _user!.adBoost,
+        'miningActive':
+            _user!.miningActive,
+      }),
+    );
+  }
+
+  /// ==========================================================
+  /// CREATE USER
+  /// ==========================================================
+
+  BackendUser _createUserFromSupabase(
+    Map<String, dynamic> json, {
+    BackendUser? oldUser,
+    String? nameOverride,
+    String? referralOverride,
+  }) {
+    final metadata =
+        json['user_metadata'];
+
+    final metadataMap =
+        metadata is Map
+            ? Map<String, dynamic>.from(
+                metadata,
+              )
+            : <String, dynamic>{};
+
+    final name =
+        nameOverride ??
+        metadataMap['name']?.toString() ??
+        oldUser?.name ??
+        '';
+
+    final referralCode =
+        metadataMap['referralCode']
+            ?.toString() ??
+        referralOverride ??
+        oldUser?.referralCode ??
+        '';
+
+    return BackendUser(
+      id:
+          json['id']?.toString() ??
+          oldUser?.id ??
+          '',
+
+      name: name,
+
+      email:
+          json['email']?.toString() ??
+          oldUser?.email ??
+          '',
+
+      referralCode:
+          referralCode,
+
+      referredBy:
+          oldUser?.referredBy,
+
+      fanBalance:
+          oldUser?.fanBalance ??
+          0,
+
+      afamBalance:
+          oldUser?.afamBalance ??
+          0,
+
+      miningRate:
+          oldUser?.miningRate ??
+          0.2,
+
+      activeReferrals:
+          oldUser?.activeReferrals ??
+          0,
+
+      dailyAdsWatched:
+          oldUser?.dailyAdsWatched ??
+          0,
+
+      adBoost:
+          oldUser?.adBoost ??
+          0,
+
+      miningActive:
+          oldUser?.miningActive ??
+          false,
+    );
+  }
+
+  /// ==========================================================
+  /// ERROR
+  /// ==========================================================
+
+  String _setError(
+    String message,
+  ) {
+    _error = message;
+    notifyListeners();
+    return message;
+  }
 
   String _friendlyError(
     dynamic error,
@@ -480,13 +686,37 @@ class BackendSession extends ChangeNotifier {
     if (message.contains(
       'SocketException',
     )) {
-      return 'Could not connect to the backend server.';
+      return 'Could not connect to Supabase. Check your internet connection.';
     }
 
     if (message.contains(
       'TimeoutException',
     )) {
       return 'The server took too long to respond.';
+    }
+
+    if (message.contains(
+      'Invalid login credentials',
+    )) {
+      return 'Invalid email or password.';
+    }
+
+    if (message.contains(
+      'Email not confirmed',
+    )) {
+      return 'Please confirm your email before logging in.';
+    }
+
+    if (message.contains(
+      'User already registered',
+    )) {
+      return 'An account with this email already exists.';
+    }
+
+    if (message.contains(
+      'Password should be at least',
+    )) {
+      return 'Password must be at least 6 characters.';
     }
 
     return message
@@ -499,28 +729,28 @@ class BackendSession extends ChangeNotifier {
 }
 
 /// ============================================================
-/// BACKEND API
+/// SUPABASE AUTH API
 /// ============================================================
 
-class BackendApi {
-  static String get _baseUrl {
-    return BackendConfig.baseUrl
-        .replaceFirst(
-          RegExp(r'/$'),
-          '',
-        );
-  }
+class SupabaseAuth {
+  static const String _authPath =
+      '/auth/v1';
 
-  /// ----------------------------------------------------------
-  /// COMMON HEADERS
-  /// ----------------------------------------------------------
+  /// ==========================================================
+  /// HEADERS
+  /// ==========================================================
 
   static Map<String, String> _headers({
     String? token,
   }) {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+    final headers =
+        <String, String>{
+      'Content-Type':
+          'application/json',
+      'Accept':
+          'application/json',
+      'apikey':
+          SupabaseConfig.publishableKey,
     };
 
     if (token != null &&
@@ -532,39 +762,45 @@ class BackendApi {
     return headers;
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// REGISTER
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
-  static Future<Map<String, dynamic>?> register({
+  static Future<
+      Map<String, dynamic>?> register({
     required String name,
     required String email,
     required String password,
     String? referralCode,
   }) async {
-    final body = <String, dynamic>{
-      'name': name.trim(),
-      'email': email.trim().toLowerCase(),
-      'password': password,
-    };
-
-    if (referralCode != null &&
-        referralCode.trim().isNotEmpty) {
-      body['referralCode'] =
-          referralCode.trim().toUpperCase();
-    }
-
     final response =
         await http
             .post(
               Uri.parse(
-                '$_baseUrl/api/auth/register',
+                '${SupabaseConfig.url}$_authPath/signup',
               ),
               headers: _headers(),
-              body: jsonEncode(body),
+              body: jsonEncode({
+                'email':
+                    email.trim().toLowerCase(),
+                'password':
+                    password,
+                'data': {
+                  'name':
+                      name.trim(),
+                  if (referralCode != null &&
+                      referralCode
+                          .trim()
+                          .isNotEmpty)
+                    'referralCode':
+                        referralCode
+                            .trim()
+                            .toUpperCase(),
+                },
+              }),
             )
             .timeout(
-              BackendConfig.requestTimeout,
+              SupabaseConfig.timeout,
             );
 
     return _handleResponse(
@@ -572,11 +808,12 @@ class BackendApi {
     );
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// LOGIN
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
-  static Future<Map<String, dynamic>?> login({
+  static Future<
+      Map<String, dynamic>?> login({
     required String email,
     required String password,
   }) async {
@@ -584,17 +821,18 @@ class BackendApi {
         await http
             .post(
               Uri.parse(
-                '$_baseUrl/api/auth/login',
+                '${SupabaseConfig.url}$_authPath/token?grant_type=password',
               ),
               headers: _headers(),
               body: jsonEncode({
                 'email':
                     email.trim().toLowerCase(),
-                'password': password,
+                'password':
+                    password,
               }),
             )
             .timeout(
-              BackendConfig.requestTimeout,
+              SupabaseConfig.timeout,
             );
 
     return _handleResponse(
@@ -602,237 +840,111 @@ class BackendApi {
     );
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// CURRENT USER
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
-  static Future<BackendUser?> getCurrentUser(
+  static Future<
+      Map<String, dynamic>?> getCurrentUser(
     String token,
   ) async {
     final response =
         await http
             .get(
               Uri.parse(
-                '$_baseUrl/api/auth/me',
+                '${SupabaseConfig.url}$_authPath/user',
               ),
-              headers: _headers(
+              headers:
+                  _headers(
                 token: token,
               ),
             )
             .timeout(
-              BackendConfig.requestTimeout,
+              SupabaseConfig.timeout,
             );
 
-    if (response.statusCode == 401) {
+    if (response.statusCode ==
+        401) {
       return null;
     }
 
-    final data =
-        _handleResponse(response);
-
-    if (data == null) {
-      return null;
-    }
-
-    final userJson =
-        data['user'];
-
-    if (userJson is! Map) {
-      return null;
-    }
-
-    return BackendUser.fromJson(
-      Map<String, dynamic>.from(
-        userJson,
-      ),
+    return _handleResponse(
+      response,
     );
   }
 
-  /// ----------------------------------------------------------
+  /// ==========================================================
   /// LOGOUT
-  /// ----------------------------------------------------------
+  /// ==========================================================
 
   static Future<bool> logout(
     String token,
   ) async {
-    final response =
-        await http
-            .post(
-              Uri.parse(
-                '$_baseUrl/api/auth/logout',
-              ),
-              headers: _headers(
-                token: token,
-              ),
-            )
-            .timeout(
-              BackendConfig.requestTimeout,
-            );
+    try {
+      final response =
+          await http
+              .post(
+                Uri.parse(
+                  '${SupabaseConfig.url}$_authPath/logout',
+                ),
+                headers:
+                    _headers(
+                  token: token,
+                ),
+              )
+              .timeout(
+                SupabaseConfig.timeout,
+              );
 
-    return response.statusCode >= 200 &&
-        response.statusCode < 300;
+      return response.statusCode >=
+              200 &&
+          response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
   }
 
-  /// ----------------------------------------------------------
-  /// DASHBOARD
-  /// ----------------------------------------------------------
+  /// ==========================================================
+  /// RESPONSE
+  /// ==========================================================
 
-  static Future<Map<String, dynamic>?> dashboard(
-    String token,
-  ) async {
-    final response =
-        await http
-            .get(
-              Uri.parse(
-                '$_baseUrl/api/dashboard',
-              ),
-              headers: _headers(
-                token: token,
-              ),
-            )
-            .timeout(
-              BackendConfig.requestTimeout,
-            );
-
-    return _handleResponse(
-      response,
-    );
-  }
-
-  /// ----------------------------------------------------------
-  /// START MINING
-  /// ----------------------------------------------------------
-
-  static Future<Map<String, dynamic>?> startMining(
-    String token,
-  ) async {
-    final response =
-        await http
-            .post(
-              Uri.parse(
-                '$_baseUrl/api/mining/start',
-              ),
-              headers: _headers(
-                token: token,
-              ),
-            )
-            .timeout(
-              BackendConfig.requestTimeout,
-            );
-
-    return _handleResponse(
-      response,
-    );
-  }
-
-  /// ----------------------------------------------------------
-  /// CLAIM MINING
-  /// ----------------------------------------------------------
-
-  static Future<Map<String, dynamic>?> claimMining(
-    String token,
-  ) async {
-    final response =
-        await http
-            .post(
-              Uri.parse(
-                '$_baseUrl/api/mining/claim',
-              ),
-              headers: _headers(
-                token: token,
-              ),
-            )
-            .timeout(
-              BackendConfig.requestTimeout,
-            );
-
-    return _handleResponse(
-      response,
-    );
-  }
-
-  /// ----------------------------------------------------------
-  /// REWARDED AD
-  /// ----------------------------------------------------------
-
-  static Future<Map<String, dynamic>?> watchAd(
-    String token,
-  ) async {
-    final response =
-        await http
-            .post(
-              Uri.parse(
-                '$_baseUrl/api/mining/ad',
-              ),
-              headers: _headers(
-                token: token,
-              ),
-            )
-            .timeout(
-              BackendConfig.requestTimeout,
-            );
-
-    return _handleResponse(
-      response,
-    );
-  }
-
-  /// ----------------------------------------------------------
-  /// REFERRALS
-  /// ----------------------------------------------------------
-
-  static Future<Map<String, dynamic>?> referrals(
-    String token,
-  ) async {
-    final response =
-        await http
-            .get(
-              Uri.parse(
-                '$_baseUrl/api/referrals',
-              ),
-              headers: _headers(
-                token: token,
-              ),
-            )
-            .timeout(
-              BackendConfig.requestTimeout,
-            );
-
-    return _handleResponse(
-      response,
-    );
-  }
-
-  /// ----------------------------------------------------------
-  /// RESPONSE HANDLER
-  /// ----------------------------------------------------------
-
-  static Map<String, dynamic>? _handleResponse(
+  static Map<String, dynamic>?
+      _handleResponse(
     http.Response response,
   ) {
-    Map<String, dynamic> data = {};
+    Map<String, dynamic> data =
+        {};
 
     try {
-      final decoded =
-          jsonDecode(response.body);
-
-      if (decoded is Map) {
-        data =
-            Map<String, dynamic>.from(
-          decoded,
+      if (response.body
+          .trim()
+          .isNotEmpty) {
+        final decoded =
+            jsonDecode(
+          response.body,
         );
-      }
-    } catch (_) {
-      data = {};
-    }
 
-    if (response.statusCode >= 200 &&
+        if (decoded is Map) {
+          data =
+              Map<String, dynamic>.from(
+            decoded,
+          );
+        }
+      }
+    } catch (_) {}
+
+    if (response.statusCode >=
+            200 &&
         response.statusCode < 300) {
       return data;
     }
 
     final message =
-        data['message']?.toString();
+        data['msg']?.toString() ??
+        data['message']?.toString() ??
+        data['error_description']
+            ?.toString() ??
+        data['error']?.toString();
 
     if (message != null &&
         message.isNotEmpty) {
@@ -840,7 +952,7 @@ class BackendApi {
     }
 
     throw Exception(
-      'Request failed (${response.statusCode}).',
+      'Authentication request failed (${response.statusCode}).',
     );
   }
 }
@@ -849,7 +961,8 @@ class BackendApi {
 /// MAIN APP
 /// ============================================================
 
-class PowerFanNetworkApp extends StatelessWidget {
+class PowerFanNetworkApp
+    extends StatelessWidget {
   final BackendSession session;
 
   const PowerFanNetworkApp({
@@ -868,28 +981,40 @@ class PowerFanNetworkApp extends StatelessWidget {
         _,
       ) {
         return MaterialApp(
-          debugShowCheckedModeBanner: false,
+          debugShowCheckedModeBanner:
+              false,
 
-          title: 'POWER FAN NETWORK',
+          title:
+              'POWER FAN NETWORK',
 
-          theme: ThemeData(
-            useMaterial3: true,
+          theme:
+              ThemeData(
+            useMaterial3:
+                true,
 
-            colorScheme: ColorScheme.fromSeed(
+            colorScheme:
+                ColorScheme.fromSeed(
               seedColor:
-                  const Color(0xFF3B159B),
+                  const Color(
+                0xFF3B159B,
+              ),
               brightness:
                   Brightness.light,
             ),
 
             scaffoldBackgroundColor:
-                const Color(0xFFF8F8FC),
+                const Color(
+              0xFFF8F8FC,
+            ),
 
-            fontFamily: 'Roboto',
+            fontFamily:
+                'Roboto',
           ),
 
-          home: AuthGate(
-            session: session,
+          home:
+              AuthGate(
+            session:
+                session,
           ),
         );
       },
@@ -901,7 +1026,8 @@ class PowerFanNetworkApp extends StatelessWidget {
 /// AUTH GATE
 /// ============================================================
 
-class AuthGate extends StatelessWidget {
+class AuthGate
+    extends StatelessWidget {
   final BackendSession session;
 
   const AuthGate({
@@ -928,10 +1054,11 @@ class AuthGate extends StatelessWidget {
 }
 
 /// ============================================================
-/// SPLASH SCREEN
+/// SPLASH
 /// ============================================================
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen
+    extends StatelessWidget {
   const SplashScreen({
     super.key,
   });
@@ -944,40 +1071,59 @@ class SplashScreen extends StatelessWidget {
       backgroundColor:
           Color(0xFF241064),
 
-      body: Center(
-        child: Column(
+      body:
+          Center(
+        child:
+            Column(
           mainAxisAlignment:
               MainAxisAlignment.center,
 
           children: [
             Icon(
-              Icons.bolt_rounded,
-              size: 80,
-              color: Colors.white,
+              Icons
+                  .bolt_rounded,
+              size:
+                  80,
+              color:
+                  Colors.white,
             ),
 
-            SizedBox(height: 20),
+            SizedBox(
+              height:
+                  20,
+            ),
 
             Text(
               'POWER FAN NETWORK',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
+              style:
+                  TextStyle(
+                color:
+                    Colors.white,
+                fontSize:
+                    22,
                 fontWeight:
                     FontWeight.bold,
-                letterSpacing: 1,
+                letterSpacing:
+                    1,
               ),
             ),
 
-            SizedBox(height: 30),
+            SizedBox(
+              height:
+                  30,
+            ),
 
             SizedBox(
-              width: 28,
-              height: 28,
+              width:
+                  28,
+              height:
+                  28,
               child:
                   CircularProgressIndicator(
-                strokeWidth: 3,
-                color: Colors.white,
+                strokeWidth:
+                    3,
+                color:
+                    Colors.white,
               ),
             ),
           ],
@@ -991,7 +1137,8 @@ class SplashScreen extends StatelessWidget {
 /// LOGIN PAGE
 /// ============================================================
 
-class LoginPage extends StatefulWidget {
+class LoginPage
+    extends StatefulWidget {
   final BackendSession session;
 
   const LoginPage({
@@ -1000,8 +1147,9 @@ class LoginPage extends StatefulWidget {
   });
 
   @override
-  State<LoginPage> createState() =>
-      _LoginPageState();
+  State<LoginPage>
+      createState() =>
+          _LoginPageState();
 }
 
 class _LoginPageState
@@ -1015,44 +1163,60 @@ class _LoginPageState
   final _passwordController =
       TextEditingController();
 
-  bool _loading = false;
+  bool _loading =
+      false;
 
-  bool _obscurePassword = true;
+  bool _obscurePassword =
+      true;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
+    _emailController
+        .dispose();
+
+    _passwordController
+        .dispose();
+
     super.dispose();
   }
 
-  Future<void> _login() async {
-    if (!_formKey.currentState!
+  Future<void> _login()
+      async {
+    if (!_formKey
+        .currentState!
         .validate()) {
       return;
     }
 
     setState(() {
-      _loading = true;
+      _loading =
+          true;
     });
 
     final error =
-        await widget.session.login(
+        await widget.session
+            .login(
       email:
-          _emailController.text,
+          _emailController
+              .text,
       password:
-          _passwordController.text,
+          _passwordController
+              .text,
     );
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
-      _loading = false;
+      _loading =
+          false;
     });
 
     if (error != null) {
-      _showError(error);
-      return;
+      _showError(
+        error,
+      );
     }
   }
 
@@ -1063,9 +1227,11 @@ class _LoginPageState
       context,
     ).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content:
+            Text(message),
         behavior:
-            SnackBarBehavior.floating,
+            SnackBarBehavior
+                .floating,
       ),
     );
   }
@@ -1075,60 +1241,83 @@ class _LoginPageState
     BuildContext context,
   ) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
+      body:
+          SafeArea(
+        child:
+            Center(
+          child:
+              SingleChildScrollView(
             padding:
-                const EdgeInsets.all(24),
-            child: Form(
-              key: _formKey,
+                const EdgeInsets.all(
+              24,
+            ),
 
-              child: Column(
+            child:
+                Form(
+              key:
+                  _formKey,
+
+              child:
+                  Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
+                    CrossAxisAlignment
+                        .stretch,
 
                 children: [
                   const Icon(
-                    Icons.bolt_rounded,
-                    size: 72,
+                    Icons
+                        .bolt_rounded,
+                    size:
+                        72,
                     color:
-                        Color(0xFF3B159B),
+                        Color(
+                      0xFF3B159B,
+                    ),
                   ),
 
                   const SizedBox(
-                    height: 18,
+                    height:
+                        18,
                   ),
 
                   const Text(
                     'POWER FAN NETWORK',
                     textAlign:
                         TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 25,
+                    style:
+                        TextStyle(
+                      fontSize:
+                          25,
                       fontWeight:
                           FontWeight.bold,
                       color:
-                          Color(0xFF241064),
+                          Color(
+                        0xFF241064,
+                      ),
                     ),
                   ),
 
                   const SizedBox(
-                    height: 8,
+                    height:
+                        8,
                   ),
 
                   const Text(
                     'Welcome back',
                     textAlign:
                         TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
+                    style:
+                        TextStyle(
+                      fontSize:
+                          16,
                       color:
                           Colors.grey,
                     ),
                   ),
 
                   const SizedBox(
-                    height: 35,
+                    height:
+                        35,
                   ),
 
                   TextFormField(
@@ -1141,10 +1330,12 @@ class _LoginPageState
 
                     decoration:
                         const InputDecoration(
-                      labelText: 'Email',
+                      labelText:
+                          'Email',
                       prefixIcon:
                           Icon(
-                        Icons.email_outlined,
+                        Icons
+                            .email_outlined,
                       ),
                       border:
                           OutlineInputBorder(),
@@ -1161,7 +1352,9 @@ class _LoginPageState
                       }
 
                       if (!value
-                          .contains('@')) {
+                          .contains(
+                        '@',
+                      )) {
                         return 'Enter a valid email';
                       }
 
@@ -1170,7 +1363,8 @@ class _LoginPageState
                   ),
 
                   const SizedBox(
-                    height: 16,
+                    height:
+                        16,
                   ),
 
                   TextFormField(
@@ -1193,13 +1387,17 @@ class _LoginPageState
 
                       suffixIcon:
                           IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword =
-                                !_obscurePassword;
-                          });
+                        onPressed:
+                            () {
+                          setState(
+                            () {
+                              _obscurePassword =
+                                  !_obscurePassword;
+                            },
+                          );
                         },
-                        icon: Icon(
+                        icon:
+                            Icon(
                           _obscurePassword
                               ? Icons
                                   .visibility_outlined
@@ -1225,11 +1423,13 @@ class _LoginPageState
                   ),
 
                   const SizedBox(
-                    height: 24,
+                    height:
+                        24,
                   ),
 
                   SizedBox(
-                    height: 52,
+                    height:
+                        52,
 
                     child:
                         ElevatedButton(
@@ -1262,8 +1462,10 @@ class _LoginPageState
                       child:
                           _loading
                               ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
+                                  width:
+                                      24,
+                                  height:
+                                      24,
                                   child:
                                       CircularProgressIndicator(
                                     strokeWidth:
@@ -1286,7 +1488,8 @@ class _LoginPageState
                   ),
 
                   const SizedBox(
-                    height: 18,
+                    height:
+                        18,
                   ),
 
                   TextButton(
@@ -1307,6 +1510,7 @@ class _LoginPageState
                                   ),
                                 );
                               },
+
                     child:
                         const Text(
                       "Don't have an account? Register",
@@ -1336,8 +1540,9 @@ class RegisterPage
   });
 
   @override
-  State<RegisterPage> createState() =>
-      _RegisterPageState();
+  State<RegisterPage>
+      createState() =>
+          _RegisterPageState();
 }
 
 class _RegisterPageState
@@ -1357,51 +1562,72 @@ class _RegisterPageState
   final _referralController =
       TextEditingController();
 
-  bool _loading = false;
+  bool _loading =
+      false;
 
-  bool _obscurePassword = true;
+  bool _obscurePassword =
+      true;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _referralController.dispose();
+    _nameController
+        .dispose();
+
+    _emailController
+        .dispose();
+
+    _passwordController
+        .dispose();
+
+    _referralController
+        .dispose();
+
     super.dispose();
   }
 
-  Future<void> _register() async {
-    if (!_formKey.currentState!
+  Future<void> _register()
+      async {
+    if (!_formKey
+        .currentState!
         .validate()) {
       return;
     }
 
     setState(() {
-      _loading = true;
+      _loading =
+          true;
     });
 
     final referral =
-        _referralController.text
+        _referralController
+            .text
             .trim();
 
     final error =
-        await widget.session.register(
+        await widget.session
+            .register(
       name:
-          _nameController.text,
+          _nameController
+              .text,
       email:
-          _emailController.text,
+          _emailController
+              .text,
       password:
-          _passwordController.text,
+          _passwordController
+              .text,
       referralCode:
           referral.isEmpty
               ? null
               : referral,
     );
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
-      _loading = false;
+      _loading =
+          false;
     });
 
     if (error != null) {
@@ -1409,17 +1635,20 @@ class _RegisterPageState
         context,
       ).showSnackBar(
         SnackBar(
-          content: Text(error),
+          content:
+              Text(error),
           behavior:
-              SnackBarBehavior.floating,
+              SnackBarBehavior
+                  .floating,
         ),
       );
 
       return;
     }
 
-    Navigator.of(context)
-        .pop();
+    Navigator.of(
+      context,
+    ).pop();
   }
 
   @override
@@ -1427,39 +1656,54 @@ class _RegisterPageState
     BuildContext context,
   ) {
     return Scaffold(
-      appBar: AppBar(
+      appBar:
+          AppBar(
         title:
-            const Text('Create Account'),
+            const Text(
+          'Create Account',
+        ),
       ),
 
-      body: SafeArea(
-        child: SingleChildScrollView(
+      body:
+          SafeArea(
+        child:
+            SingleChildScrollView(
           padding:
-              const EdgeInsets.all(24),
+              const EdgeInsets.all(
+            24,
+          ),
 
-          child: Form(
-            key: _formKey,
+          child:
+              Form(
+            key:
+                _formKey,
 
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment
                       .stretch,
 
               children: [
                 const SizedBox(
-                  height: 10,
+                  height:
+                      10,
                 ),
 
                 const Icon(
                   Icons
                       .person_add_alt_1_rounded,
-                  size: 64,
+                  size:
+                      64,
                   color:
-                      Color(0xFF3B159B),
+                      Color(
+                    0xFF3B159B,
+                  ),
                 ),
 
                 const SizedBox(
-                  height: 25,
+                  height:
+                      25,
                 ),
 
                 TextFormField(
@@ -1472,7 +1716,8 @@ class _RegisterPageState
 
                   decoration:
                       const InputDecoration(
-                    labelText: 'Full Name',
+                    labelText:
+                        'Full Name',
                     prefixIcon:
                         Icon(
                       Icons
@@ -1498,7 +1743,8 @@ class _RegisterPageState
                 ),
 
                 const SizedBox(
-                  height: 16,
+                  height:
+                      16,
                 ),
 
                 TextFormField(
@@ -1511,7 +1757,8 @@ class _RegisterPageState
 
                   decoration:
                       const InputDecoration(
-                    labelText: 'Email',
+                    labelText:
+                        'Email',
                     prefixIcon:
                         Icon(
                       Icons
@@ -1537,7 +1784,8 @@ class _RegisterPageState
                 ),
 
                 const SizedBox(
-                  height: 16,
+                  height:
+                      16,
                 ),
 
                 TextFormField(
@@ -1560,13 +1808,17 @@ class _RegisterPageState
 
                     suffixIcon:
                         IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _obscurePassword =
-                              !_obscurePassword;
-                        });
+                      onPressed:
+                          () {
+                        setState(
+                          () {
+                            _obscurePassword =
+                                !_obscurePassword;
+                          },
+                        );
                       },
-                      icon: Icon(
+                      icon:
+                          Icon(
                         _obscurePassword
                             ? Icons
                                 .visibility_outlined
@@ -1593,98 +1845,6 @@ class _RegisterPageState
                 ),
 
                 const SizedBox(
-                  height: 16,
-                ),
-
-                TextFormField(
-                  controller:
-                      _referralController,
-
-                  textCapitalization:
-                      TextCapitalization
-                          .characters,
-
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Referral Code (Optional)',
-
-                    prefixIcon:
-                        Icon(
-                      Icons
-                          .group_add_outlined,
-                    ),
-
-                    border:
-                        OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 24,
-                ),
-
-                SizedBox(
-                  height: 52,
-
-                  child:
-                      ElevatedButton(
-                    onPressed:
-                        _loading
-                            ? null
-                            : _register,
-
-                    style:
-                        ElevatedButton
-                            .styleFrom(
-                      backgroundColor:
-                          const Color(
-                        0xFF3B159B,
-                      ),
-
-                      foregroundColor:
-                          Colors.white,
-
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          14,
-                        ),
-                      ),
-                    ),
-
-                    child:
-                        _loading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth:
-                                      2.5,
-                                  color:
-                                      Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'CREATE ACCOUNT',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      16,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                ),
-                              ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+                  height:
+                      16,
+               
