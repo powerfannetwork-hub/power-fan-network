@@ -1,55 +1,12 @@
-// ============================================================
-// POWER FAN NETWORK
-// CUSTOM BACKEND AUTH SERVICE
-// ============================================================
-// Firebase Authentication: NOT USED
-// Authentication: Custom Backend JWT
-// Database: Firestore through backend API
-// ============================================================
-
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService extends ChangeNotifier {
-  // ==========================================================
-  // BACKEND URL
-  // ==========================================================
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  //
-  // Za mu saka actual backend URL ɗinmu an gama hosting.
-  //
-  // Kada a saka Firebase Auth URL a nan.
-  //
-
-  static const String baseUrl =
-      'https://YOUR-BACKEND-URL.com';
-
-  // ==========================================================
-  // STORAGE KEYS
-  // ==========================================================
-
-  static const String _tokenKey = 'power_fan_auth_token';
-  static const String _userKey = 'power_fan_user';
-
-  // ==========================================================
-  // STATE
-  // ==========================================================
-
-  String? _token;
   Map<String, dynamic>? _user;
-
   bool _loading = false;
-
   String? _error;
-
-  // ==========================================================
-  // GETTERS
-  // ==========================================================
-
-  String? get token => _token;
 
   Map<String, dynamic>? get user => _user;
 
@@ -58,47 +15,80 @@ class AuthService extends ChangeNotifier {
   String? get error => _error;
 
   bool get isAuthenticated =>
-      _token != null && _token!.isNotEmpty;
+      _supabase.auth.currentSession != null &&
+      _supabase.auth.currentUser != null;
 
   String get userId =>
-      (_user?['id'] ?? '').toString();
+      _supabase.auth.currentUser?.id ?? '';
 
   String get name =>
-      (_user?['name'] ?? '').toString();
+      (_user?['name'] ??
+              _supabase.auth.currentUser?.userMetadata?['name'] ??
+              '')
+          .toString();
 
   String get email =>
-      (_user?['email'] ?? '').toString();
+      _supabase.auth.currentUser?.email ?? '';
 
   String get referralCode =>
-      (_user?['referralCode'] ?? '').toString();
+      (_user?['referral_code'] ?? '').toString();
 
   String? get referredBy =>
-      _user?['referredBy']?.toString();
+      _user?['referred_by']?.toString();
 
   double get fanBalance =>
-      _toDouble(_user?['fanBalance']);
+      _toDouble(_user?['fan_balance']);
 
   double get afamBalance =>
-      _toDouble(_user?['afamBalance']);
+      _toDouble(_user?['afam_balance']);
 
   double get miningRate =>
-      _toDouble(_user?['miningRate'], fallback: 0.2);
+      _toDouble(
+        _user?['mining_rate'],
+        fallback: 0.2,
+      );
 
   int get activeReferrals =>
-      _toInt(_user?['activeReferrals']);
+      _toInt(_user?['active_referrals']);
 
   int get dailyAdsWatched =>
-      _toInt(_user?['dailyAdsWatched']);
+      _toInt(_user?['daily_ads_watched']);
 
   double get adBoost =>
-      _toDouble(_user?['adBoost']);
+      _toDouble(_user?['ad_boost']);
 
   bool get miningActive =>
-      _user?['miningActive'] == true;
+      _user?['mining_active'] == true;
 
-  // ==========================================================
-  // HELPERS
-  // ==========================================================
+  DateTime? get miningStartedAt {
+    final value = _user?['mining_started_at'];
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  DateTime? get miningEndsAt {
+    final value = _user?['mining_ends_at'];
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  int get consecutiveCheckIns =>
+      _toInt(_user?['consecutive_check_ins']);
+
+  bool get kyc1Eligible =>
+      _user?['kyc1_eligible'] == true;
+
+  bool get kyc1Verified =>
+      _user?['kyc1_verified'] == true;
+
+  bool get kyc2Eligible =>
+      _user?['kyc2_eligible'] == true;
+
+  bool get kyc2Verified =>
+      _user?['kyc2_verified'] == true;
+
+  bool get kyc3Verified =>
+      _user?['kyc3_verified'] == true;
 
   double _toDouble(
     dynamic value, {
@@ -110,7 +100,10 @@ class AuthService extends ChangeNotifier {
       return value.toDouble();
     }
 
-    return double.tryParse(value.toString()) ?? fallback;
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        fallback;
   }
 
   int _toInt(dynamic value) {
@@ -120,7 +113,10 @@ class AuthService extends ChangeNotifier {
       return value.toInt();
     }
 
-    return int.tryParse(value.toString()) ?? 0;
+    return int.tryParse(
+          value.toString(),
+        ) ??
+        0;
   }
 
   void _setLoading(bool value) {
@@ -133,90 +129,43 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ==========================================================
-  // HEADERS
-  // ==========================================================
-
-  Map<String, String> _headers({
-    bool authenticated = false,
-  }) {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    if (authenticated &&
-        _token != null &&
-        _token!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $_token';
-    }
-
-    return headers;
-  }
-
-  // ==========================================================
-  // INITIALIZE
-  // ==========================================================
-
   Future<void> initialize() async {
     _setLoading(true);
     _setError(null);
 
     try {
-      final prefs =
-          await SharedPreferences.getInstance();
+      final session =
+          _supabase.auth.currentSession;
 
-      final savedToken =
-          prefs.getString(_tokenKey);
-
-      final savedUserJson =
-          prefs.getString(_userKey);
-
-      if (savedToken == null ||
-          savedToken.isEmpty) {
-        _token = null;
+      if (session == null) {
         _user = null;
         return;
       }
 
-      _token = savedToken;
+      await _loadCurrentUser();
 
-      if (savedUserJson != null &&
-          savedUserJson.isNotEmpty) {
-        try {
-          final decoded =
-              jsonDecode(savedUserJson);
-
-          if (decoded is Map) {
-            _user =
-                Map<String, dynamic>.from(decoded);
+      _supabase.auth.onAuthStateChange.listen(
+        (data) async {
+          if (data.session == null) {
+            _user = null;
+            notifyListeners();
+          } else {
+            await _loadCurrentUser();
           }
-        } catch (_) {
-          _user = null;
-        }
-      }
-
-      // Verify token with backend.
-      final valid = await _loadCurrentUser();
-
-      if (!valid) {
-        await _clearLocalSession();
-      }
+        },
+      );
     } catch (error) {
       debugPrint(
-        'AuthService initialize error: $error',
+        'SUPABASE AUTH INITIALIZE ERROR: $error',
       );
 
-      // Kada mu hana app saboda network error.
-      // Idan token yana nan, za mu iya barin local state.
+      _setError(
+        'Could not initialize account.',
+      );
     } finally {
       _setLoading(false);
     }
   }
-
-  // ==========================================================
-  // REGISTER
-  // ==========================================================
 
   Future<bool> register({
     required String name,
@@ -228,43 +177,65 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      final body = <String, dynamic>{
-        'name': name.trim(),
-        'email': email.trim().toLowerCase(),
-        'password': password,
-      };
+      final cleanEmail =
+          email.trim().toLowerCase();
 
-      if (referralCode != null &&
-          referralCode.trim().isNotEmpty) {
-        body['referralCode'] =
-            referralCode.trim().toUpperCase();
+      final cleanName =
+          name.trim();
+
+      final cleanReferral =
+          referralCode?.trim().toUpperCase();
+
+      if (cleanName.length < 2) {
+        _setError(
+          'Name must contain at least 2 characters.',
+        );
+        return false;
       }
 
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/api/auth/register',
-        ),
-        headers: _headers(),
-        body: jsonEncode(body),
+      if (password.length < 6) {
+        _setError(
+          'Password must contain at least 6 characters.',
+        );
+        return false;
+      }
+
+      final response =
+          await _supabase.auth.signUp(
+        email: cleanEmail,
+        password: password,
+        data: {
+          'name': cleanName,
+          if (cleanReferral != null &&
+              cleanReferral.isNotEmpty)
+            'referral_code': cleanReferral,
+        },
       );
 
-      final data = _decodeResponse(response);
+      if (response.user == null) {
+        _setError(
+          'Registration failed.',
+        );
+        return false;
+      }
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        await _saveLoginData(data);
-
-        _setError(null);
-
+      if (response.session == null) {
+        _setError(
+          'Account created. Please verify your email before logging in.',
+        );
         return true;
       }
 
+      await _loadCurrentUser();
+
+      return true;
+    } on AuthException catch (error) {
+      debugPrint(
+        'SUPABASE REGISTER ERROR: ${error.message}',
+      );
+
       _setError(
-        _messageFromResponse(
-          data,
-          'Registration failed.',
-        ),
+        error.message,
       );
 
       return false;
@@ -274,7 +245,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _setError(
-        _networkErrorMessage(error),
+        'Registration failed. Please try again.',
       );
 
       return false;
@@ -282,10 +253,6 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
     }
   }
-
-  // ==========================================================
-  // LOGIN
-  // ==========================================================
 
   Future<bool> login({
     required String email,
@@ -295,34 +262,30 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/api/auth/login',
-        ),
-        headers: _headers(),
-        body: jsonEncode({
-          'email': email.trim().toLowerCase(),
-          'password': password,
-        }),
+      final response =
+          await _supabase.auth.signInWithPassword(
+        email: email.trim().toLowerCase(),
+        password: password,
       );
 
-      final data = _decodeResponse(response);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        await _saveLoginData(data);
-
-        _setError(null);
-
-        return true;
+      if (response.session == null ||
+          response.user == null) {
+        _setError(
+          'Login failed.',
+        );
+        return false;
       }
 
+      await _loadCurrentUser();
+
+      return true;
+    } on AuthException catch (error) {
+      debugPrint(
+        'SUPABASE LOGIN ERROR: ${error.message}',
+      );
+
       _setError(
-        _messageFromResponse(
-          data,
-          'Login failed.',
-        ),
+        error.message,
       );
 
       return false;
@@ -332,7 +295,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _setError(
-        _networkErrorMessage(error),
+        'Login failed. Please try again.',
       );
 
       return false;
@@ -341,47 +304,42 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // ==========================================================
-  // CURRENT USER
-  // ==========================================================
-
   Future<bool> _loadCurrentUser() async {
-    if (_token == null ||
-        _token!.isEmpty) {
+    if (!isAuthenticated) {
+      _user = null;
       return false;
     }
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/api/auth/me',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
-      );
+      final response =
+          await _supabase
+              .from('profiles')
+              .select()
+              .eq(
+                'id',
+                userId,
+              )
+              .maybeSingle();
 
-      final data = _decodeResponse(response);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true &&
-          data['user'] is Map) {
+      if (response == null) {
+        _user = {
+          'id': userId,
+          'name':
+              _supabase
+                  .auth
+                  .currentUser
+                  ?.userMetadata?['name'] ??
+              '',
+          'email': email,
+        };
+      } else {
         _user =
             Map<String, dynamic>.from(
-          data['user'] as Map,
+          response,
         );
-
-        await _saveUserOnly();
-
-        notifyListeners();
-
-        return true;
       }
 
-      if (response.statusCode == 401) {
-        return false;
-      }
+      notifyListeners();
 
       return true;
     } catch (error) {
@@ -389,14 +347,9 @@ class AuthService extends ChangeNotifier {
         'LOAD CURRENT USER ERROR: $error',
       );
 
-      // Network error ba yana nufin token ya mutu.
-      return true;
+      return false;
     }
   }
-
-  // ==========================================================
-  // REFRESH USER
-  // ==========================================================
 
   Future<bool> refreshUser() async {
     if (!isAuthenticated) {
@@ -404,85 +357,36 @@ class AuthService extends ChangeNotifier {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/api/auth/me',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
-      );
+      await _supabase.auth.getUser();
 
-      final data = _decodeResponse(response);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true &&
-          data['user'] is Map) {
-        _user =
-            Map<String, dynamic>.from(
-          data['user'] as Map,
-        );
-
-        await _saveUserOnly();
-
-        _setError(null);
-
-        notifyListeners();
-
-        return true;
-      }
-
-      if (response.statusCode == 401) {
-        await logout();
-
-        return false;
-      }
-
-      return false;
+      return await _loadCurrentUser();
     } catch (error) {
       debugPrint(
         'REFRESH USER ERROR: $error',
       );
 
       _setError(
-        _networkErrorMessage(error),
+        'Could not refresh account.',
       );
 
       return false;
     }
   }
 
-  // ==========================================================
-  // LOGOUT
-  // ==========================================================
-
   Future<void> logout() async {
     try {
-      if (isAuthenticated) {
-        await http.post(
-          Uri.parse(
-            '$baseUrl/api/auth/logout',
-          ),
-          headers: _headers(
-            authenticated: true,
-          ),
-        );
-      }
+      await _supabase.auth.signOut();
     } catch (error) {
       debugPrint(
-        'LOGOUT SERVER ERROR: $error',
+        'SUPABASE LOGOUT ERROR: $error',
       );
     }
 
-    await _clearLocalSession();
+    _user = null;
+    _setError(null);
 
     notifyListeners();
   }
-
-  // ==========================================================
-  // CHANGE PASSWORD
-  // ==========================================================
 
   Future<bool> changePassword({
     required String currentPassword,
@@ -492,7 +396,13 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
+      return false;
+    }
 
+    if (newPassword.length < 6) {
+      _setError(
+        'New password must contain at least 6 characters.',
+      );
       return false;
     }
 
@@ -500,34 +410,23 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/api/auth/change-password',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
-        body: jsonEncode({
-          'currentPassword': currentPassword,
-          'newPassword': newPassword,
-        }),
+      await _supabase.auth.signInWithPassword(
+        email: email,
+        password: currentPassword,
       );
 
-      final data = _decodeResponse(response);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        _setError(null);
-
-        return true;
-      }
-
-      _setError(
-        _messageFromResponse(
-          data,
-          'Could not change password.',
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          password: newPassword,
         ),
+      );
+
+      _setError(null);
+
+      return true;
+    } on AuthException catch (error) {
+      _setError(
+        error.message,
       );
 
       return false;
@@ -537,7 +436,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _setError(
-        _networkErrorMessage(error),
+        'Could not change password.',
       );
 
       return false;
@@ -545,10 +444,6 @@ class AuthService extends ChangeNotifier {
       _setLoading(false);
     }
   }
-
-  // ==========================================================
-  // UPDATE PROFILE
-  // ==========================================================
 
   Future<bool> updateProfile({
     required String name,
@@ -557,7 +452,13 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
+      return false;
+    }
 
+    if (name.trim().length < 2) {
+      _setError(
+        'Name is too short.',
+      );
       return false;
     }
 
@@ -565,54 +466,38 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      final response = await http.put(
-        Uri.parse(
-          '$baseUrl/api/user/profile',
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {
+            'name': name.trim(),
+          },
         ),
-        headers: _headers(
-          authenticated: true,
-        ),
-        body: jsonEncode({
-          'name': name.trim(),
-        }),
       );
 
-      final data = _decodeResponse(response);
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        if (data['user'] is Map) {
-          _user =
-              Map<String, dynamic>.from(
-            data['user'] as Map,
+      await _supabase
+          .from('profiles')
+          .update({
+            'name': name.trim(),
+            'updated_at':
+                DateTime.now()
+                    .toUtc()
+                    .toIso8601String(),
+          })
+          .eq(
+            'id',
+            userId,
           );
 
-          await _saveUserOnly();
-        }
+      await _loadCurrentUser();
 
-        _setError(null);
-
-        notifyListeners();
-
-        return true;
-      }
-
-      _setError(
-        _messageFromResponse(
-          data,
-          'Could not update profile.',
-        ),
-      );
-
-      return false;
+      return true;
     } catch (error) {
       debugPrint(
         'UPDATE PROFILE ERROR: $error',
       );
 
       _setError(
-        _networkErrorMessage(error),
+        'Could not update profile.',
       );
 
       return false;
@@ -621,45 +506,45 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // ==========================================================
-  // DASHBOARD
-  // ==========================================================
-
-  Future<Map<String, dynamic>?> getDashboard() async {
+  Future<Map<String, dynamic>?>
+      getDashboard() async {
     if (!isAuthenticated) {
       return null;
     }
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/api/dashboard',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
+      final result =
+          await _supabase.rpc(
+        'get_dashboard',
       );
 
-      final data = _decodeResponse(response);
+      final data =
+          _normalizeRpcResult(result);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
+      if (data != null) {
         if (data['user'] is Map) {
           _user =
               Map<String, dynamic>.from(
             data['user'] as Map,
           );
-
-          await _saveUserOnly();
-
-          notifyListeners();
+        } else if (data['profile'] is Map) {
+          _user =
+              Map<String, dynamic>.from(
+            data['profile'] as Map,
+          );
         }
+
+        notifyListeners();
 
         return data;
       }
 
-      return null;
+      await _loadCurrentUser();
+
+      return {
+        'success': true,
+        'user': _user,
+      };
     } catch (error) {
       debugPrint(
         'DASHBOARD ERROR: $error',
@@ -669,429 +554,331 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // ==========================================================
-  // START MINING
-  // ==========================================================
-
-  Future<Map<String, dynamic>?> startMining() async {
+  Future<Map<String, dynamic>?>
+      startMining() async {
     if (!isAuthenticated) {
       _setError(
         'You are not authenticated.',
       );
-
       return null;
     }
 
     try {
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/api/mining/start',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
+      final result =
+          await _supabase.rpc(
+        'start_mining',
       );
 
-      final data = _decodeResponse(response);
+      final data =
+          _normalizeRpcResult(result);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        if (_user != null) {
-          _user!['miningActive'] = true;
-        }
-
-        await _saveUserOnly();
-
+      if (data != null) {
+        await _loadCurrentUser();
         _setError(null);
-
-        notifyListeners();
-
         return data;
       }
 
-      _setError(
-        _messageFromResponse(
-          data,
-          'Could not start mining.',
-        ),
-      );
+      await _loadCurrentUser();
 
-      return null;
+      return {
+        'success': true,
+        'message': 'Mining started.',
+      };
     } catch (error) {
       debugPrint(
         'START MINING ERROR: $error',
       );
 
       _setError(
-        _networkErrorMessage(error),
+        _rpcErrorMessage(
+          error,
+          'Could not start mining.',
+        ),
       );
 
       return null;
     }
   }
 
-  // ==========================================================
-  // CLAIM MINING
-  // ==========================================================
-
-  Future<Map<String, dynamic>?> claimMining() async {
+  Future<Map<String, dynamic>?>
+      claimMining() async {
     if (!isAuthenticated) {
       _setError(
         'You are not authenticated.',
       );
-
       return null;
     }
 
     try {
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/api/mining/claim',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
+      final result =
+          await _supabase.rpc(
+        'claim_mining',
       );
 
-      final data = _decodeResponse(response);
+      final data =
+          _normalizeRpcResult(result);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        if (_user != null) {
-          _user!['fanBalance'] =
-              data['fanBalance'];
+      await _loadCurrentUser();
 
-          _user!['miningActive'] = false;
+      _setError(null);
 
-          _user!['dailyAdsWatched'] = 0;
-
-          _user!['adBoost'] = 0;
-
-          // Base rate + referral boost
-          _user!['miningRate'] =
-              0.2 +
-              activeReferrals * 0.02;
-        }
-
-        await _saveUserOnly();
-
-        _setError(null);
-
-        notifyListeners();
-
-        return data;
-      }
-
-      _setError(
-        _messageFromResponse(
-          data,
-          'Could not claim mining reward.',
-        ),
-      );
-
-      return null;
+      return data ??
+          {
+            'success': true,
+            'message':
+                'Mining reward claimed.',
+          };
     } catch (error) {
       debugPrint(
         'CLAIM MINING ERROR: $error',
       );
 
       _setError(
-        _networkErrorMessage(error),
+        _rpcErrorMessage(
+          error,
+          'Could not claim mining reward.',
+        ),
       );
 
       return null;
     }
   }
 
-  // ==========================================================
-  // REWARDED AD
-  // ==========================================================
-
-  Future<Map<String, dynamic>?> watchRewardedAd() async {
+  Future<Map<String, dynamic>?>
+      watchRewardedAd() async {
     if (!isAuthenticated) {
       _setError(
         'You are not authenticated.',
       );
-
       return null;
     }
 
     try {
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/api/mining/ad',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
+      final result =
+          await _supabase.rpc(
+        'record_rewarded_ad',
       );
 
-      final data = _decodeResponse(response);
+      final data =
+          _normalizeRpcResult(result);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        if (_user != null) {
-          _user!['dailyAdsWatched'] =
-              data['adsWatched'];
+      await _loadCurrentUser();
 
-          _user!['adBoost'] =
-              data['adBoost'];
+      _setError(null);
 
-          _user!['miningRate'] =
-              data['miningRate'];
-        }
-
-        await _saveUserOnly();
-
-        _setError(null);
-
-        notifyListeners();
-
-        return data;
-      }
-
-      _setError(
-        _messageFromResponse(
-          data,
-          'Could not apply ad reward.',
-        ),
-      );
-
-      return null;
+      return data ??
+          {
+            'success': true,
+          };
     } catch (error) {
       debugPrint(
         'REWARDED AD ERROR: $error',
       );
 
       _setError(
-        _networkErrorMessage(error),
+        _rpcErrorMessage(
+          error,
+          'Could not apply ad reward.',
+        ),
       );
 
       return null;
     }
   }
 
-  // ==========================================================
-  // REFERRALS
-  // ==========================================================
-
-  Future<Map<String, dynamic>?> getReferrals() async {
+  Future<Map<String, dynamic>?>
+      getReferrals() async {
     if (!isAuthenticated) {
       return null;
     }
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/api/referrals',
-        ),
-        headers: _headers(
-          authenticated: true,
-        ),
+      final result =
+          await _supabase.rpc(
+        'get_referral_stats',
       );
 
-      final data = _decodeResponse(response);
+      final data =
+          _normalizeRpcResult(result);
 
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          data['success'] == true) {
-        return data;
-      }
-
-      _setError(
-        _messageFromResponse(
-          data,
-          'Could not load referrals.',
-        ),
-      );
-
-      return null;
+      return data ??
+          {
+            'success': true,
+            'referralCode': referralCode,
+            'activeReferrals':
+                activeReferrals,
+            'miningRate': miningRate,
+            'referrals': [],
+          };
     } catch (error) {
       debugPrint(
         'REFERRALS ERROR: $error',
       );
 
       _setError(
-        _networkErrorMessage(error),
+        _rpcErrorMessage(
+          error,
+          'Could not load referrals.',
+        ),
       );
 
       return null;
     }
   }
 
-  // ==========================================================
-  // SAVE LOGIN DATA
-  // ==========================================================
-
-  Future<void> _saveLoginData(
-    Map<String, dynamic> data,
-  ) async {
-    final token =
-        data['token']?.toString();
-
-    final userData =
-        data['user'];
-
-    if (token == null ||
-        token.isEmpty) {
-      throw Exception(
-        'Backend did not return an authentication token.',
-      );
+  Future<Map<String, dynamic>?>
+      dailyCheckIn() async {
+    if (!isAuthenticated) {
+      return null;
     }
 
-    if (userData is! Map) {
-      throw Exception(
-        'Backend did not return user information.',
-      );
-    }
-
-    _token = token;
-
-    _user =
-        Map<String, dynamic>.from(
-      userData,
-    );
-
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      _tokenKey,
-      _token!,
-    );
-
-    await prefs.setString(
-      _userKey,
-      jsonEncode(_user),
-    );
-
-    notifyListeners();
-  }
-
-  // ==========================================================
-  // SAVE USER ONLY
-  // ==========================================================
-
-  Future<void> _saveUserOnly() async {
-    if (_user == null) return;
-
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      _userKey,
-      jsonEncode(_user),
-    );
-  }
-
-  // ==========================================================
-  // CLEAR SESSION
-  // ==========================================================
-
-  Future<void> _clearLocalSession() async {
-    _token = null;
-    _user = null;
-
-    final prefs =
-        await SharedPreferences.getInstance();
-
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userKey);
-
-    _setError(null);
-  }
-
-  // ==========================================================
-  // RESPONSE DECODER
-  // ==========================================================
-
-  Map<String, dynamic> _decodeResponse(
-    http.Response response,
-  ) {
     try {
-      final decoded =
-          jsonDecode(response.body);
+      final result =
+          await _supabase.rpc(
+        'daily_checkin',
+      );
 
-      if (decoded is Map) {
-        return Map<String, dynamic>.from(
-          decoded,
-        );
-      }
+      final data =
+          _normalizeRpcResult(result);
 
-      return {
-        'success': false,
-        'message':
-            'Invalid response from server.',
-      };
-    } catch (_) {
-      return {
-        'success': false,
-        'message':
-            response.body.isNotEmpty
-                ? response.body
-                : 'Empty response from server.',
-      };
+      await _loadCurrentUser();
+
+      return data;
+    } catch (error) {
+      debugPrint(
+        'DAILY CHECK-IN ERROR: $error',
+      );
+
+      _setError(
+        _rpcErrorMessage(
+          error,
+          'Could not complete daily check-in.',
+        ),
+      );
+
+      return null;
     }
   }
 
-  // ==========================================================
-  // ERROR MESSAGE
-  // ==========================================================
+  Future<Map<String, dynamic>?>
+      completeDailySocialTask(
+    String taskId,
+  ) async {
+    if (!isAuthenticated) {
+      return null;
+    }
 
-  String _messageFromResponse(
-    Map<String, dynamic> data,
+    try {
+      final result =
+          await _supabase.rpc(
+        'complete_daily_social_task',
+        params: {
+          'p_task_id': taskId,
+        },
+      );
+
+      final data =
+          _normalizeRpcResult(result);
+
+      await _loadCurrentUser();
+
+      return data;
+    } catch (error) {
+      debugPrint(
+        'SOCIAL TASK ERROR: $error',
+      );
+
+      _setError(
+        _rpcErrorMessage(
+          error,
+          'Could not complete social task.',
+        ),
+      );
+
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?>
+      useReferralCode(
+    String code,
+  ) async {
+    if (!isAuthenticated) {
+      return null;
+    }
+
+    try {
+      final result =
+          await _supabase.rpc(
+        'use_referral_code',
+        params: {
+          'p_code':
+              code.trim().toUpperCase(),
+        },
+      );
+
+      final data =
+          _normalizeRpcResult(result);
+
+      await _loadCurrentUser();
+
+      return data;
+    } catch (error) {
+      debugPrint(
+        'USE REFERRAL ERROR: $error',
+      );
+
+      _setError(
+        _rpcErrorMessage(
+          error,
+          'Could not apply referral code.',
+        ),
+      );
+
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? _normalizeRpcResult(
+    dynamic result,
+  ) {
+    if (result == null) {
+      return null;
+    }
+
+    if (result is Map) {
+      return Map<String, dynamic>.from(
+        result,
+      );
+    }
+
+    if (result is List &&
+        result.isNotEmpty &&
+        result.first is Map) {
+      return Map<String, dynamic>.from(
+        result.first as Map,
+      );
+    }
+
+    return null;
+  }
+
+  String _rpcErrorMessage(
+    Object error,
     String fallback,
   ) {
-    final message =
-        data['message']?.toString();
-
-    if (message != null &&
-        message.trim().isNotEmpty) {
-      return message;
+    if (error is PostgrestException) {
+      if (error.message.trim().isNotEmpty) {
+        return error.message;
+      }
     }
 
-    final error =
-        data['error']?.toString();
-
-    if (error != null &&
-        error.trim().isNotEmpty) {
-      return error;
+    if (error is AuthException) {
+      if (error.message.trim().isNotEmpty) {
+        return error.message;
+      }
     }
 
     return fallback;
-  }
-
-  // ==========================================================
-  // NETWORK ERROR
-  // ==========================================================
-
-  String _networkErrorMessage(
-    Object error,
-  ) {
-    final message =
-        error.toString();
-
-    if (message.contains(
-      'SocketException',
-    )) {
-      return 'Could not connect to the backend server.';
-    }
-
-    if (message.contains(
-      'Failed host lookup',
-    )) {
-      return 'Backend server address could not be found.';
-    }
-
-    if (message.contains(
-      'TimeoutException',
-    )) {
-      return 'Backend server took too long to respond.';
-    }
-
-    return 'Connection error. Please try again.';
   }
 }
