@@ -2,18 +2,26 @@
 // POWER FAN NETWORK
 // FILE: backend/src/server.js
 // ============================================================
-// CUSTOM BACKEND
 //
-// Authentication: Custom JWT
-// Password Security: bcrypt
-// Database: Firestore
-// Firebase Authentication: NOT USED
+// CURRENT STAGE:
 //
-// Routes:
-// /api/auth
-// /api/user
-// /api/mining
-// /api/referrals
+// Supabase:
+// - Authentication / Register
+// - Login
+// - Email verification
+// - User sessions
+//
+// Backend:
+// - Server foundation only
+// - Mining will be added next
+// - Referrals will be added next
+// - FAN/AFAM balances will be added next
+// - KYC will be added next
+// - Ads/rewards will be added next
+//
+// IMPORTANT:
+// Supabase publishable key is NOT used as a secret here.
+// Never put a Supabase secret/service-role key in Flutter.
 // ============================================================
 
 require("dotenv").config();
@@ -22,18 +30,6 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const admin = require("firebase-admin");
-
-// ============================================================
-// ROUTES
-// ============================================================
-
-const authRoutes = require("./routes/auth_routes");
-const userRoutes = require("./routes/user_routes");
-
-// ============================================================
-// APP
-// ============================================================
 
 const app = express();
 
@@ -42,76 +38,10 @@ const app = express();
 // ============================================================
 
 const PORT =
-  Number(process.env.PORT) || 3000;
+  Number(process.env.PORT || 3000);
 
 const NODE_ENV =
   process.env.NODE_ENV || "production";
-
-// ============================================================
-// FIREBASE ADMIN / FIRESTORE
-// ============================================================
-//
-// Firebase Authentication ba a amfani da shi.
-// Firebase Admin SDK ana amfani da shi ne domin Firestore.
-// ============================================================
-
-let db = null;
-
-try {
-  if (admin.apps.length === 0) {
-    if (
-      process.env.FIREBASE_SERVICE_ACCOUNT
-    ) {
-      const serviceAccount =
-        JSON.parse(
-          process.env.FIREBASE_SERVICE_ACCOUNT
-        );
-
-      admin.initializeApp({
-        credential:
-          admin.credential.cert(
-            serviceAccount
-          ),
-        projectId:
-          serviceAccount.project_id,
-      });
-    } else {
-      admin.initializeApp();
-    }
-  }
-
-  db = admin.firestore();
-
-  console.log(
-    "=========================================="
-  );
-
-  console.log(
-    "POWER FAN NETWORK BACKEND"
-  );
-
-  console.log(
-    "Firestore: CONNECTED"
-  );
-
-  console.log(
-    "Firebase Authentication: NOT USED"
-  );
-
-  console.log(
-    "Custom Authentication: ENABLED"
-  );
-
-  console.log(
-    "=========================================="
-  );
-} catch (error) {
-  console.error(
-    "FIRESTORE INITIALIZATION ERROR:"
-  );
-
-  console.error(error.message);
-}
 
 // ============================================================
 // SECURITY
@@ -167,7 +97,7 @@ app.use(
 );
 
 // ============================================================
-// RATE LIMITING
+// RATE LIMIT
 // ============================================================
 
 const generalLimiter =
@@ -183,53 +113,14 @@ const generalLimiter =
 
     message: {
       success: false,
-
       error:
         "too_many_requests",
-
       message:
         "Too many requests. Please try again later.",
     },
   });
 
 app.use(generalLimiter);
-
-// ============================================================
-// AUTH RATE LIMIT
-// ============================================================
-
-const authLimiter =
-  rateLimit({
-    windowMs:
-      15 * 60 * 1000,
-
-    max: 30,
-
-    standardHeaders: true,
-
-    legacyHeaders: false,
-
-    message: {
-      success: false,
-
-      error:
-        "too_many_auth_attempts",
-
-      message:
-        "Too many authentication attempts. Please try again later.",
-    },
-  });
-
-// Apply stricter rate limit to auth endpoints
-app.use(
-  "/api/auth/login",
-  authLimiter
-);
-
-app.use(
-  "/api/auth/register",
-  authLimiter
-);
 
 // ============================================================
 // REQUEST LOG
@@ -270,7 +161,7 @@ app.get(
         "POWER FAN NETWORK",
 
       backend:
-        "Custom Backend",
+        "POWER FAN NETWORK BACKEND",
 
       version:
         "1.0.0",
@@ -279,15 +170,13 @@ app.get(
         "online",
 
       authentication:
-        "Custom JWT",
-
-      firebaseAuthentication:
-        false,
+        "Supabase Auth",
 
       database:
-        db
-          ? "Firestore"
-          : "disconnected",
+        "Supabase",
+
+      mining:
+        "not enabled yet",
 
       time:
         new Date().toISOString(),
@@ -296,7 +185,7 @@ app.get(
 );
 
 // ============================================================
-// HEALTH CHECK
+// HEALTH
 // ============================================================
 
 app.get(
@@ -308,16 +197,8 @@ app.get(
       status:
         "healthy",
 
-      database:
-        db
-          ? "connected"
-          : "disconnected",
-
-      firebaseAuthentication:
-        "disabled",
-
       authentication:
-        "custom-jwt",
+        "supabase",
 
       environment:
         NODE_ENV,
@@ -329,7 +210,7 @@ app.get(
 );
 
 // ============================================================
-// API STATUS
+// API
 // ============================================================
 
 app.get(
@@ -348,57 +229,82 @@ app.get(
         "online",
 
       routes: {
-        authentication:
-          "/api/auth",
-
-        user:
-          "/api/user",
+        health:
+          "/health",
 
         mining:
-          "/api/mining",
+          "coming soon",
 
         referrals:
-          "/api/referrals",
+          "coming soon",
+
+        users:
+          "coming soon",
+
+        rewards:
+          "coming soon",
+
+        kyc:
+          "coming soon",
       },
     });
   }
 );
 
 // ============================================================
-// AUTH ROUTES
+// TEMPORARY AUTH STATUS
+// ============================================================
+//
+// Register/Login ana faruwa kai tsaye tsakanin Flutter
+// da Supabase Auth a wannan matakin.
+//
+// Backend zai karɓi authenticated requests daga Flutter
+// lokacin da muka fara mining API.
 // ============================================================
 
-app.use(
-  "/api/auth",
-  authRoutes.router
+app.get(
+  "/api/auth/status",
+  (req, res) => {
+    res.status(200).json({
+      success: true,
+
+      authentication:
+        "Supabase Auth",
+
+      message:
+        "Authentication is handled by Supabase.",
+    });
+  }
 );
 
 // ============================================================
-// USER ROUTES
-// ============================================================
-
-app.use(
-  "/api/user",
-  userRoutes.router
-);
-
-// ============================================================
-// MINING ROUTES
+// FUTURE MINING ROUTES
 // ============================================================
 //
-// Za mu ƙara mining_routes.js a mataki na gaba.
-// A yanzu kada server ya kira file ɗin da bai wanzu ba.
+// Za mu ƙara:
+//
+// POST /api/mining/start
+// POST /api/mining/claim
+// POST /api/mining/ad
+// GET  /api/mining/status
+//
+// a mataki na gaba.
 // ============================================================
 
 // ============================================================
-// REFERRAL ROUTES
+// FUTURE REFERRAL ROUTES
 // ============================================================
 //
-// Za mu iya ƙara referral_routes.js daga baya.
+// Za mu ƙara:
+//
+// GET  /api/referrals
+// POST /api/referrals/activate
+//
+// a mataki na gaba.
 // ============================================================
 
 // ============================================================
-// 404 HANDLER
+// 404
 // ============================================================
 
 app.use(
@@ -419,7 +325,7 @@ app.use(
 );
 
 // ============================================================
-// GLOBAL ERROR HANDLER
+// GLOBAL ERROR
 // ============================================================
 
 app.use(
@@ -430,17 +336,8 @@ app.use(
     next
   ) => {
     console.error(
-      "=========================================="
-    );
-
-    console.error(
-      "GLOBAL SERVER ERROR"
-    );
-
-    console.error(error);
-
-    console.error(
-      "=========================================="
+      "GLOBAL SERVER ERROR:",
+      error
     );
 
     if (
@@ -457,20 +354,12 @@ app.use(
 
       message:
         "Internal server error.",
-
-      ...(NODE_ENV ===
-        "development"
-        ? {
-            details:
-              error.message,
-          }
-        : {}),
     });
   }
 );
 
 // ============================================================
-// START SERVER
+// START
 // ============================================================
 
 const server =
@@ -483,7 +372,11 @@ const server =
       );
 
       console.log(
-        "POWER FAN NETWORK BACKEND STARTED"
+        " POWER FAN NETWORK BACKEND"
+      );
+
+      console.log(
+        "=========================================="
       );
 
       console.log(
@@ -495,7 +388,11 @@ const server =
       );
 
       console.log(
-        "Authentication: CUSTOM JWT"
+        "Authentication: SUPABASE AUTH"
+      );
+
+      console.log(
+        "Custom JWT: DISABLED"
       );
 
       console.log(
@@ -503,11 +400,11 @@ const server =
       );
 
       console.log(
-        `Firestore: ${
-          db
-            ? "CONNECTED"
-            : "DISCONNECTED"
-        }`
+        "Firestore Authentication: DISABLED"
+      );
+
+      console.log(
+        "Mining: NOT ENABLED YET"
       );
 
       console.log(
@@ -551,25 +448,7 @@ async function shutdown(
   );
 
   server.close(
-    async () => {
-      try {
-        if (
-          admin.apps.length > 0
-        ) {
-          await Promise.all(
-            admin.apps.map(
-              (firebaseApp) =>
-                firebaseApp.delete()
-            )
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Firebase shutdown error:",
-          error.message
-        );
-      }
-
+    () => {
       console.log(
         "Server stopped."
       );
