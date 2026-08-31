@@ -1,173 +1,85 @@
+// lib/services/auth_service.dart
 // ============================================================
 // POWER FAN NETWORK
 // SUPABASE AUTH SERVICE
-// ============================================================
-// Authentication: Supabase Auth
-// Database: Supabase PostgreSQL
-// Firebase Authentication: NOT USED
-// Custom JWT Backend: NOT USED
 // ============================================================
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService extends ChangeNotifier {
-  // ==========================================================
-  // SUPABASE
-  // ==========================================================
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  final SupabaseClient _supabase =
-      Supabase.instance.client;
-
-  // ==========================================================
-  // STATE
-  // ==========================================================
-
-  User? _authUser;
+  bool _loading = false;
+  String? _error;
 
   Map<String, dynamic>? _user;
 
-  bool _loading = false;
-
-  String? _error;
-
-  // ==========================================================
-  // GETTERS
-  // ==========================================================
-
-  User? get authUser => _authUser;
-
+  bool get loading => _loading;
+  String? get error => _error;
   Map<String, dynamic>? get user => _user;
 
-  bool get loading => _loading;
-
-  String? get error => _error;
+  User? get authUser => _supabase.auth.currentUser;
 
   bool get isAuthenticated =>
-      _authUser != null;
+      _supabase.auth.currentSession != null;
 
-  String get userId =>
-      _authUser?.id ??
-      (_user?['id'] ?? '').toString();
+  String get userId => authUser?.id ?? '';
 
   String get name =>
-      (_user?['name'] ??
-              _authUser?.userMetadata?['name'] ??
-              '')
+      (_user?['name'] ?? authUser?.userMetadata?['name'] ?? '')
           .toString();
 
   String get email =>
-      _authUser?.email ??
-      (_user?['email'] ?? '').toString();
+      authUser?.email ?? (_user?['email'] ?? '').toString();
 
   String get referralCode =>
-      (_user?['referral_code'] ??
-              _user?['referralCode'] ??
-              '')
-          .toString();
+      (_user?['referral_code'] ?? '').toString();
 
-  String? get referredBy {
-    final value =
-        _user?['referred_by'] ??
-            _user?['referredBy'];
-
-    if (value == null) {
-      return null;
-    }
-
-    return value.toString();
-  }
+  String? get referredBy =>
+      _user?['referred_by']?.toString();
 
   double get fanBalance =>
-      _toDouble(
-        _user?['fan_balance'] ??
-            _user?['fanBalance'],
-      );
+      _toDouble(_user?['fan_balance']);
 
   double get afamBalance =>
-      _toDouble(
-        _user?['afam_balance'] ??
-            _user?['afamBalance'],
-      );
+      _toDouble(_user?['afam_balance']);
 
   double get miningRate =>
       _toDouble(
-        _user?['mining_rate'] ??
-            _user?['miningRate'],
+        _user?['mining_rate'],
         fallback: 0.2,
       );
 
   int get activeReferrals =>
-      _toInt(
-        _user?['active_referrals'] ??
-            _user?['activeReferrals'],
-      );
+      _toInt(_user?['active_referrals']);
 
   int get dailyAdsWatched =>
-      _toInt(
-        _user?['daily_ads_watched'] ??
-            _user?['dailyAdsWatched'],
-      );
+      _toInt(_user?['daily_ads_watched']);
 
   double get adBoost =>
-      _toDouble(
-        _user?['ad_boost'] ??
-            _user?['adBoost'],
-      );
+      _toDouble(_user?['ad_boost']);
 
   bool get miningActive =>
-      _user?['mining_active'] ==
-              true ||
-          _user?['miningActive'] ==
-              true;
-
-  DateTime? get miningStartedAt =>
-      _toDateTime(
-        _user?['mining_started_at'] ??
-            _user?['miningStartedAt'],
-      );
-
-  DateTime? get miningEndsAt =>
-      _toDateTime(
-        _user?['mining_ends_at'] ??
-            _user?['miningEndsAt'],
-      );
+      _user?['mining_active'] == true;
 
   int get consecutiveCheckIns =>
-      _toInt(
-        _user?['consecutive_check_ins'] ??
-            _user?['consecutiveCheckIns'],
-      );
+      _toInt(_user?['consecutive_check_ins']);
 
   bool get kyc1Eligible =>
-      _user?['kyc1_eligible'] ==
-              true ||
-          _user?['kyc1Eligible'] ==
-              true;
+      _user?['kyc1_eligible'] == true;
 
   bool get kyc1Verified =>
-      _user?['kyc1_verified'] ==
-              true ||
-          _user?['kyc1Verified'] ==
-              true;
+      _user?['kyc1_verified'] == true;
 
   bool get kyc2Eligible =>
-      _user?['kyc2_eligible'] ==
-              true ||
-          _user?['kyc2Eligible'] ==
-              true;
+      _user?['kyc2_eligible'] == true;
 
   bool get kyc2Verified =>
-      _user?['kyc2_verified'] ==
-              true ||
-          _user?['kyc2Verified'] ==
-              true;
+      _user?['kyc2_verified'] == true;
 
   bool get kyc3Verified =>
-      _user?['kyc3_verified'] ==
-              true ||
-          _user?['kyc3Verified'] ==
-              true;
+      _user?['kyc3_verified'] == true;
 
   // ==========================================================
   // HELPERS
@@ -177,9 +89,7 @@ class AuthService extends ChangeNotifier {
     dynamic value, {
     double fallback = 0,
   }) {
-    if (value == null) {
-      return fallback;
-    }
+    if (value == null) return fallback;
 
     if (value is num) {
       return value.toDouble();
@@ -192,9 +102,7 @@ class AuthService extends ChangeNotifier {
   }
 
   int _toInt(dynamic value) {
-    if (value == null) {
-      return 0;
-    }
+    if (value == null) return 0;
 
     if (value is num) {
       return value.toInt();
@@ -206,28 +114,12 @@ class AuthService extends ChangeNotifier {
         0;
   }
 
-  DateTime? _toDateTime(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
-
-    return DateTime.tryParse(
-      value.toString(),
-    );
-  }
-
-  void _setLoading(
-    bool value,
-  ) {
+  void _setLoading(bool value) {
     _loading = value;
     notifyListeners();
   }
 
-  void _setError(
-    String? value,
-  ) {
+  void _setError(String? value) {
     _error = value;
     notifyListeners();
   }
@@ -241,30 +133,15 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      _authUser =
-          _supabase.auth.currentUser;
+      final session =
+          _supabase.auth.currentSession;
 
-      if (_authUser != null) {
-        await _loadProfile(
-          showError: false,
-        );
+      if (session == null) {
+        _user = null;
+        return;
       }
 
-      _supabase.auth.onAuthStateChange.listen(
-        (data) async {
-          _authUser = data.session?.user;
-
-          if (_authUser != null) {
-            await _loadProfile(
-              showError: false,
-            );
-          } else {
-            _user = null;
-          }
-
-          notifyListeners();
-        },
-      );
+      await refreshUser();
     } catch (error) {
       debugPrint(
         'AUTH INITIALIZE ERROR: $error',
@@ -288,16 +165,11 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      final cleanName =
-          name.trim();
-
+      final cleanName = name.trim();
       final cleanEmail =
           email.trim().toLowerCase();
-
       final cleanReferral =
-          referralCode
-              ?.trim()
-              .toUpperCase();
+          referralCode?.trim().toUpperCase();
 
       if (cleanName.length < 2) {
         _setError(
@@ -313,61 +185,33 @@ class AuthService extends ChangeNotifier {
         return false;
       }
 
-      if (
-        !RegExp(
-          r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
-        ).hasMatch(cleanEmail)
-      ) {
-        _setError(
-          'Invalid email address.',
-        );
-        return false;
-      }
-
       final response =
           await _supabase.auth.signUp(
         email: cleanEmail,
         password: password,
         data: {
           'name': cleanName,
-
           if (cleanReferral != null &&
               cleanReferral.isNotEmpty)
-            'referral_code':
-                cleanReferral,
+            'referral_code': cleanReferral,
         },
       );
 
       if (response.user == null) {
         _setError(
-          'Account could not be created.',
+          'Registration failed.',
         );
         return false;
       }
 
-      _authUser =
-          response.user;
-
-      // Profile is created by the
-      // Supabase database trigger.
-      await _loadProfile(
-        showError: false,
-      );
+      if (response.session != null) {
+        await refreshUser();
+      }
 
       _setError(null);
-
-      notifyListeners();
-
       return true;
     } on AuthException catch (error) {
-      debugPrint(
-        'REGISTER AUTH ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
+      _setError(error.message);
       return false;
     } catch (error) {
       debugPrint(
@@ -375,7 +219,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _setError(
-        'Registration failed. Please try again.',
+        'Connection error. Please try again.',
       );
 
       return false;
@@ -398,39 +242,24 @@ class AuthService extends ChangeNotifier {
     try {
       final response =
           await _supabase.auth.signInWithPassword(
-        email:
-            email.trim().toLowerCase(),
+        email: email.trim().toLowerCase(),
         password: password,
       );
 
-      if (response.user == null) {
+      if (response.user == null ||
+          response.session == null) {
         _setError(
           'Login failed.',
         );
         return false;
       }
 
-      _authUser =
-          response.user;
-
-      await _loadProfile(
-        showError: false,
-      );
+      await refreshUser();
 
       _setError(null);
-
-      notifyListeners();
-
       return true;
     } on AuthException catch (error) {
-      debugPrint(
-        'LOGIN AUTH ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
+      _setError(error.message);
       return false;
     } catch (error) {
       debugPrint(
@@ -438,7 +267,7 @@ class AuthService extends ChangeNotifier {
       );
 
       _setError(
-        'Login failed. Please try again.',
+        'Connection error. Please try again.',
       );
 
       return false;
@@ -448,17 +277,16 @@ class AuthService extends ChangeNotifier {
   }
 
   // ==========================================================
-  // LOAD PROFILE
+  // REFRESH USER
   // ==========================================================
 
-  Future<bool> _loadProfile({
-    bool showError = true,
-  }) async {
+  Future<bool> refreshUser() async {
     final currentUser =
         _supabase.auth.currentUser;
 
     if (currentUser == null) {
       _user = null;
+      notifyListeners();
       return false;
     }
 
@@ -473,90 +301,28 @@ class AuthService extends ChangeNotifier {
               )
               .maybeSingle();
 
-      if (response == null) {
+      if (response != null) {
+        _user =
+            Map<String, dynamic>.from(
+          response,
+        );
+      } else {
         _user = {
           'id': currentUser.id,
-          'email':
-              currentUser.email ?? '',
+          'email': currentUser.email,
           'name':
-              currentUser.userMetadata?[
-                      'name'] ??
+              currentUser.userMetadata?['name'] ??
                   '',
         };
-
-        return true;
       }
 
-      _user =
-          Map<String, dynamic>.from(
-        response,
-      );
-
+      _setError(null);
       notifyListeners();
 
       return true;
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'LOAD PROFILE DATABASE ERROR: ${error.message}',
-      );
-
-      if (showError) {
-        _setError(
-          'Could not load your profile.',
-        );
-      }
-
-      return false;
-    } catch (error) {
-      debugPrint(
-        'LOAD PROFILE ERROR: $error',
-      );
-
-      if (showError) {
-        _setError(
-          'Could not load your profile.',
-        );
-      }
-
-      return false;
-    }
-  }
-
-  // ==========================================================
-  // REFRESH USER
-  // ==========================================================
-
-  Future<bool> refreshUser() async {
-    if (!isAuthenticated) {
-      return false;
-    }
-
-    try {
-      await _supabase.auth.refreshSession();
-
-      _authUser =
-          _supabase.auth.currentUser;
-
-      return await _loadProfile(
-        showError: true,
-      );
-    } on AuthException catch (error) {
-      debugPrint(
-        'REFRESH AUTH ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return false;
     } catch (error) {
       debugPrint(
         'REFRESH USER ERROR: $error',
-      );
-
-      _setError(
-        'Could not refresh your account.',
       );
 
       return false;
@@ -576,9 +342,8 @@ class AuthService extends ChangeNotifier {
       );
     }
 
-    _authUser = null;
     _user = null;
-    _setError(null);
+    _error = null;
 
     notifyListeners();
   }
@@ -588,14 +353,12 @@ class AuthService extends ChangeNotifier {
   // ==========================================================
 
   Future<bool> changePassword({
-    required String currentPassword,
     required String newPassword,
   }) async {
     if (!isAuthenticated) {
       _setError(
         'You are not authenticated.',
       );
-
       return false;
     }
 
@@ -603,7 +366,6 @@ class AuthService extends ChangeNotifier {
       _setError(
         'New password must contain at least 6 characters.',
       );
-
       return false;
     }
 
@@ -611,35 +373,6 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      // Verify the current password
-      // before changing it.
-      final email =
-          _supabase.auth.currentUser?.email;
-
-      if (email == null ||
-          email.isEmpty) {
-        _setError(
-          'Your account email could not be found.',
-        );
-
-        return false;
-      }
-
-      final verify =
-          await _supabase.auth
-              .signInWithPassword(
-        email: email,
-        password: currentPassword,
-      );
-
-      if (verify.user == null) {
-        _setError(
-          'Current password is incorrect.',
-        );
-
-        return false;
-      }
-
       await _supabase.auth.updateUser(
         UserAttributes(
           password: newPassword,
@@ -647,17 +380,9 @@ class AuthService extends ChangeNotifier {
       );
 
       _setError(null);
-
       return true;
     } on AuthException catch (error) {
-      debugPrint(
-        'CHANGE PASSWORD AUTH ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
+      _setError(error.message);
       return false;
     } catch (error) {
       debugPrint(
@@ -685,18 +410,15 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
-
       return false;
     }
 
-    final cleanName =
-        name.trim();
+    final cleanName = name.trim();
 
     if (cleanName.length < 2) {
       _setError(
         'Name is too short.',
       );
-
       return false;
     }
 
@@ -704,19 +426,6 @@ class AuthService extends ChangeNotifier {
     _setError(null);
 
     try {
-      await _supabase
-          .from('profiles')
-          .update({
-        'name': cleanName,
-        'updated_at':
-            DateTime.now()
-                .toUtc()
-                .toIso8601String(),
-      }).eq(
-        'id',
-        userId,
-      );
-
       await _supabase.auth.updateUser(
         UserAttributes(
           data: {
@@ -725,25 +434,21 @@ class AuthService extends ChangeNotifier {
         ),
       );
 
-      await _loadProfile(
-        showError: false,
+      await _supabase
+          .from('profiles')
+          .update({
+        'name': cleanName,
+        'updated_at':
+            DateTime.now().toIso8601String(),
+      }).eq(
+        'id',
+        userId,
       );
+
+      await refreshUser();
 
       _setError(null);
-
-      notifyListeners();
-
       return true;
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'UPDATE PROFILE DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return false;
     } catch (error) {
       debugPrint(
         'UPDATE PROFILE ERROR: $error',
@@ -769,38 +474,45 @@ class AuthService extends ChangeNotifier {
     }
 
     try {
-      await _loadProfile(
-        showError: false,
+      final response =
+          await _supabase
+              .from('profiles')
+              .select()
+              .eq(
+                'id',
+                userId,
+              )
+              .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
+
+      _user =
+          Map<String, dynamic>.from(
+        response,
       );
+
+      notifyListeners();
 
       return {
         'success': true,
-        'user':
-            _user ?? {},
+        'user': _user,
         'rules': {
-          'baseMiningRate':
-              0.2,
-          'adBoostPerAd':
-              0.1,
-          'maxDailyAds':
-              7,
-          'maxAdBoost':
-              0.7,
-          'referralMiningBoost':
-              0.02,
-          'newUserReferralReward':
-              20,
-          'inviterReferralReward':
-              5,
-          'dailySocialReward':
-              10,
+          'baseMiningRate': 0.2,
+          'adBoostPerAd': 0.1,
+          'maxDailyAds': 7,
+          'maxAdBoost': 0.7,
+          'referralMiningBoost': 0.02,
+          'newUserReferralReward': 20,
+          'inviterReferralReward': 5,
+          'dailySocialReward': 10,
         },
       };
     } catch (error) {
       debugPrint(
         'DASHBOARD ERROR: $error',
       );
-
       return null;
     }
   }
@@ -814,14 +526,11 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
-
       return null;
     }
 
     try {
-      final now =
-          DateTime.now().toUtc();
-
+      final now = DateTime.now();
       final endsAt =
           now.add(
         const Duration(
@@ -829,23 +538,14 @@ class AuthService extends ChangeNotifier {
         ),
       );
 
-      final newRate =
-          0.2 +
-              activeReferrals *
-                  0.02 +
-              adBoost;
-
       await _supabase
           .from('profiles')
           .update({
-        'mining_active':
-            true,
+        'mining_active': true,
         'mining_started_at':
             now.toIso8601String(),
         'mining_ends_at':
             endsAt.toIso8601String(),
-        'mining_rate':
-            newRate,
         'updated_at':
             now.toIso8601String(),
       }).eq(
@@ -853,16 +553,13 @@ class AuthService extends ChangeNotifier {
         userId,
       );
 
-      await _loadProfile(
-        showError: false,
-      );
+      await refreshUser();
 
       _setError(null);
 
       return {
         'success': true,
-        'message':
-            'Mining started.',
+        'message': 'Mining started.',
         'mining': {
           'active': true,
           'startedAt':
@@ -870,19 +567,9 @@ class AuthService extends ChangeNotifier {
           'endsAt':
               endsAt.toIso8601String(),
           'miningRate':
-              newRate,
+              miningRate,
         },
       };
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'START MINING DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return null;
     } catch (error) {
       debugPrint(
         'START MINING ERROR: $error',
@@ -905,83 +592,95 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
-
       return null;
     }
 
     try {
-      await _loadProfile(
-        showError: false,
-      );
+      final profile =
+          await _supabase
+              .from('profiles')
+              .select()
+              .eq(
+                'id',
+                userId,
+              )
+              .single();
 
-      if (!miningActive) {
+      final active =
+          profile['mining_active'] == true;
+
+      final endsAtString =
+          profile['mining_ends_at'];
+
+      if (!active) {
         _setError(
           'Mining session is not active.',
         );
+        return null;
+      }
 
+      if (endsAtString == null) {
+        _setError(
+          'Mining end time is missing.',
+        );
         return null;
       }
 
       final endsAt =
-          miningEndsAt;
+          DateTime.parse(
+        endsAtString.toString(),
+      );
 
-      if (endsAt == null) {
-        _setError(
-          'Mining end time is missing.',
-        );
-
-        return null;
-      }
-
-      final now =
-          DateTime.now().toUtc();
-
-      if (now.isBefore(endsAt)) {
+      if (DateTime.now().isBefore(endsAt)) {
         _setError(
           'Mining session has not ended yet.',
         );
-
         return null;
       }
 
-      final reward =
-          miningRate * 24;
+      final rate =
+          _toDouble(
+        profile['mining_rate'],
+        fallback: 0.2,
+      );
+
+      final reward = rate * 24;
+
+      final currentBalance =
+          _toDouble(
+        profile['fan_balance'],
+      );
 
       final newBalance =
-          fanBalance + reward;
+          currentBalance + reward;
 
-      final baseRate =
+      final activeReferrals =
+          _toInt(
+        profile['active_referrals'],
+      );
+
+      final newRate =
           0.2 +
-              activeReferrals *
-                  0.02;
+          activeReferrals * 0.02;
 
       await _supabase
           .from('profiles')
           .update({
-        'fan_balance':
-            newBalance,
-        'mining_active':
-            false,
-        'mining_started_at':
-            null,
-        'mining_ends_at':
-            null,
-        'daily_ads_watched':
-            0,
-        'ad_boost':
-            0,
-        'mining_rate':
-            baseRate,
+        'fan_balance': newBalance,
+        'mining_active': false,
+        'mining_started_at': null,
+        'mining_ends_at': null,
+        'daily_ads_watched': 0,
+        'ad_boost': 0,
+        'mining_rate': newRate,
         'updated_at':
-            now.toIso8601String(),
+            DateTime.now().toIso8601String(),
       }).eq(
         'id',
         userId,
       );
 
-      await _loadProfile(
-        showError: false,
-      );
+      await refreshUser();
 
       _setError(null);
 
@@ -989,23 +688,10 @@ class AuthService extends ChangeNotifier {
         'success': true,
         'message':
             'Mining reward claimed.',
-        'reward':
-            reward,
-        'fanBalance':
-            newBalance,
-        'miningActive':
-            false,
+        'reward': reward,
+        'fanBalance': newBalance,
+        'miningActive': false,
       };
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'CLAIM MINING DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return null;
     } catch (error) {
       debugPrint(
         'CLAIM MINING ERROR: $error',
@@ -1028,59 +714,60 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
-
       return null;
     }
 
     try {
-      await _loadProfile(
-        showError: false,
+      final profile =
+          await _supabase
+              .from('profiles')
+              .select()
+              .eq(
+                'id',
+                userId,
+              )
+              .single();
+
+      final ads =
+          _toInt(
+        profile['daily_ads_watched'],
       );
 
-      if (dailyAdsWatched >= 7) {
+      if (ads >= 7) {
         _setError(
           'You have reached the maximum of 7 rewarded ads today.',
         );
-
         return null;
       }
 
-      final newAds =
-          dailyAdsWatched + 1;
-
+      final newAds = ads + 1;
       final newAdBoost =
           newAds * 0.1;
 
-      final referralBoost =
-          activeReferrals *
-              0.02;
+      final referrals =
+          _toInt(
+        profile['active_referrals'],
+      );
 
       final newRate =
           0.2 +
-              referralBoost +
-              newAdBoost;
+          referrals * 0.02 +
+          newAdBoost;
 
       await _supabase
           .from('profiles')
           .update({
-        'daily_ads_watched':
-            newAds,
-        'ad_boost':
-            newAdBoost,
-        'mining_rate':
-            newRate,
+        'daily_ads_watched': newAds,
+        'ad_boost': newAdBoost,
+        'mining_rate': newRate,
         'updated_at':
-            DateTime.now()
-                .toUtc()
-                .toIso8601String(),
+            DateTime.now().toIso8601String(),
       }).eq(
         'id',
         userId,
       );
 
-      await _loadProfile(
-        showError: false,
-      );
+      await refreshUser();
 
       _setError(null);
 
@@ -1088,23 +775,10 @@ class AuthService extends ChangeNotifier {
         'success': true,
         'message':
             'Ad reward applied.',
-        'adsWatched':
-            newAds,
-        'adBoost':
-            newAdBoost,
-        'miningRate':
-            newRate,
+        'adsWatched': newAds,
+        'adBoost': newAdBoost,
+        'miningRate': newRate,
       };
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'REWARDED AD DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return null;
     } catch (error) {
       debugPrint(
         'REWARDED AD ERROR: $error',
@@ -1137,43 +811,21 @@ class AuthService extends ChangeNotifier {
               .eq(
                 'referred_by',
                 userId,
-              )
-              .order(
-                'created_at',
-                ascending: false,
               );
 
-      final referrals =
-          (response as List)
-              .map(
-                (item) =>
-                    Map<String, dynamic>.from(
-                  item as Map,
-                ),
-              )
-              .toList();
+      final list =
+          List<Map<String, dynamic>>.from(
+        response,
+      );
 
       return {
         'success': true,
-        'referralCode':
-            referralCode,
+        'referralCode': referralCode,
         'activeReferrals':
             activeReferrals,
-        'miningRate':
-            miningRate,
-        'referrals':
-            referrals,
+        'miningRate': miningRate,
+        'referrals': list,
       };
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'REFERRALS DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return null;
     } catch (error) {
       debugPrint(
         'REFERRALS ERROR: $error',
@@ -1198,7 +850,6 @@ class AuthService extends ChangeNotifier {
       _setError(
         'You are not authenticated.',
       );
-
       return false;
     }
 
@@ -1209,7 +860,6 @@ class AuthService extends ChangeNotifier {
       _setError(
         'Referral code is required.',
       );
-
       return false;
     }
 
@@ -1217,7 +867,9 @@ class AuthService extends ChangeNotifier {
       final referrer =
           await _supabase
               .from('profiles')
-              .select('id,referral_code')
+              .select(
+                'id,referral_code',
+              )
               .eq(
                 'referral_code',
                 cleanCode,
@@ -1228,25 +880,21 @@ class AuthService extends ChangeNotifier {
         _setError(
           'Invalid referral code.',
         );
-
         return false;
       }
 
-      if (referrer['id'] ==
-          userId) {
+      if (referrer['id'] == userId) {
         _setError(
           'You cannot use your own referral code.',
         );
-
         return false;
       }
 
       if (referredBy != null &&
           referredBy!.isNotEmpty) {
         _setError(
-          'A referral has already been applied.',
+          'Referral has already been applied.',
         );
-
         return false;
       }
 
@@ -1257,90 +905,51 @@ class AuthService extends ChangeNotifier {
             referrer['id'],
         'fan_balance':
             fanBalance + 20,
-        'updated_at':
-            DateTime.now()
-                .toUtc()
-                .toIso8601String(),
       }).eq(
         'id',
         userId,
       );
 
-      await _loadProfile(
-        showError: false,
+      final referrerBalance =
+          _toDouble(
+        referrer['fan_balance'],
       );
 
-      _setError(null);
+      final referrerCount =
+          _toInt(
+        referrer['active_referrals'],
+      );
+
+      await _supabase
+          .from('profiles')
+          .update({
+        'fan_balance':
+            referrerBalance + 5,
+        'active_referrals':
+            referrerCount + 1,
+        'mining_rate':
+            0.2 +
+            (referrerCount + 1) * 0.02,
+        'updated_at':
+            DateTime.now().toIso8601String(),
+      }).eq(
+        'id',
+        referrer['id'],
+      );
+
+      await refreshUser();
 
       return true;
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'APPLY REFERRAL DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return false;
     } catch (error) {
       debugPrint(
         'APPLY REFERRAL ERROR: $error',
       );
 
       _setError(
-        'Could not apply referral code.',
+        'Could not apply referral.',
       );
 
       return false;
     }
   }
-
-  // ==========================================================
-  // SOCIAL REWARD
-  // ==========================================================
-
-  Future<bool> claimSocialReward() async {
-    if (!isAuthenticated) {
-      _setError(
-        'You are not authenticated.',
-      );
-
-      return false;
-    }
-
-    try {
-      await _supabase.rpc(
-        'claim_social_reward',
-      );
-
-      await _loadProfile(
-        showError: false,
-      );
-
-      _setError(null);
-
-      return true;
-    } on PostgrestException catch (error) {
-      debugPrint(
-        'SOCIAL REWARD DATABASE ERROR: ${error.message}',
-      );
-
-      _setError(
-        error.message,
-      );
-
-      return false;
-    } catch (error) {
-      debugPrint(
-        'SOCIAL REWARD ERROR: $error',
-      );
-
-      _setError(
-        'Could not claim social reward.',
-      );
-
-      return false;
-    }
-  }
-}
+} 
