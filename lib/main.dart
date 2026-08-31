@@ -5,42 +5,30 @@ import 'screens/main_navigation_screen.dart';
 import 'services/auth_service.dart';
 
 // ============================================================
-// SUPABASE CONFIGURATION
-// ============================================================
-//
-// ZA MU SAUYA WADANNAN DA AINIhin SUPABASE DETAILS
-// DAGA PROJECT DIN POWER FAN NETWORK.
+// POWER FAN NETWORK - SUPABASE CONFIG
 // ============================================================
 
 const String supabaseUrl =
-    'YOUR_SUPABASE_PROJECT_URL';
+    'https://fihtqejqpycuvebufjhc.supabase.co';
 
 const String supabasePublishableKey =
-    'YOUR_SUPABASE_PUBLISHABLE_KEY';
+    'sb_publishable_KVf397QgYsgFi_D33mCcjw_5lV1ycCr';
+
+// ============================================================
+// MAIN
+// ============================================================
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ==========================================================
-  // INITIALIZE SUPABASE
-  // ==========================================================
 
   await Supabase.initialize(
     url: supabaseUrl,
     publishableKey: supabasePublishableKey,
   );
 
-  // ==========================================================
-  // INITIALIZE AUTH SERVICE
-  // ==========================================================
-
   final authService = AuthService();
 
   await authService.initialize();
-
-  // ==========================================================
-  // START APP
-  // ==========================================================
 
   runApp(
     PowerFanNetworkApp(
@@ -84,10 +72,8 @@ class PowerFanNetworkApp extends StatelessWidget {
             appBarTheme: const AppBarTheme(
               backgroundColor:
                   Color(0xFFF8F8FC),
-
               foregroundColor:
                   Color(0xFF241064),
-
               elevation: 0,
             ),
           ),
