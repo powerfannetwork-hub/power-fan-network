@@ -2,24 +2,9 @@
 // POWER FAN NETWORK
 // CUSTOM BACKEND SERVER
 // ============================================================
-//
-// Authentication:
-//   Custom JWT + bcrypt
-//
-// Database:
-//   Firestore ONLY
-//
-// Firebase Authentication:
-//   NOT USED
-//
-// Firebase Realtime Database:
-//   NOT USED
-//
-// Railway:
-//   NOT REQUIRED BY CODE
-//
-// Render:
-//   NOT REQUIRED BY CODE
+// Authentication: Custom JWT + bcrypt
+// Database: Firestore
+// Firebase Authentication: NOT USED
 // ============================================================
 
 require("dotenv").config();
@@ -27,54 +12,73 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
-const rateLimit =
-  require("express-rate-limit");
+const rateLimit = require("express-rate-limit");
+const admin = require("firebase-admin");
 
-const {
-  initializeFirebase,
-} = require("./src/firebase");
+const authRoutes = require("./src/routes/auth_routes");
 
-const authRoutes =
-  require("./src/routes/auth_routes");
-
-const userRoutes =
-  require("./src/routes/user_routes");
-
-const miningRoutes =
-  require("./src/routes/mining_routes");
-
-// ============================================================
-// APP
-// ============================================================
-
-const app =
-  express();
+const app = express();
 
 // ============================================================
 // CONFIG
 // ============================================================
 
-const PORT =
-  Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 // ============================================================
 // FIRESTORE
 // ============================================================
 
-initializeFirebase();
+let db = null;
+
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT
+    );
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+    });
+  } else {
+    console.error(
+      "WARNING: FIREBASE_SERVICE_ACCOUNT and GOOGLE_APPLICATION_CREDENTIALS are not set."
+    );
+
+    // Allows server to start, but database requests will return 503.
+  }
+
+  if (admin.apps.length > 0) {
+    db = admin.firestore();
+
+    console.log("Firestore initialized.");
+  }
+} catch (error) {
+  console.error(
+    "Firestore initialization failed:",
+    error.message
+  );
+}
 
 // ============================================================
-// SECURITY
+// MIDDLEWARE
 // ============================================================
+
+app.disable("x-powered-by");
 
 app.use(
-  helmet()
+  helmet({
+    crossOriginResourcePolicy: false,
+  })
 );
 
 app.use(
   cors({
     origin: "*",
-
     methods: [
       "GET",
       "POST",
@@ -83,7 +87,6 @@ app.use(
       "DELETE",
       "OPTIONS",
     ],
-
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -108,135 +111,106 @@ app.use(
 // RATE LIMIT
 // ============================================================
 
-const authLimiter =
-  rateLimit({
-    windowMs:
-      15 * 60 * 1000,
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
 
-    max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
 
-    standardHeaders:
-      true,
+  message: {
+    success: false,
+    message:
+      "Too many authentication attempts. Please try again later.",
+  },
+});
 
-    legacyHeaders:
-      false,
+app.use(
+  "/api/auth/login",
+  authLimiter
+);
 
-    message: {
-      success: false,
+app.use(
+  "/api/auth/register",
+  authLimiter
+);
 
-      message:
-        "Too many authentication attempts. Please try again later.",
-    },
-  });
+// ============================================================
+// DATABASE HELPER
+// ============================================================
 
-const apiLimiter =
-  rateLimit({
-    windowMs:
-      15 * 60 * 1000,
-
-    max: 300,
-
-    standardHeaders:
-      true,
-
-    legacyHeaders:
-      false,
-
-    message: {
-      success: false,
-
-      message:
-        "Too many requests. Please try again later.",
-    },
-  });
+function getDatabase() {
+  return db;
+}
 
 // ============================================================
 // HEALTH
 // ============================================================
 
-app.get(
-  "/",
-  (req, res) => {
-    res.json({
-      success: true,
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
 
-      app:
-        "POWER FAN NETWORK",
+    app: "POWER FAN NETWORK",
 
-      backend:
-        "Custom Backend",
+    backend: "Custom Backend",
 
-      authentication:
-        "JWT + bcrypt",
+    authentication: "Custom JWT + bcrypt",
 
-      firebaseAuthentication:
-        false,
+    firebaseAuthentication: false,
 
-      realtimeDatabase:
-        false,
+    database: db
+      ? "Firestore"
+      : "Firestore not connected",
 
-      database:
-        "Firestore",
+    status: "online",
 
-      status:
-        "online",
+    version: "1.0.0",
+  });
+});
 
-      version:
-        "2.0.0",
-    });
-  }
-);
+app.get("/health", (req, res) => {
+  res.json({
+    success: true,
 
-app.get(
-  "/health",
-  (req, res) => {
-    const db =
-      require("./src/firebase")
-        .getDb();
+    status: "healthy",
 
-    res.json({
-      success: true,
+    database: db
+      ? "connected"
+      : "disconnected",
 
-      status:
-        "healthy",
+    firebaseAuthentication: false,
 
-      database:
-        db
-          ? "connected"
-          : "disconnected",
-
-      firebaseAuthentication:
-        "disabled",
-
-      realtimeDatabase:
-        "disabled",
-
-      time:
-        new Date().toISOString(),
-    });
-  }
-);
+    time: new Date().toISOString(),
+  });
+});
 
 // ============================================================
-// ROUTES
+// API ROUTES
 // ============================================================
 
 app.use(
   "/api/auth",
-  authLimiter,
   authRoutes
 );
 
-app.use(
-  "/api/user",
-  apiLimiter,
-  userRoutes
-);
+// ============================================================
+// SIMPLE USER INFO
+// ============================================================
 
-app.use(
-  "/api/mining",
-  apiLimiter,
-  miningRoutes
+app.get(
+  "/api/status",
+  (req, res) => {
+    res.json({
+      success: true,
+      app: "POWER FAN NETWORK",
+      backend: "online",
+      authentication: "JWT",
+      database: db
+        ? "connected"
+        : "disconnected",
+    });
+  }
 );
 
 // ============================================================
@@ -251,8 +225,7 @@ app.use(
       message:
         "API endpoint not found.",
 
-      path:
-        req.path,
+      path: req.path,
     });
   }
 );
@@ -262,22 +235,11 @@ app.use(
 // ============================================================
 
 app.use(
-  (
-    error,
-    req,
-    res,
-    next
-  ) => {
+  (error, req, res, next) => {
     console.error(
-      "GLOBAL ERROR:",
+      "GLOBAL SERVER ERROR:",
       error
     );
-
-    if (
-      res.headersSent
-    ) {
-      return next(error);
-    }
 
     res.status(500).json({
       success: false,
@@ -298,35 +260,45 @@ app.listen(
   () => {
     console.log("");
     console.log(
-      "=========================================="
+      "================================================"
     );
     console.log(
-      "POWER FAN NETWORK BACKEND"
+      " POWER FAN NETWORK BACKEND"
     );
     console.log(
-      "=========================================="
+      "================================================"
     );
+
     console.log(
       `Server: http://0.0.0.0:${PORT}`
     );
+
     console.log(
-      "Authentication: CUSTOM JWT"
+      "Authentication: Custom JWT + bcrypt"
     );
-    console.log(
-      "Password: bcrypt"
-    );
-    console.log(
-      "Firestore: ENABLED"
-    );
+
     console.log(
       "Firebase Authentication: DISABLED"
     );
+
     console.log(
-      "Realtime Database: DISABLED"
+      `Firestore: ${
+        db ? "CONNECTED" : "NOT CONNECTED"
+      }`
     );
+
     console.log(
-      "=========================================="
+      "================================================"
     );
     console.log("");
   }
 );
+
+// ============================================================
+// EXPORT
+// ============================================================
+
+module.exports = {
+  app,
+  getDatabase,
+};
