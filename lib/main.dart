@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'firebase_options.dart';
 import 'screens/main_navigation_screen.dart';
 import 'services/auth_service.dart';
+
+// ============================================================
+// SUPABASE CONFIGURATION
+// ============================================================
+//
+// ZA MU SAUYA WADANNAN DA AINIhin SUPABASE DETAILS
+// DAGA PROJECT DIN POWER FAN NETWORK.
+// ============================================================
 
 const String supabaseUrl =
     'YOUR_SUPABASE_PROJECT_URL';
@@ -14,15 +21,26 @@ const String supabasePublishableKey =
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ==========================================================
+  // INITIALIZE SUPABASE
+  // ==========================================================
+
   await Supabase.initialize(
     url: supabaseUrl,
     publishableKey: supabasePublishableKey,
   );
 
-  final authService =
-      AuthService();
+  // ==========================================================
+  // INITIALIZE AUTH SERVICE
+  // ==========================================================
+
+  final authService = AuthService();
 
   await authService.initialize();
+
+  // ==========================================================
+  // START APP
+  // ==========================================================
 
   runApp(
     PowerFanNetworkApp(
@@ -31,8 +49,11 @@ Future<void> main() async {
   );
 }
 
-class PowerFanNetworkApp
-    extends StatelessWidget {
+// ============================================================
+// POWER FAN NETWORK APP
+// ============================================================
+
+class PowerFanNetworkApp extends StatelessWidget {
   final AuthService authService;
 
   const PowerFanNetworkApp({
@@ -41,29 +62,37 @@ class PowerFanNetworkApp
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: authService,
-      builder: (
-        context,
-        child,
-      ) {
+      builder: (context, child) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
+
           title: 'POWER FAN NETWORK',
+
           theme: ThemeData(
             useMaterial3: true,
+
             colorScheme: ColorScheme.fromSeed(
-              seedColor:
-                  const Color(0xFF3B159B),
+              seedColor: const Color(0xFF3B159B),
             ),
+
             scaffoldBackgroundColor:
                 const Color(0xFFF8F8FC),
+
+            appBarTheme: const AppBarTheme(
+              backgroundColor:
+                  Color(0xFFF8F8FC),
+
+              foregroundColor:
+                  Color(0xFF241064),
+
+              elevation: 0,
+            ),
           ),
-          home:
-              const MainNavigationScreen(),
+
+          home: const MainNavigationScreen(),
         );
       },
     );
