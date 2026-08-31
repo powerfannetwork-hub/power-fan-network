@@ -2,10 +2,10 @@
   "name": "power-fan-network-backend",
   "version": "1.0.0",
   "description": "POWER FAN NETWORK custom backend with JWT authentication and Firestore database",
-  "main": "src/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node src/server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "engines": {
     "node": "20.x"
