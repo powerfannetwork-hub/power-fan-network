@@ -1,13 +1,10 @@
-name: Build POWER FAN NETWORK APK
+name: Flutter CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   build:
@@ -21,37 +18,44 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Setup Flutter 3.24.0
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.0"
+          flutter-version: '3.24.0'
           channel: stable
           cache: true
 
-      # Important:
-      # Download Flutter Android engine artifacts before Gradle starts.
-      - name: Precache Flutter Android artifacts
-        run: flutter precache --android
+      - name: Setup Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
 
       - name: Flutter Doctor
         run: flutter doctor -v
 
-      - name: Flutter Clean
-        run: flutter clean
-
       - name: Get Dependencies
         run: flutter pub get
 
+      - name: Precache Android Engine
+        run: flutter precache --android
+
+      - name: Force Gradle Wrapper 8.13
+        working-directory: android
+        run: |
+          gradle wrapper --gradle-version 8.13
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Verify Gradle Wrapper
+        working-directory: android
+        run: |
+          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+          ./gradlew --version
+
       - name: Analyze
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings || true
-
-      - name: Verify Flutter
-        run: |
-          flutter --version
-          flutter doctor
-          flutter precache --android
 
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
@@ -61,4 +65,3 @@ jobs:
         with:
           name: power-fan-network-release
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
