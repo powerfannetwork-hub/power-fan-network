@@ -1,0 +1,19 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+    - run: flutter pub get
+    - run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
+    - run: flutter build apk --release --android-skip-build-dependency-validation
