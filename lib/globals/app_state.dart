@@ -20,7 +20,7 @@ class AppState extends ChangeNotifier {
       _miningActive = profile['mining_active']?? false;
       _user = profile;
     } catch(e) {
-      print("Refresh Error: $e"); // AN KARA WANNAN DON CIKAR WARNING
+      // BA MU DA PRINT ANAN. MUN BARI KOSAI
     } finally {
       _loading = false; notifyListeners();
     }
@@ -42,7 +42,7 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     _user = null;
     _fanBalance = 0;
-    _miningActive = false;
+    _miningActive = 0;
     notifyListeners();
   }
 }
