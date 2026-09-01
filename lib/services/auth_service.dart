@@ -1,28 +1,91 @@
-import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AuthService extends ChangeNotifier {
-  final _supabase = Supabase.instance.client; String? _error; bool _loading = false;
-  String? get error => _error; bool get loading => _loading; User? get user => _supabase.auth.currentUser;
+class AuthService {
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  Future<void> initialize() async {_loading = true; notifyListeners(); await Future.delayed(Duration.zero); _loading = false; notifyListeners();}
+  User? get currentUser => _supabase.auth.currentUser;
 
-  Future<bool> login(String email, String password) async {
-    try {_loading = true; _error = null; notifyListeners();
-      await _supabase.auth.signInWithPassword(email: email, password: password);
-      return true;
-    } catch(e) {_error = e.toString(); return false;} finally {_loading = false; notifyListeners();}
-  }
+  Session? get currentSession => _supabase.auth.currentSession;
 
-  Future<bool> register(String email, String password, String name) async {
-    try {_loading = true; _error = null; notifyListeners();
-      await _supabase.auth.signUp(
-        email: email, password: password,
-        data: {'name': name, 'referral_code': '${email.split('@')[0].toUpperCase()}123', 'fan_balance': 0}
+  Stream<AuthState> get authStateChanges =>
+      _supabase.auth.onAuthStateChange;
+
+  Future<AuthResponse> register({
+    required String email,
+    required String password,
+    required String username,
+    String? referralCode,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanUsername = username.trim();
+
+    if (cleanEmail.isEmpty) {
+      throw const AuthException('Please enter your email address.');
+    }
+
+    if (cleanUsername.isEmpty) {
+      throw const AuthException('Please enter a username.');
+    }
+
+    if (password.length < 6) {
+      throw const AuthException(
+        'Password must be at least 6 characters.',
       );
-      return true;
-    } catch(e) {_error = e.toString(); return false;} finally {_loading = false; notifyListeners();}
+    }
+
+    // Check username before creating the account.
+    final existing = await _supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', cleanUsername)
+        .limit(1);
+
+    if (existing.isNotEmpty) {
+      throw const AuthException('This username is already taken.');
+    }
+
+    final response = await _supabase.auth.signUp(
+      email: cleanEmail,
+      password: password,
+      data: {
+        'username': cleanUsername,
+        if (referralCode != null && referralCode.trim().isNotEmpty)
+          'referral_code': referralCode.trim().toUpperCase(),
+      },
+    );
+
+    // If email confirmation is disabled in Supabase,
+    // a session is returned immediately.
+    if (response.user == null) {
+      throw const AuthException(
+        'Account could not be created. Please try again.',
+      );
+    }
+
+    return response;
   }
 
-  Future<void> logout() async {await _supabase.auth.signOut(); notifyListeners();}
+  Future<AuthResponse> login({
+    required String email,
+    required String password,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+
+    if (cleanEmail.isEmpty) {
+      throw const AuthException('Please enter your email address.');
+    }
+
+    if (password.isEmpty) {
+      throw const AuthException('Please enter your password.');
+    }
+
+    return await _supabase.auth.signInWithPassword(
+      email: cleanEmail,
+      password: password,
+    );
+  }
+
+  Future<void> logout() async {
+    await _supabase.auth.signOut();
+  }
 }
