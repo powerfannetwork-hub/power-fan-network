@@ -39,6 +39,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+
+        maven {
+            url = uri(
+                "${
+                    System.getenv("FLUTTER_ROOT")
+                        ?: file("../.flutter_sdk").absolutePath
+                }/bin/cache/artifacts/engine"
+            )
+        }
     }
 }
 
