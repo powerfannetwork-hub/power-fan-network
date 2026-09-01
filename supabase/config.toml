@@ -1,0 +1,4 @@
+project_id = "power-fan-network"
+
+[functions.api]
+verify_jwt = false
