@@ -2,11 +2,13 @@ pluginManagement {
     val flutterSdkPath =
         run {
             val properties = java.util.Properties()
+
             file("local.properties").inputStream().use {
                 properties.load(it)
             }
 
             val flutterSdkPath = properties.getProperty("flutter.sdk")
+
             require(flutterSdkPath != null) {
                 "flutter.sdk not set in local.properties"
             }
@@ -40,14 +42,8 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
 
-        maven {
-            url = uri(
-                "${
-                    System.getenv("FLUTTER_ROOT")
-                        ?: file("../.flutter_sdk").absolutePath
-                }/bin/cache/artifacts/engine"
-            )
-        }
+        // Flutter engine and Android artifacts
+        maven("https://storage.googleapis.com/download.flutter.io")
     }
 }
 
