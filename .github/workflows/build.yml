@@ -1,4 +1,4 @@
-name: Flutter CI
+name: Build POWER FAN NETWORK APK
 
 on:
   push:
@@ -35,17 +35,28 @@ jobs:
       - name: Flutter Doctor
         run: flutter doctor -v
 
+      - name: Enable AndroidX
+        working-directory: android
+        run: |
+          touch gradle.properties
+          grep -qxF 'android.useAndroidX=true' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
+          grep -qxF 'android.enableJetifier=true' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
+
       - name: Get Dependencies
         run: flutter pub get
 
       - name: Analyze
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings || true
 
-      - name: Generate Gradle Wrapper
-        working-directory: android
-        run: gradle wrapper --gradle-version 8.13
+      - name: Generate Gradle Wrapper 8.13
+        run: |
+          gradle -p android wrapper --gradle-version 8.13
 
-      - name: Build APK
+      - name: Verify Gradle Version
+        working-directory: android
+        run: ./gradlew --version
+
+      - name: Build Release APK
         run: flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload APK
@@ -53,3 +64,4 @@ jobs:
         with:
           name: power-fan-network-release
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
