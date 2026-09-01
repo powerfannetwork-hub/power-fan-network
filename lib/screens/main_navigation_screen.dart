@@ -1,20 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/api_service.dart';
-
-// LOGIN SCREEN MAI SAUKI
-class LoginFallbackScreen extends StatelessWidget {
-  const LoginFallbackScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(child: ElevatedButton(
-        onPressed: () => Supabase.instance.client.auth.signOut(),
-        child: Text("Login Page Zata zo nan"),
-      )),
-    );
-  }
-}
+import 'package:provider/provider.dart';
+import '../globals/app_state.dart';
+import '../services/auth_service.dart';
+import '../pages/home_page.dart'; // Shine HomeTab naka
+import '../pages/wallet_page.dart'; // Shine WalletPage naka
+import '../pages/referral_page.dart';
+import '../pages/settings_page.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -23,13 +14,22 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
-  final List<Widget> _pages = const [HomeTab(), ReferralTab(), WalletTab(), SettingsTab()];
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    final authService = context.watch<AuthService>();
+    
+    final List<Widget> pages = [
+      const HomePage(), // Amfani da HomePage
+      const ReferralPage(),
+      WalletPage(appState: appState), // Wannan yana son appState
+      SettingsPage(authService: authService, appState: appState), // Wannan yana son su biyu
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8FC),
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: NavigationBar(
         backgroundColor: Colors.white,
         selectedIndex: _currentIndex,
@@ -44,7 +44,3 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
-
-// DUKAN TABS DINKA NA BAYA SUNA NAN...
-// HomeTab, ReferralTab, WalletTab, SettingsTab, _toDouble, _toInt...
-// Kwafa su duka kamar yadda ka tura min
