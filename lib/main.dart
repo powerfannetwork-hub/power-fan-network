@@ -8,19 +8,15 @@ import 'screens/main_navigation_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // SAKE SAKE SUPABASE URL NAKA DA ANON KEY NAKA NAN
   await Supabase.initialize(
-    url: 'https://your-project.supabase.co', 
-    anonKey: 'your-anon-key',
+    url: 'https://your-project.supabase.co', // SAKE SAKE NAKA
+    anonKey: 'your-anon-key', // SAKE SAKE NAKA
   );
-
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -31,8 +27,8 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'POWER FAN NETWORK',
-        theme: ThemeData(primaryColor: const Color(0xFF3B159B)),
-        home: const AuthWrapper(), // Wannan zai duba idan an shiga ko a'a
+        theme: ThemeData(primarySwatch: Colors.deepPurple, scaffoldBackgroundColor: const Color(0xFFF8F8FC)),
+        home: const AuthWrapper(),
       ),
     );
   }
@@ -43,15 +39,8 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = context.watch<AuthService>();
-    
-    if (authService.loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    
-    if (authService.user != null) {
-      return const MainNavigationScreen(); // Idan an shiga -> Kai tsaye zuwa app
-    } else {
-      return const LoginPage(); // Idan ba'a shiga ba -> Login
-    }
+    if (authService.loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (authService.user!= null) return const MainNavigationScreen();
+    return const LoginPage();
   }
 }
