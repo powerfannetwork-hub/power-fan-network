@@ -10,7 +10,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
     url: 'https://your-project.supabase.co', // SAKE SAKE NAKA
-    anonKey: 'your-anon-key', // SAKE SAKE NAKA
+    publishableKey: 'your-anon-key', // SAKE SAKE NAKA
   );
   runApp(const MyApp());
 }
@@ -41,6 +41,4 @@ class AuthWrapper extends StatelessWidget {
     final authService = context.watch<AuthService>();
     if (authService.loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (authService.user!= null) return const MainNavigationScreen();
-    return const LoginPage();
-  }
-}
+    return
