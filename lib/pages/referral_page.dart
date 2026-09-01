@@ -28,4 +28,13 @@ class _ReferralPageState extends State<ReferralPage> {
         Text("Your Referral Code"), SizedBox(height: 10),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Text(code, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          IconButton(icon: Icon(Icons.copy), onPressed: () { Clipboard.setData(ClipboardData(text: code));
+          IconButton(icon: Icon(Icons.copy), onPressed: () { Clipboard.setData(ClipboardData(text: code)); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Copied"))); })
+        ])
+      ])),
+      SizedBox(height: 20),
+      TextField(controller: _controller, decoration: InputDecoration(labelText: "Enter Referral Code", suffixIcon: ElevatedButton(onPressed: _apply, child: Text("Apply")))),
+      SizedBox(height: 20),
+      Text("Active Referrals: ${_data?['activeReferrals'] ?? 0}", style: TextStyle(fontWeight: FontWeight.bold))
+    ]));
+  }
+}
