@@ -1,0 +1,91 @@
+// lib/device_service.dart
+
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class DeviceService {
+  static const String _deviceIdKey =
+      'power_fan_device_id';
+
+  static const String _deviceRegisteredKey =
+      'power_fan_device_registered';
+
+  static Future<String> getDeviceId() async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    final savedId =
+        prefs.getString(_deviceIdKey);
+
+    if (savedId != null &&
+        savedId.trim().isNotEmpty) {
+      return savedId;
+    }
+
+    final generatedId =
+        await _generateDeviceId();
+
+    await prefs.setString(
+      _deviceIdKey,
+      generatedId,
+    );
+
+    return generatedId;
+  }
+
+  static Future<String> _generateDeviceId() async {
+    final timestamp =
+        DateTime.now()
+            .microsecondsSinceEpoch;
+
+    final platform =
+        kIsWeb
+            ? 'web'
+            : Platform.operatingSystem;
+
+    return 'PFN-$platform-$timestamp';
+  }
+
+  static Future<bool> isDeviceRegistered() async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    return prefs.getBool(
+          _deviceRegisteredKey,
+        ) ??
+        false;
+  }
+
+  static Future<void> markDeviceRegistered() async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    await prefs.setBool(
+      _deviceRegisteredKey,
+      true,
+    );
+  }
+
+  static Future<void> clearDeviceRegistration() async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    await prefs.remove(
+      _deviceRegisteredKey,
+    );
+  }
+
+  static Future<Map<String, String>>
+      getDeviceInfo() async {
+    return {
+      'deviceId':
+          await getDeviceId(),
+      'platform':
+          kIsWeb
+              ? 'web'
+              : Platform.operatingSystem,
+    };
+  }
+}
