@@ -5,18 +5,37 @@ class WalletPage extends StatelessWidget {
   final AppState appState;
   const WalletPage({super.key, required this.appState});
 
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(child: ListView(padding: EdgeInsets.all(16), children: [
-      Text("Wallet", style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: Color(0xFF241064))),
-      SizedBox(height: 20),
-      Container(padding: EdgeInsets.all(22), decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF3B159B), Color(0xFF241064)]), borderRadius: BorderRadius.circular(24)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text("FAN Balance", style: TextStyle(color: Colors.white70)), SizedBox(height: 10),
-          Text("${appState.fanBalance.toStringAsFixed(4)} FAN", style: TextStyle(color: Colors.white, fontSize: 31, fontWeight: FontWeight.bold)),
-        ])),
-      SizedBox(height: 20),
-      ElevatedButton(onPressed: (){}, child: Text("WITHDRAW - COMING SOON"), style: ElevatedButton.styleFrom(backgroundColor: Colors.grey, minimumSize: Size(double.infinity, 50)))
-    ]));
+  @override Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Wallet")),
+      body: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    Text("Total Balance"),
+                    Text("${appState.fanBalance.toStringAsFixed(4)} FAN", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold))
+                  ]
+                )
+              )
+            ),
+            SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Color(0xFF3B159B)), // AN SAWA CHILD NA KARSHE
+                onPressed: (){},
+                child: Text("WITHDRAW")
+              )
+            )
+          ]
+        )
+      )
+    );
   }
 }
