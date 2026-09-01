@@ -1,18 +1,26 @@
-// lib/globals/app_constants.dart
+// ============================================================
+// POWER FAN NETWORK
+// APP CONSTANTS
+// ============================================================
 
 class AppConstants {
-  // ============================================================
+  AppConstants._();
+
+  // ==========================================================
   // APP
-  // ============================================================
+  // ==========================================================
 
   static const String appName = 'POWER FAN NETWORK';
-  static const String brandName = 'POWER FAN';
-  static const String miningCoinName = 'FAN';
-  static const String originalCoinName = 'AFAM';
 
-  // ============================================================
+  static const String appShortName = 'POWER FAN';
+
+  static const String coinMiningName = 'FAN';
+
+  static const String coinOriginalName = 'AFAM';
+
+  // ==========================================================
   // MINING
-  // ============================================================
+  // ==========================================================
 
   static const double baseMiningRate = 0.2;
 
@@ -24,9 +32,11 @@ class AppConstants {
 
   static const int miningHours = 24;
 
-  // ============================================================
+  static const int miningDurationHours = 24;
+
+  // ==========================================================
   // REFERRAL
-  // ============================================================
+  // ==========================================================
 
   static const double newUserReferralReward = 20.0;
 
@@ -34,82 +44,59 @@ class AppConstants {
 
   static const double referralMiningBoost = 0.02;
 
-  // ============================================================
-  // DAILY SOCIAL TASK
-  // ============================================================
+  // ==========================================================
+  // SOCIAL
+  // ==========================================================
 
   static const double dailySocialReward = 10.0;
 
-  // ============================================================
+  // ==========================================================
+  // WELCOME
+  // ==========================================================
+
+  static const double welcomeReward = 0.0;
+
+  // ==========================================================
   // KYC
-  // ============================================================
+  // ==========================================================
 
-  static const int kyc1RequiredDays = 14;
+  static const int kyc1Days = 14;
 
-  static const int kyc2RequiredDays = 30;
+  static const int kyc2Days = 30;
 
-  static const int kyc2RequiredReferrals = 3;
+  static const int kyc2Referrals = 3;
 
-  // ============================================================
+  // ==========================================================
   // WALLET
-  // ============================================================
+  // ==========================================================
 
   static const String walletStatus = 'COMING SOON';
 
-  // ============================================================
+  // ==========================================================
+  // COLORS
+  // ==========================================================
+
+  static const int primaryColorValue = 0xFF3B159B;
+
+  static const int deepPurpleColorValue = 0xFF241064;
+
+  static const int lightBackgroundColorValue = 0xFFF8F8FC;
+
+  static const int greenColorValue = 0xFF159B61;
+
+  // ==========================================================
   // STORAGE
-  // ============================================================
+  // ==========================================================
 
-  static const String authTokenKey =
-      'power_fan_auth_token';
+  static const String appLanguageKey =
+      'power_fan_language';
 
-  static const String userKey =
-      'power_fan_user';
+  static const String onboardingKey =
+      'power_fan_onboarding_completed';
 
-  // ============================================================
-  // SUPABASE TABLES
-  // ============================================================
-
-  static const String usersTable = 'users';
-
-  static const String miningSessionsTable =
-      'mining_sessions';
-
-  static const String referralsTable =
-      'referrals';
-
-  static const String dailyTasksTable =
-      'daily_tasks';
-
-  static const String adRewardsTable =
-      'ad_rewards';
-
-  static const String notificationsTable =
-      'notifications';
-
-  static const String kycTable = 'kyc_verifications';
-
-  // ============================================================
-  // API
-  // ============================================================
-
-  static const String apiVersion = 'v1';
-
-  // ============================================================
-  // BRAND COLORS
-  // ============================================================
-
-  static const int purpleColor = 0xFF3B159B;
-
-  static const int deepPurpleColor = 0xFF241064;
-
-  static const int lightBackgroundColor = 0xFFF8F8FC;
-
-  static const int greenColor = 0xFF159B61;
-
-  // ============================================================
-  // LANGUAGE
-  // ============================================================
+  // ==========================================================
+  // LANGUAGES
+  // ==========================================================
 
   static const List<String> supportedLanguages = [
     'English',
@@ -124,63 +111,63 @@ class AppConstants {
     'Turkish',
   ];
 
-  // ============================================================
-  // DEFAULTS
-  // ============================================================
+  // ==========================================================
+  // SOCIAL TASK
+  // ==========================================================
 
-  static const double defaultFanBalance = 0.0;
+  static const String officialFacebook =
+      'https://www.facebook.com/';
 
-  static const double defaultAfamBalance = 0.0;
+  static const String officialTelegram =
+      'https://t.me/';
 
-  static const double defaultMiningRate = 0.2;
+  static const String officialX =
+      'https://x.com/';
 
-  static const int defaultActiveReferrals = 0;
+  static const String officialYouTube =
+      'https://www.youtube.com/';
 
-  static const int defaultDailyAdsWatched = 0;
+  // ==========================================================
+  // API
+  // ==========================================================
 
-  static const double defaultAdBoost = 0.0;
+  static const String apiStatusEndpoint =
+      '/api/status';
 
-  // ============================================================
-  // CALCULATIONS
-  // ============================================================
+  static const String apiHealthEndpoint =
+      '/health';
 
-  static double miningRate({
-    int activeReferrals = 0,
-    int adsWatched = 0,
-  }) {
-    final safeReferrals =
-        activeReferrals < 0 ? 0 : activeReferrals;
+  static const String apiDashboardEndpoint =
+      '/api/dashboard';
 
-    final safeAds =
-        adsWatched.clamp(0, maxDailyAds);
+  // ==========================================================
+  // SECURITY
+  // ==========================================================
 
-    return baseMiningRate +
-        (safeReferrals * referralMiningBoost) +
-        (safeAds * adBoostPerAd);
-  }
+  static const bool oneAccountOneDevice = true;
 
-  static double referralMiningRate(
-    int activeReferrals,
-  ) {
-    final safeReferrals =
-        activeReferrals < 0 ? 0 : activeReferrals;
+  static const bool firebaseAuthenticationEnabled =
+      false;
 
-    return baseMiningRate +
-        (safeReferrals * referralMiningBoost);
-  }
+  static const bool customBackendAuthentication =
+      true;
 
-  static double adBoostFor(
-    int adsWatched,
-  ) {
-    final safeAds =
-        adsWatched.clamp(0, maxDailyAds);
+  // ==========================================================
+  // MESSAGES
+  // ==========================================================
 
-    return safeAds * adBoostPerAd;
-  }
+  static const String miningStartedMessage =
+      'Mining started successfully.';
 
-  static double dailyMiningReward({
-    required double miningRate,
-  }) {
-    return miningRate * miningHours;
-  }
+  static const String miningClaimedMessage =
+      'Mining reward claimed successfully.';
+
+  static const String miningAlreadyActiveMessage =
+      'Mining is already active.';
+
+  static const String miningNotFinishedMessage =
+      'Mining session has not ended yet.';
+
+  static const String maxAdsMessage =
+      'You have reached the maximum of 7 rewarded ads today.';
 }
