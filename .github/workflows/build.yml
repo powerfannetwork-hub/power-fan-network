@@ -2,9 +2,12 @@ name: Build POWER FAN NETWORK APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,29 +21,25 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Setup Flutter
+      - name: Setup Flutter 3.24.0
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: "3.24.0"
           channel: stable
           cache: true
 
-      - name: Setup Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
+      # Important:
+      # Download Flutter Android engine artifacts before Gradle starts.
+      - name: Precache Flutter Android artifacts
+        run: flutter precache --android
 
       - name: Flutter Doctor
         run: flutter doctor -v
 
-      - name: Enable AndroidX
-        working-directory: android
-        run: |
-          touch gradle.properties
-          grep -qxF 'android.useAndroidX=true' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
-          grep -qxF 'android.enableJetifier=true' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
+      - name: Flutter Clean
+        run: flutter clean
 
       - name: Get Dependencies
         run: flutter pub get
@@ -48,15 +47,13 @@ jobs:
       - name: Analyze
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings || true
 
-      - name: Generate Gradle Wrapper 8.13
+      - name: Verify Flutter
         run: |
-          gradle -p android wrapper --gradle-version 8.13
+          flutter --version
+          flutter doctor
+          flutter precache --android
 
-      - name: Verify Gradle Version
-        working-directory: android
-        run: ./gradlew --version
-
-      - name: Build Release APK
+      - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload APK
