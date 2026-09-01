@@ -9,8 +9,8 @@ import 'screens/main_navigation_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
-    url: 'https://your-project.supabase.co', // SAKE SAKE NAKA
-    publishableKey: 'your-anon-key', // SAKE SAKE NAKA
+    url: 'https://your-project.supabase.co',
+    publishableKey: 'your-anon-key',
   );
   runApp(const MyApp());
 }
@@ -32,7 +32,7 @@ class MyApp extends StatelessWidget {
       ),
     );
   }
-}
+} // WANNAN } YA BACE DAZU
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
@@ -41,4 +41,6 @@ class AuthWrapper extends StatelessWidget {
     final authService = context.watch<AuthService>();
     if (authService.loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (authService.user!= null) return const MainNavigationScreen();
-    return
+    return const LoginPage();
+  }
+}
