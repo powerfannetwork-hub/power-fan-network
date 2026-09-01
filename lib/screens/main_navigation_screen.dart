@@ -1,46 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../globals/app_state.dart';
-import '../services/auth_service.dart';
-import '../pages/home_page.dart'; // Shine HomeTab naka
-import '../pages/wallet_page.dart'; // Shine WalletPage naka
+import '../pages/home_page.dart'; // GYARA: KARA ../
 import '../pages/referral_page.dart';
+import '../pages/wallet_page.dart';
 import '../pages/settings_page.dart';
+import '../services/auth_service.dart';
+import '../globals/app_state.dart';
 
-class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
-  @override State<MainNavigationScreen> createState() => _MainNavigationScreenState();
-}
-
+class MainNavigationScreen extends StatefulWidget { const MainNavigationScreen({super.key}); @override State<MainNavigationScreen> createState() => _MainNavigationScreenState(); }
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _currentIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
-    final authService = context.watch<AuthService>();
-    
-    final List<Widget> pages = [
-      const HomePage(), // Amfani da HomePage
-      const ReferralPage(),
-      WalletPage(appState: appState), // Wannan yana son appState
-      SettingsPage(authService: authService, appState: appState), // Wannan yana son su biyu
-    ];
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8FC),
-      body: IndexedStack(index: _currentIndex, children: pages),
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: Colors.white,
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) => setState(() => _currentIndex = index),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Referral'),
-          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
-        ],
-      ),
-    );
+  int _currentIndex = 0; late final List<Widget> _screens;
+  @override void initState() { super.initState(); final auth = context.read<AuthService>(); final app = context.read<AppState>(); app.refresh();
+    _screens = [const HomePage(), const ReferralPage(), WalletPage(appState: app), SettingsPage(authService: auth, appState: app)];
+  }
+  @override Widget build(BuildContext context) {
+    return Scaffold(body: _screens[_currentIndex], bottomNavigationBar: BottomNavigationBar(currentIndex: _currentIndex, onTap: (i) => setState(() => _currentIndex = i), selectedItemColor: Color(0xFF3B159B), items: const [
+      BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"), BottomNavigationBarItem(icon: Icon(Icons.people), label: "Referral"),
+      BottomNavigationBarItem(icon: Icon(Icons.wallet), label: "Wallet"), BottomNavigationBarItem(icon: Icon(Icons.settings), label: "Settings"),
+    ]));
   }
 }
