@@ -1,10 +1,11 @@
 import 'dart:async';
 
-import 'package:applovin_max/applovin_max.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/mining_service.dart';
+import '../services/boost_ads_service.dart';
+import '../components/boost/boost_ads_card.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -19,18 +20,8 @@ class _MainNavigationScreenState
   final MiningService _miningService =
       MiningService.instance;
 
-  /*
-   * AppLovin MAX configuration.
-   *
-   * These must be replaced with the real values from
-   * the AppLovin MAX dashboard before real rewarded ads
-   * can be displayed.
-   *
-   * DO NOT use a fake SDK key or fake ad unit ID.
-   */
-  static const String _appLovinSdkKey = '';
-
-  static const String _rewardedAdUnitId = '';
+  final BoostAdsService _boostAdsService =
+      BoostAdsService.instance;
 
   int _currentIndex = 0;
 
@@ -38,30 +29,16 @@ class _MainNavigationScreenState
   double _afamBalance = 0.0;
   double _miningRate = 0.2;
 
-  /*
-   * Rewarded ad count belongs to the current
-   * 24-hour mining session.
-   *
-   * Maximum: 7 ads per session.
-   */
-  int _adsWatched = 0;
-
   bool _isMining = false;
   bool _loading = true;
   bool _busy = false;
-
-  bool _appLovinInitialized = false;
-  bool _rewardedAdLoading = false;
 
   DateTime? _startedAt;
   DateTime? _endsAt;
 
   Timer? _timer;
 
-  Completer<bool>? _adRewardCompleter;
-
   bool _waitingForClaimAd = false;
-  bool _waitingForBoostAd = false;
 
   Duration get _sessionRemaining {
     if (_endsAt == null) {
@@ -105,7 +82,15 @@ class _MainNavigationScreenState
   void initState() {
     super.initState();
 
-    _initializeRewardedAds();
+    /*
+     * Boost Ads/AppLovin initialization is kept inside
+     * the Boost Ads service.
+     *
+     * The real SDK key and ad unit ID remain empty
+     * until the real AppLovin values are available.
+     */
+    _boostAdsService.initialize();
+
     _loadDashboard();
   }
 
@@ -113,203 +98,7 @@ class _MainNavigationScreenState
   void dispose() {
     _timer?.cancel();
 
-    if (_adRewardCompleter != null &&
-        !_adRewardCompleter!.isCompleted) {
-      _adRewardCompleter!.complete(false);
-    }
-
     super.dispose();
-  }
-
-  Future<void> _initializeRewardedAds() async {
-    /*
-     * We intentionally do not initialize AppLovin until the
-     * real SDK key and rewarded ad unit ID are available.
-     */
-    if (_appLovinSdkKey.trim().isEmpty ||
-        _rewardedAdUnitId.trim().isEmpty) {
-      return;
-    }
-
-    try {
-      AppLovinMAX.setRewardedAdListener(
-        RewardedAdListener(
-          onAdLoadedCallback: (ad) {
-            _rewardedAdLoading = false;
-          },
-          onAdLoadFailedCallback: (adUnitId, error) {
-            _rewardedAdLoading = false;
-
-            if (_adRewardCompleter != null &&
-                !_adRewardCompleter!.isCompleted) {
-              _adRewardCompleter!.complete(false);
-            }
-          },
-          onAdDisplayedCallback: (ad) {},
-          onAdDisplayFailedCallback: (ad, error) {
-            _rewardedAdLoading = false;
-
-            if (_adRewardCompleter != null &&
-                !_adRewardCompleter!.isCompleted) {
-              _adRewardCompleter!.complete(false);
-            }
-
-            _loadRewardedAd();
-          },
-          onAdClickedCallback: (ad) {},
-          onAdReceivedRewardCallback: (ad, reward) {
-            /*
-             * IMPORTANT:
-             *
-             * No FAN is awarded here directly.
-             *
-             * This callback only confirms that AppLovin
-             * has granted the rewarded-ad reward.
-             *
-             * The actual database operation happens after
-             * this Future completes.
-             */
-            if (_adRewardCompleter != null &&
-                !_adRewardCompleter!.isCompleted) {
-              _adRewardCompleter!.complete(true);
-            }
-          },
-          onAdHiddenCallback: (ad) {
-            /*
-             * If the user closes/dismisses the ad without
-             * receiving a reward, the pending operation fails.
-             */
-            if (_adRewardCompleter != null &&
-                !_adRewardCompleter!.isCompleted) {
-              _adRewardCompleter!.complete(false);
-            }
-
-            _loadRewardedAd();
-          },
-          onAdRevenuePaidCallback: (ad) {},
-        ),
-      );
-
-      final configuration =
-          await AppLovinMAX.initialize(
-        _appLovinSdkKey,
-      );
-
-      if (configuration != null) {
-        _appLovinInitialized = true;
-
-        final user = Supabase
-            .instance
-            .client
-            .auth
-            .currentUser;
-
-        if (user != null) {
-          AppLovinMAX.setUserId(user.id);
-        }
-
-        _loadRewardedAd();
-      }
-    } catch (e) {
-      _appLovinInitialized = false;
-    }
-  }
-
-  Future<void> _loadRewardedAd() async {
-    if (!_appLovinInitialized) {
-      return;
-    }
-
-    if (_rewardedAdUnitId.trim().isEmpty) {
-      return;
-    }
-
-    if (_rewardedAdLoading) {
-      return;
-    }
-
-    try {
-      final ready =
-          await AppLovinMAX.isRewardedAdReady(
-        _rewardedAdUnitId,
-      );
-
-      if (ready == true) {
-        return;
-      }
-
-      _rewardedAdLoading = true;
-
-      AppLovinMAX.loadRewardedAd(
-        _rewardedAdUnitId,
-      );
-    } catch (e) {
-      _rewardedAdLoading = false;
-    }
-  }
-
-  Future<bool> _showRewardedAd() async {
-    if (!_appLovinInitialized ||
-        _rewardedAdUnitId.trim().isEmpty) {
-      _showMessage(
-        'Rewarded ads are not configured yet.',
-      );
-      return false;
-    }
-
-    try {
-      final ready =
-          await AppLovinMAX.isRewardedAdReady(
-        _rewardedAdUnitId,
-      );
-
-      if (ready != true) {
-        _loadRewardedAd();
-
-        _showMessage(
-          'Rewarded ad is loading. Please try again in a moment.',
-        );
-
-        return false;
-      }
-
-      if (_adRewardCompleter != null &&
-          !_adRewardCompleter!.isCompleted) {
-        return false;
-      }
-
-      final completer =
-          Completer<bool>();
-
-      _adRewardCompleter = completer;
-
-      AppLovinMAX.showRewardedAd(
-        _rewardedAdUnitId,
-      );
-
-      final rewarded =
-          await completer.future;
-
-      if (identical(
-        _adRewardCompleter,
-        completer,
-      )) {
-        _adRewardCompleter = null;
-      }
-
-      return rewarded;
-    } catch (e) {
-      if (_adRewardCompleter != null &&
-          !_adRewardCompleter!.isCompleted) {
-        _adRewardCompleter!.complete(false);
-      }
-
-      _adRewardCompleter = null;
-
-      _loadRewardedAd();
-
-      return false;
-    }
   }
 
   Future<void> _loadDashboard() async {
@@ -335,12 +124,6 @@ class _MainNavigationScreenState
 
     try {
       await _loadMiningRate();
-    } catch (e) {
-      firstError ??= _cleanError(e);
-    }
-
-    try {
-      await _loadAdsCount();
     } catch (e) {
       firstError ??= _cleanError(e);
     }
@@ -377,36 +160,6 @@ class _MainNavigationScreenState
     setState(() {
       _balance = _toDouble(fan);
       _afamBalance = _toDouble(afam);
-    });
-  }
-
-  Future<void> _loadAdsCount() async {
-    /*
-     * Ads are counted only inside the current
-     * 24-hour mining session.
-     *
-     * If there is no active mining session,
-     * the next session starts at 0/7.
-     */
-    if (!_isMining || _startedAt == null) {
-      if (!mounted) return;
-
-      setState(() {
-        _adsWatched = 0;
-      });
-
-      return;
-    }
-
-    final count =
-        await _miningService.getAdsWatchedForSession(
-      startedAt: _startedAt!,
-    );
-
-    if (!mounted) return;
-
-    setState(() {
-      _adsWatched = count.clamp(0, 7);
     });
   }
 
@@ -448,7 +201,6 @@ class _MainNavigationScreenState
         _isMining = false;
         _startedAt = null;
         _endsAt = null;
-        _adsWatched = 0;
       });
 
       return;
@@ -483,7 +235,6 @@ class _MainNavigationScreenState
           await _loadMining();
           await _loadProfile();
           await _loadMiningRate();
-          await _loadAdsCount();
         }
 
         if (mounted) {
@@ -491,6 +242,19 @@ class _MainNavigationScreenState
         }
       },
     );
+  }
+
+  Future<void> _refreshBoostData() async {
+    try {
+      await _loadMiningRate();
+      await _loadProfile();
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          _cleanError(e),
+        );
+      }
+    }
   }
 
   Future<void> _startMining() async {
@@ -512,25 +276,14 @@ class _MainNavigationScreenState
         return;
       }
 
-      /*
-       * Load the newly-created session first.
-       */
       await _loadMining();
-
-      /*
-       * Load the rate for the new session.
-       */
       await _loadMiningRate();
 
       /*
-       * IMPORTANT:
-       *
-       * A new 24-hour mining session starts with
-       * its own ad counter.
-       *
-       * This therefore becomes 0/7 for a fresh session.
+       * BoostAdsCard automatically detects the new
+       * startedAt value and resets its session count
+       * to 0 / 7.
        */
-      await _loadAdsCount();
 
       _showMessage(
         'Mining started successfully.',
@@ -552,15 +305,13 @@ class _MainNavigationScreenState
     if (_busy) return;
 
     /*
-     * Claim is impossible before the 24-hour session ends.
+     * Claim is impossible before the 24-hour
+     * mining session ends.
      */
     if (!_sessionFinished) {
       return;
     }
 
-    /*
-     * Prevent multiple claim attempts while the ad is open.
-     */
     setState(() {
       _busy = true;
       _waitingForClaimAd = true;
@@ -568,10 +319,15 @@ class _MainNavigationScreenState
 
     try {
       /*
-       * The claim button goes DIRECTLY into the rewarded ad.
+       * Claim reward uses the same centralized
+       * Boost Ads/AppLovin service.
+       *
+       * No database claim happens unless the
+       * rewarded ad is actually completed.
        */
       final rewarded =
-          await _showRewardedAd();
+          await _boostAdsService
+              .showRewardedAd();
 
       if (!rewarded) {
         _showMessage(
@@ -580,10 +336,6 @@ class _MainNavigationScreenState
         return;
       }
 
-      /*
-       * ONLY after AppLovin confirms the reward do we
-       * call the database claim function.
-       */
       final result =
           await _miningService.claimMining();
 
@@ -598,7 +350,11 @@ class _MainNavigationScreenState
       await _loadProfile();
       await _loadMining();
       await _loadMiningRate();
-      await _loadAdsCount();
+
+      /*
+       * After claim, _loadMining() makes the session
+       * inactive. BoostAdsCard will then reset to 0 / 7.
+       */
 
       _showMessage(
         result['message']?.toString() ??
@@ -613,109 +369,6 @@ class _MainNavigationScreenState
         setState(() {
           _busy = false;
           _waitingForClaimAd = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _watchAd() async {
-    if (_busy) return;
-
-    /*
-     * Ads can only be watched during an active
-     * 24-hour mining session.
-     */
-    if (!_isMining) {
-      _showMessage(
-        'Start mining before watching boost ads.',
-      );
-      return;
-    }
-
-    /*
-     * Once the 24-hour session is complete,
-     * the user must claim the reward and start
-     * a new mining session before watching more ads.
-     */
-    if (_sessionFinished) {
-      _showMessage(
-        'Mining session is complete. Claim your reward and start a new session before watching more ads.',
-      );
-      return;
-    }
-
-    /*
-     * Maximum: 7 rewarded ads for ONE mining session.
-     */
-    if (_adsWatched >= 7) {
-      _showMessage(
-        'You have reached the 7 ads limit for this mining session.',
-      );
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-      _waitingForBoostAd = true;
-    });
-
-    try {
-      /*
-       * WATCH AD now opens the real rewarded ad directly.
-       */
-      final rewarded =
-          await _showRewardedAd();
-
-      if (!rewarded) {
-        _showMessage(
-          'The rewarded ad was not completed. No mining boost was added.',
-        );
-        return;
-      }
-
-      /*
-       * The database is updated ONLY after AppLovin
-       * confirms the reward.
-       */
-      final adReference =
-          'mobile_${DateTime.now().millisecondsSinceEpoch}';
-
-      final result =
-          await _miningService.recordRewardedAd(
-        adRef: adReference,
-      );
-
-      if (result['success'] == false) {
-        _showMessage(
-          result['message']?.toString() ??
-              'Unable to record rewarded ad.',
-        );
-        return;
-      }
-
-      /*
-       * Reload the session-based ad count.
-       */
-      await _loadAdsCount();
-
-      /*
-       * Reload mining rate because the rewarded ad
-       * changes the mining rate.
-       */
-      await _loadMiningRate();
-
-      _showMessage(
-        'Ad completed successfully. +0.1 FAN/H boost added.',
-      );
-    } catch (e) {
-      _showMessage(
-        _cleanError(e),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _waitingForBoostAd = false;
         });
       }
     }
@@ -900,7 +553,21 @@ class _MainNavigationScreenState
                   const SizedBox(height: 16),
                   _buildMiningCard(),
                   const SizedBox(height: 14),
-                  _buildAdsCard(),
+
+                  /*
+                   * BOOST ADS IS NOW A SEPARATE COMPONENT.
+                   */
+                  BoostAdsCard(
+                    isMining: _isMining,
+                    sessionFinished:
+                        _sessionFinished,
+                    startedAt: _startedAt,
+                    endsAt: _endsAt,
+                    onMessage: _showMessage,
+                    onBoostUpdated:
+                        _refreshBoostData,
+                  ),
+
                   const SizedBox(height: 14),
                   _buildDailyTaskCard(),
                   const SizedBox(height: 14),
@@ -1347,25 +1014,11 @@ class _MainNavigationScreenState
                   )
             : '00:00:00';
 
-    /*
-     * IMPORTANT:
-     *
-     * Before 24 hours:
-     * MINING...
-     *
-     * After 24 hours:
-     * CLAIM MINING
-     *
-     * When there is no active session:
-     * START MINING
-     */
     final buttonLabel =
         _busy
             ? _waitingForClaimAd
                 ? 'WATCHING AD...'
-                : _waitingForBoostAd
-                    ? 'WATCHING AD...'
-                    : 'PLEASE WAIT...'
+                : 'PLEASE WAIT...'
             : !_isMining
                 ? 'START MINING'
                 : _sessionFinished
@@ -1416,8 +1069,7 @@ class _MainNavigationScreenState
                             ),
                             fontSize: 17,
                             fontWeight:
-                                FontWeight
-                                    .w900,
+                                FontWeight.w900,
                           ),
                         ),
                       ],
@@ -1616,191 +1268,6 @@ class _MainNavigationScreenState
     );
   }
 
-  Widget _buildAdsCard() {
-    final progress =
-        (_adsWatched / 7)
-            .clamp(0.0, 1.0);
-
-    /*
-     * Ad boost is calculated from the number of ads
-     * watched in THIS mining session only.
-     *
-     * Referral mining bonuses are intentionally not
-     * included in this display.
-     */
-    final boost =
-        (_adsWatched * 0.1)
-            .clamp(0.0, 0.7);
-
-    /*
-     * WATCH AD is available only while:
-     *
-     * 1. Mining session is active.
-     * 2. Session has not finished.
-     * 3. Fewer than 7 ads have been watched.
-     * 4. No other operation is busy.
-     */
-    final canWatchAd =
-        !_busy &&
-        _isMining &&
-        !_sessionFinished &&
-        _adsWatched < 7;
-
-    return _whiteCard(
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _circleIcon(
-                Icons
-                    .rocket_launch_rounded,
-                const Color(0xFFF0EBFF),
-                const Color(0xFFE64949),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'BOOST BY WATCHING ADS',
-                      style:
-                          TextStyle(
-                        fontSize: 16,
-                        fontWeight:
-                            FontWeight
-                                .w900,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Each ad adds +0.1 FAN/H',
-                      style:
-                          TextStyle(
-                        fontSize: 13,
-                        color:
-                            Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: 49,
-                child:
-                    ElevatedButton.icon(
-                  onPressed:
-                      canWatchAd
-                          ? _watchAd
-                          : null,
-                  icon:
-                      const Icon(
-                    Icons
-                        .video_collection_rounded,
-                    size: 20,
-                  ),
-                  label:
-                      Text(
-                    _waitingForBoostAd
-                        ? 'WATCHING'
-                        : 'WATCH AD',
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight
-                              .w800,
-                    ),
-                  ),
-                  style:
-                      ElevatedButton
-                          .styleFrom(
-                    backgroundColor:
-                        const Color(
-                      0xFF4A20B9,
-                    ),
-                    foregroundColor:
-                        Colors.white,
-                    disabledBackgroundColor:
-                        const Color(
-                      0xFF8D76CF,
-                    ),
-                    disabledForegroundColor:
-                        Colors.white,
-                    elevation: 0,
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      horizontal: 14,
-                    ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        15,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 17),
-          Text(
-            'Ads watched this session: $_adsWatched / 7',
-            style:
-                const TextStyle(
-              color:
-                  Color(0xFF35148F),
-              fontSize: 14,
-              fontWeight:
-                  FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 9),
-          ClipRRect(
-            borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
-            child:
-                LinearProgressIndicator(
-              value: progress,
-              minHeight: 9,
-              backgroundColor:
-                  const Color(
-                0xFFE9E4FA,
-              ),
-              valueColor:
-                  const AlwaysStoppedAnimation(
-                Color(0xFF5A2AD0),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment:
-                Alignment.centerRight,
-            child: Text(
-              '+${boost.toStringAsFixed(1)} FAN/H',
-              style:
-                  const TextStyle(
-                color:
-                    Color(0xFF35148F),
-                fontSize: 14,
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDailyTaskCard() {
     return _whiteCard(
       child: Row(
@@ -1985,8 +1452,7 @@ class _MainNavigationScreenState
                   'Verify your identity to secure your account',
                   style:
                       TextStyle(
-                    color:
-                        Colors.black54,
+                    color: Colors.black54,
                     fontSize: 12,
                   ),
                 ),
