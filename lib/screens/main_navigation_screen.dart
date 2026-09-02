@@ -5,6 +5,12 @@ import '../components/daily_social_card.dart';
 import '../components/kyc_card.dart';
 import '../components/mining_card.dart';
 import '../components/referral_card.dart';
+import '../services/boost_ads_service.dart';
+import '../services/kyc_service.dart';
+import '../services/mining_service.dart';
+import '../services/profile_service.dart';
+import '../services/referral_service.dart';
+import '../services/social_task_service.dart';
 import 'profile_screen.dart';
 import 'referral_screen.dart';
 import 'settings_screen.dart';
@@ -22,11 +28,31 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState
     extends State<MainNavigationScreen> {
+  final MiningService _miningService =
+      MiningService.instance;
+
+  final ProfileService _profileService =
+      ProfileService.instance;
+
+  final ReferralService _referralService =
+      ReferralService();
+
+  final SocialTaskService _socialTaskService =
+      SocialTaskService.instance;
+
+  final KycService _kycService =
+      KycService.instance;
+
+  final BoostAdsService _boostAdsService =
+      BoostAdsService.instance;
+
   int _currentIndex = 0;
+
+  bool _loading = true;
+  bool _actionLoading = false;
 
   double _fanBalance = 0.0;
   double _afamBalance = 0.0;
-
   double _miningRate = 0.2;
 
   bool _isMining = false;
@@ -35,13 +61,14 @@ class _MainNavigationScreenState
   DateTime? _miningEndsAt;
 
   int _adsWatched = 0;
-
   int _checkInDays = 0;
   int _activeReferrals = 0;
 
   bool _faceVerified = false;
   bool _kyc1Verified = false;
   bool _kyc2Eligible = false;
+
+  List<DailySocialTask> _socialTasks = [];
 
   final List<String> _titles = const [
     'POWER FAN',
@@ -53,141 +80,631 @@ class _MainNavigationScreenState
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
+    _loadAllData();
   }
 
-  void _loadInitialData() {
-    // Real account data will be loaded here
-    // from the application services.
-  }
+  Future<void> _loadAllData() async {
+    if (!mounted) return;
 
-  void _startMining() {
     setState(() {
-      _isMining = true;
-      _miningStartedAt = DateTime.now();
-      _miningEndsAt = DateTime.now().add(
-        const Duration(hours: 24),
-      );
-      _adsWatched = 0;
+      _loading = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Mining started for 24 hours.',
-        ),
-      ),
-    );
+    try {
+      final profileFuture =
+          _profileService.getProfile();
+
+      final miningFuture =
+          _miningService.getActiveMining();
+
+      final rateFuture =
+          _miningService.getUserMiningRate();
+
+      final referralFuture =
+          _referralService.getReferralInfo();
+
+      final kycFuture =
+          _kycService.getStatus();
+
+      final socialFuture =
+          _loadSocialTasksSafely();
+
+      final results = await Future.wait<dynamic>([
+        profileFuture,
+        miningFuture,
+        rateFuture,
+        referralFuture,
+        kycFuture,
+        socialFuture,
+      ]);
+
+      if (!mounted) return;
+
+      final profile = results[0] as ProfileData?;
+      final mining =
+          results[1] as Map<String, dynamic>;
+      final rate =
+          results[2] as Map<String, dynamic>;
+      final referral =
+          results[3] as ReferralInfo;
+      final kyc =
+          results[4] as KycStatus;
+      final social =
+          results[5] as List<DailySocialTask>;
+
+      _fanBalance =
+          _toDouble(
+            profile?.fanBalance ??
+                mining['fan_balance'],
+          );
+
+      _afamBalance =
+          _toDouble(
+            profile?.afamBalance ??
+                mining['afam_balance'],
+          );
+
+      _miningRate =
+          _extractMiningRate(
+            rate,
+            profile?.miningRate,
+          );
+
+      _isMining =
+          _toBool(
+            mining['mining_active'] ??
+                mining['is_mining'] ??
+                mining['active'] ??
+                profile?.miningActive,
+          );
+
+      _miningStartedAt =
+          _parseDate(
+            mining['started_at'] ??
+                mining['mining_started_at'] ??
+                profile?.miningStartedAt,
+          );
+
+      _miningEndsAt =
+          _parseDate(
+            mining['ends_at'] ??
+                mining['mining_ends_at'] ??
+                profile?.miningEndsAt,
+          );
+
+      _activeReferrals =
+          referral.activeReferrals;
+
+      _checkInDays =
+          kyc.checkInDays;
+
+      _activeReferrals =
+          kyc.activeReferrals;
+
+      _faceVerified =
+          kyc.faceVerified;
+
+      _kyc1Verified =
+          kyc.kyc1Verified;
+
+      _kyc2Eligible =
+          kyc.kyc2Eligible;
+
+      _socialTasks =
+          social;
+
+      await _loadSessionAdCount();
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+
+      _showMessage(
+        _friendlyError(error),
+      );
+    }
   }
 
-  void _claimMining() {
-    if (!_isMining) return;
+  Future<List<DailySocialTask>>
+      _loadSocialTasksSafely() async {
+    try {
+      return await _socialTaskService
+          .getDailyTasksForCard();
+    } catch (_) {
+      return <DailySocialTask>[];
+    }
+  }
+
+  Future<void> _loadSessionAdCount() async {
+    if (_miningStartedAt == null) {
+      if (mounted) {
+        setState(() {
+          _adsWatched = 0;
+        });
+      } else {
+        _adsWatched = 0;
+      }
+
+      return;
+    }
+
+    try {
+      final count =
+          await _miningService
+              .getAdsWatchedForSession(
+        startedAt: _miningStartedAt!,
+      );
+
+      if (!mounted) {
+        _adsWatched = count;
+        return;
+      }
+
+      setState(() {
+        _adsWatched = count;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _adsWatched = 0;
+      });
+    }
+  }
+
+  double _extractMiningRate(
+    Map<String, dynamic> data,
+    double? profileRate,
+  ) {
+    final value =
+        data['rate'] ??
+        data['mining_rate'] ??
+        data['value'] ??
+        profileRate ??
+        0.2;
+
+    return _toDouble(value);
+  }
+
+  Future<void> _startMining() async {
+    if (_actionLoading) return;
+
+    if (_isMining) {
+      _showMessage(
+        'Your mining session is already active.',
+      );
+      return;
+    }
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      final result =
+          await _miningService.startMining();
+
+      if (!mounted) return;
+
+      await _refreshMiningState(
+        showLoading: false,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _actionLoading = false;
+      });
+
+      final message =
+          _stringValue(
+            result['message'],
+          );
+
+      _showMessage(
+        message.isNotEmpty
+            ? message
+            : 'Mining started for 24 hours.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _actionLoading = false;
+      });
+
+      _showMessage(
+        _friendlyError(error),
+      );
+    }
+  }
+
+  Future<void> _claimMining() async {
+    if (_actionLoading) return;
+
+    if (!_isMining) {
+      _showMessage(
+        'There is no active mining session.',
+      );
+      return;
+    }
 
     if (_miningEndsAt != null &&
-        DateTime.now().isBefore(_miningEndsAt!)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Your mining session is still active.',
-          ),
-        ),
+        DateTime.now().isBefore(
+          _miningEndsAt!,
+        )) {
+      _showMessage(
+        'Your mining session is still active.',
       );
       return;
     }
 
     setState(() {
-      _isMining = false;
-      _miningStartedAt = null;
-      _miningEndsAt = null;
-      _adsWatched = 0;
+      _actionLoading = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Mining reward claimed successfully.',
-        ),
-      ),
-    );
+    try {
+      final result =
+          await _miningService.claimMining();
+
+      if (!mounted) return;
+
+      await _refreshMiningState(
+        showLoading: false,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _actionLoading = false;
+      });
+
+      final message =
+          _stringValue(
+            result['message'],
+          );
+
+      _showMessage(
+        message.isNotEmpty
+            ? message
+            : 'Mining reward claimed successfully.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _actionLoading = false;
+      });
+
+      _showMessage(
+        _friendlyError(error),
+      );
+    }
   }
 
-  void _watchAd() {
-    if (!_isMining) return;
+  Future<void> _watchAd() async {
+    if (_actionLoading) return;
+
+    if (!_isMining) {
+      _showMessage(
+        'Start mining before watching rewarded ads.',
+      );
+      return;
+    }
 
     if (_adsWatched >= 7) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'You have reached the 7 ads limit for this session.',
-          ),
-        ),
+      _showMessage(
+        'You have reached the 7 ads limit for this session.',
+      );
+      return;
+    }
+
+    if (_miningStartedAt == null) {
+      _showMessage(
+        'Mining session information is not available yet.',
       );
       return;
     }
 
     setState(() {
-      _adsWatched++;
-      _miningRate += 0.1;
+      _actionLoading = true;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Ad completed. Mining rate increased by '
-          '+0.10 FAN/H.',
-        ),
-      ),
-    );
+    try {
+      final watched =
+          await _boostAdsService
+              .watchAdAndRecord();
+
+      if (!mounted) return;
+
+      if (watched) {
+        await _loadSessionAdCount();
+        await _refreshMiningRate();
+
+        if (!mounted) return;
+
+        _showMessage(
+          'Ad completed. Mining rate increased by +0.10 FAN/H.',
+        );
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _actionLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _actionLoading = false;
+      });
+
+      _showMessage(
+        _friendlyError(error),
+      );
+    }
   }
 
-  void _completeSocialTask(
+  Future<void> _refreshMiningState({
+    bool showLoading = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _loading = true;
+      });
+    }
+
+    try {
+      final profile =
+          await _profileService.getProfile();
+
+      final mining =
+          await _miningService.getActiveMining();
+
+      final rate =
+          await _miningService.getUserMiningRate();
+
+      if (!mounted) return;
+
+      setState(() {
+        _fanBalance =
+            _toDouble(
+              profile?.fanBalance ??
+                  mining['fan_balance'],
+            );
+
+        _afamBalance =
+            _toDouble(
+              profile?.afamBalance ??
+                  mining['afam_balance'],
+            );
+
+        _miningRate =
+            _extractMiningRate(
+              rate,
+              profile?.miningRate,
+            );
+
+        _isMining =
+            _toBool(
+              mining['mining_active'] ??
+                  mining['is_mining'] ??
+                  mining['active'] ??
+                  profile?.miningActive,
+            );
+
+        _miningStartedAt =
+            _parseDate(
+              mining['started_at'] ??
+                  mining['mining_started_at'] ??
+                  profile?.miningStartedAt,
+            );
+
+        _miningEndsAt =
+            _parseDate(
+              mining['ends_at'] ??
+                  mining['mining_ends_at'] ??
+                  profile?.miningEndsAt,
+            );
+      });
+
+      await _loadSessionAdCount();
+
+      if (showLoading && mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      if (showLoading) {
+        setState(() {
+          _loading = false;
+        });
+      }
+
+      throw Exception(
+        _friendlyError(error),
+      );
+    }
+  }
+
+  Future<void> _refreshMiningRate() async {
+    try {
+      final rate =
+          await _miningService.getUserMiningRate();
+
+      if (!mounted) return;
+
+      setState(() {
+        _miningRate =
+            _extractMiningRate(
+          rate,
+          null,
+        );
+      });
+    } catch (_) {
+      // Keep the existing displayed rate if the
+      // refresh fails temporarily.
+    }
+  }
+
+  Future<void> _refreshReferralAndKyc() async {
+    try {
+      final referral =
+          await _referralService
+              .getReferralInfo();
+
+      final kyc =
+          await _kycService.getStatus();
+
+      if (!mounted) return;
+
+      setState(() {
+        _activeReferrals =
+            referral.activeReferrals;
+
+        _checkInDays =
+            kyc.checkInDays;
+
+        _faceVerified =
+            kyc.faceVerified;
+
+        _kyc1Verified =
+            kyc.kyc1Verified;
+
+        _kyc2Eligible =
+            kyc.kyc2Eligible;
+      });
+    } catch (_) {
+      // Preserve existing values when a secondary
+      // refresh is temporarily unavailable.
+    }
+  }
+
+  Future<void> _refreshEverything() async {
+    try {
+      await _loadAllData();
+    } catch (_) {
+      // _loadAllData handles its own UI errors.
+    }
+  }
+
+  Future<void> _completeSocialTask(
     DailySocialTask task,
-  ) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${task.platform} task completed.',
-        ),
-      ),
-    );
+  ) async {
+    try {
+      final serviceTask =
+          await _socialTaskService
+              .findTask(task.id);
+
+      if (serviceTask == null) {
+        _showMessage(
+          'This social task is no longer available.',
+        );
+        return;
+      }
+
+      final result =
+          await _socialTaskService
+              .verifyAndClaim(
+        taskId: serviceTask.id,
+      );
+
+      if (!mounted) return;
+
+      if (result.success) {
+        await _refreshMiningState(
+          showLoading: false,
+        );
+
+        await _loadAllData();
+
+        if (!mounted) return;
+
+        _showMessage(
+          result.message.isNotEmpty
+              ? result.message
+              : '+${result.rewardFan.toStringAsFixed(0)} FAN reward claimed.',
+        );
+      } else {
+        _showMessage(
+          result.message.isNotEmpty
+              ? result.message
+              : 'The social task has not been fully verified yet.',
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(
+        _friendlyError(error),
+      );
+    }
   }
 
-  void _faceVerification() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Face Verification will be available soon.',
-        ),
-      ),
-    );
+  Future<void> _faceVerification() async {
+    try {
+      final result =
+          await _kycService
+              .startFaceVerification();
+
+      if (!mounted) return;
+
+      final message =
+          _stringValue(
+            result['message'],
+          );
+
+      _showMessage(
+        message.isNotEmpty
+            ? message
+            : 'Face verification will be available soon.',
+      );
+
+      await _refreshReferralAndKyc();
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(
+        _friendlyError(error),
+      );
+    }
   }
 
-  void _pingReferral(
+  Future<void> _pingReferral(
     ReferralItem referral,
-  ) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Mining reminder sent to ${referral.name}.',
-        ),
-      ),
+  ) async {
+    // The current referral service does not expose
+    // a trusted "ping referral" RPC yet.
+    //
+    // Therefore this button only informs the user
+    // that the reminder feature is pending its
+    // notification backend instead of pretending
+    // that a server notification was sent.
+    _showMessage(
+      'Mining reminder will be available with notifications.',
     );
   }
 
   Widget _buildHome() {
     return RefreshIndicator(
-      onRefresh: () async {
-        await Future<void>.delayed(
-          const Duration(milliseconds: 500),
-        );
-
-        if (!mounted) return;
-
-        setState(() {});
-      },
+      onRefresh: _refreshEverything,
       child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.fromLTRB(
           16,
           12,
           16,
@@ -195,7 +712,6 @@ class _MainNavigationScreenState
         ),
         children: [
           _buildWelcomeHeader(),
-
           const SizedBox(height: 16),
 
           MiningCard(
@@ -206,9 +722,18 @@ class _MainNavigationScreenState
             endsAt: _miningEndsAt,
             adsWatched: _adsWatched,
             maxAds: 7,
-            onStartMining: _startMining,
-            onClaimMining: _claimMining,
-            onWatchAd: _watchAd,
+            onStartMining:
+                _actionLoading
+                    ? null
+                    : _startMining,
+            onClaimMining:
+                _actionLoading
+                    ? null
+                    : _claimMining,
+            onWatchAd:
+                _actionLoading
+                    ? null
+                    : _watchAd,
           ),
 
           const SizedBox(height: 16),
@@ -217,24 +742,34 @@ class _MainNavigationScreenState
             isMining: _isMining,
             adsWatched: _adsWatched,
             maxAds: 7,
-            onWatchAd: _watchAd,
+            onWatchAd:
+                _actionLoading
+                    ? null
+                    : _watchAd,
           ),
 
           const SizedBox(height: 16),
 
           DailySocialCard(
-            onClaim: _completeSocialTask,
+            tasks: _socialTasks,
+            onClaim:
+                _completeSocialTask,
           ),
 
           const SizedBox(height: 16),
 
           KycCard(
             checkInDays: _checkInDays,
-            activeReferrals: _activeReferrals,
-            faceVerified: _faceVerified,
-            kyc1Verified: _kyc1Verified,
-            kyc2Eligible: _kyc2Eligible,
-            onFaceVerification: _faceVerification,
+            activeReferrals:
+                _activeReferrals,
+            faceVerified:
+                _faceVerified,
+            kyc1Verified:
+                _kyc1Verified,
+            kyc2Eligible:
+                _kyc2Eligible,
+            onFaceVerification:
+                _faceVerification,
           ),
 
           const SizedBox(height: 16),
@@ -244,8 +779,6 @@ class _MainNavigationScreenState
           const SizedBox(height: 16),
 
           _buildQuickReferral(),
-
-          const SizedBox(height: 10),
         ],
       ),
     );
@@ -258,8 +791,10 @@ class _MainNavigationScreenState
           width: 50,
           height: 50,
           decoration: BoxDecoration(
-            color: const Color(0xFF3B159B),
-            borderRadius: BorderRadius.circular(16),
+            color:
+                const Color(0xFF3B159B),
+            borderRadius:
+                BorderRadius.circular(16),
           ),
           child: const Icon(
             Icons.bolt_rounded,
@@ -284,9 +819,11 @@ class _MainNavigationScreenState
               Text(
                 'POWER FAN NETWORK',
                 style: TextStyle(
-                  color: Color(0xFF241064),
+                  color:
+                      Color(0xFF241064),
                   fontSize: 17,
-                  fontWeight: FontWeight.w900,
+                  fontWeight:
+                      FontWeight.w900,
                 ),
               ),
             ],
@@ -297,7 +834,8 @@ class _MainNavigationScreenState
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const ProfileScreen(),
+                builder: (_) =>
+                    const ProfileScreen(),
               ),
             );
           },
@@ -311,10 +849,12 @@ class _MainNavigationScreenState
 
   Widget _buildBalanceSummary() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding:
+          const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(20),
       ),
       child: Column(
         crossAxisAlignment:
@@ -324,7 +864,8 @@ class _MainNavigationScreenState
             'Balances',
             style: TextStyle(
               fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontWeight:
+                  FontWeight.w800,
             ),
           ),
           const SizedBox(height: 14),
@@ -334,8 +875,10 @@ class _MainNavigationScreenState
                 child: _balanceItem(
                   title: 'FAN',
                   value:
-                      _fanBalance.toStringAsFixed(4),
-                  icon: Icons.bolt_rounded,
+                      _fanBalance
+                          .toStringAsFixed(4),
+                  icon:
+                      Icons.bolt_rounded,
                 ),
               ),
               const SizedBox(width: 12),
@@ -343,8 +886,10 @@ class _MainNavigationScreenState
                 child: _balanceItem(
                   title: 'AFAM',
                   value:
-                      _afamBalance.toStringAsFixed(4),
-                  icon: Icons.account_balance_wallet_outlined,
+                      _afamBalance
+                          .toStringAsFixed(4),
+                  icon: Icons
+                      .account_balance_wallet_outlined,
                 ),
               ),
             ],
@@ -360,16 +905,20 @@ class _MainNavigationScreenState
     required IconData icon,
   }) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding:
+          const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F8FC),
-        borderRadius: BorderRadius.circular(16),
+        color:
+            const Color(0xFFF8F8FC),
+        borderRadius:
+            BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           Icon(
             icon,
-            color: const Color(0xFF3B159B),
+            color:
+                const Color(0xFF3B159B),
             size: 23,
           ),
           const SizedBox(width: 9),
@@ -380,20 +929,25 @@ class _MainNavigationScreenState
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 11,
                     color: Colors.grey,
-                    fontWeight: FontWeight.w600,
+                    fontWeight:
+                        FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
               ],
@@ -406,8 +960,10 @@ class _MainNavigationScreenState
 
   Widget _buildQuickReferral() {
     return ReferralCard(
-      referrals: const [],
-      activeReferrals: _activeReferrals,
+      referrals:
+          const <ReferralItem>[],
+      activeReferrals:
+          _activeReferrals,
       onPing: _pingReferral,
     );
   }
@@ -439,29 +995,37 @@ class _MainNavigationScreenState
     return Scaffold(
       backgroundColor:
           const Color(0xFFF8F8FC),
-
       appBar: AppBar(
         elevation: 0,
         backgroundColor:
             const Color(0xFFF8F8FC),
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor:
+            Colors.transparent,
         title: Text(
           _titles[_currentIndex],
           style: const TextStyle(
-            color: Color(0xFF241064),
-            fontWeight: FontWeight.w800,
+            color:
+                Color(0xFF241064),
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
       ),
-
-      body: _buildCurrentPage(),
-
+      body: _loading
+          ? const Center(
+              child:
+                  CircularProgressIndicator(),
+            )
+          : _buildCurrentPage(),
       bottomNavigationBar:
           NavigationBar(
-        backgroundColor: Colors.white,
+        backgroundColor:
+            Colors.white,
         elevation: 8,
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
+        selectedIndex:
+            _currentIndex,
+        onDestinationSelected:
+            (index) {
           setState(() {
             _currentIndex = index;
           });
@@ -487,10 +1051,12 @@ class _MainNavigationScreenState
           ),
           NavigationDestination(
             icon: Icon(
-              Icons.account_balance_wallet_outlined,
+              Icons
+                  .account_balance_wallet_outlined,
             ),
             selectedIcon: Icon(
-              Icons.account_balance_wallet_rounded,
+              Icons
+                  .account_balance_wallet_rounded,
             ),
             label: 'Wallet',
           ),
@@ -505,6 +1071,102 @@ class _MainNavigationScreenState
           ),
         ],
       ),
+    );
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior:
+              SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(14),
+          ),
+        ),
+      );
+  }
+
+  String _friendlyError(Object error) {
+    final text =
+        error.toString().trim();
+
+    if (text.startsWith(
+      'Exception: ',
+    )) {
+      return text.substring(11).trim();
+    }
+
+    if (text.isEmpty) {
+      return 'Something went wrong. Please try again.';
+    }
+
+    return text;
+  }
+
+  static String _stringValue(
+    dynamic value,
+  ) {
+    return value?.toString().trim() ?? '';
+  }
+
+  static double _toDouble(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return 0.0;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        0.0;
+  }
+
+  static bool _toBool(
+    dynamic value,
+  ) {
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    final text =
+        value?.toString()
+            .toLowerCase()
+            .trim();
+
+    return text == 'true' ||
+        text == '1' ||
+        text == 'yes';
+  }
+
+  static DateTime? _parseDate(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    return DateTime.tryParse(
+      value.toString(),
     );
   }
 }
