@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:applovin_max/applovin_max.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -18,6 +19,19 @@ class _MainNavigationScreenState
   final MiningService _miningService =
       MiningService.instance;
 
+  /*
+   * AppLovin MAX configuration.
+   *
+   * These must be replaced with the real values from
+   * the AppLovin MAX dashboard before real rewarded ads
+   * can be displayed.
+   *
+   * DO NOT use a fake SDK key or fake ad unit ID.
+   */
+  static const String _appLovinSdkKey = '';
+
+  static const String _rewardedAdUnitId = '';
+
   int _currentIndex = 0;
 
   double _balance = 0.0;
@@ -30,10 +44,18 @@ class _MainNavigationScreenState
   bool _loading = true;
   bool _busy = false;
 
+  bool _appLovinInitialized = false;
+  bool _rewardedAdLoading = false;
+
   DateTime? _startedAt;
   DateTime? _endsAt;
 
   Timer? _timer;
+
+  Completer<bool>? _adRewardCompleter;
+
+  bool _waitingForClaimAd = false;
+  bool _waitingForBoostAd = false;
 
   Duration get _sessionRemaining {
     if (_endsAt == null) {
@@ -76,13 +98,212 @@ class _MainNavigationScreenState
   @override
   void initState() {
     super.initState();
+
+    _initializeRewardedAds();
     _loadDashboard();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+
+    if (_adRewardCompleter != null &&
+        !_adRewardCompleter!.isCompleted) {
+      _adRewardCompleter!.complete(false);
+    }
+
     super.dispose();
+  }
+
+  Future<void> _initializeRewardedAds() async {
+    /*
+     * We intentionally do not initialize AppLovin until the
+     * real SDK key and rewarded ad unit ID are available.
+     */
+    if (_appLovinSdkKey.trim().isEmpty ||
+        _rewardedAdUnitId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      AppLovinMAX.setRewardedAdListener(
+        RewardedAdListener(
+          onAdLoadedCallback: (ad) {
+            _rewardedAdLoading = false;
+          },
+          onAdLoadFailedCallback: (adUnitId, error) {
+            _rewardedAdLoading = false;
+
+            if (_adRewardCompleter != null &&
+                !_adRewardCompleter!.isCompleted) {
+              _adRewardCompleter!.complete(false);
+            }
+          },
+          onAdDisplayedCallback: (ad) {},
+          onAdDisplayFailedCallback: (ad, error) {
+            _rewardedAdLoading = false;
+
+            if (_adRewardCompleter != null &&
+                !_adRewardCompleter!.isCompleted) {
+              _adRewardCompleter!.complete(false);
+            }
+
+            _loadRewardedAd();
+          },
+          onAdClickedCallback: (ad) {},
+          onAdReceivedRewardCallback: (ad, reward) {
+            /*
+             * IMPORTANT:
+             *
+             * No FAN is awarded here directly.
+             *
+             * This callback only confirms that AppLovin
+             * has granted the rewarded-ad reward.
+             *
+             * The actual database operation happens after
+             * this Future completes.
+             */
+            if (_adRewardCompleter != null &&
+                !_adRewardCompleter!.isCompleted) {
+              _adRewardCompleter!.complete(true);
+            }
+          },
+          onAdHiddenCallback: (ad) {
+            /*
+             * If the user closes/dismisses the ad without
+             * receiving a reward, the pending operation fails.
+             */
+            if (_adRewardCompleter != null &&
+                !_adRewardCompleter!.isCompleted) {
+              _adRewardCompleter!.complete(false);
+            }
+
+            _loadRewardedAd();
+          },
+          onAdRevenuePaidCallback: (ad) {},
+        ),
+      );
+
+      final configuration =
+          await AppLovinMAX.initialize(
+        _appLovinSdkKey,
+      );
+
+      if (configuration != null) {
+        _appLovinInitialized = true;
+
+        final user = Supabase
+            .instance
+            .client
+            .auth
+            .currentUser;
+
+        if (user != null) {
+          AppLovinMAX.setUserId(user.id);
+        }
+
+        _loadRewardedAd();
+      }
+    } catch (e) {
+      _appLovinInitialized = false;
+    }
+  }
+
+  Future<void> _loadRewardedAd() async {
+    if (!_appLovinInitialized) {
+      return;
+    }
+
+    if (_rewardedAdUnitId.trim().isEmpty) {
+      return;
+    }
+
+    if (_rewardedAdLoading) {
+      return;
+    }
+
+    try {
+      final ready =
+          await AppLovinMAX.isRewardedAdReady(
+            _rewardedAdUnitId,
+          );
+
+      if (ready == true) {
+        return;
+      }
+
+      _rewardedAdLoading = true;
+
+      AppLovinMAX.loadRewardedAd(
+        _rewardedAdUnitId,
+      );
+    } catch (e) {
+      _rewardedAdLoading = false;
+    }
+  }
+
+  Future<bool> _showRewardedAd() async {
+    if (!_appLovinInitialized ||
+        _rewardedAdUnitId.trim().isEmpty) {
+      _showMessage(
+        'Rewarded ads are not configured yet.',
+      );
+      return false;
+    }
+
+    try {
+      final ready =
+          await AppLovinMAX.isRewardedAdReady(
+            _rewardedAdUnitId,
+          );
+
+      if (ready != true) {
+        _loadRewardedAd();
+
+        _showMessage(
+          'Rewarded ad is loading. Please try again in a moment.',
+        );
+
+        return false;
+      }
+
+      if (_adRewardCompleter != null &&
+          !_adRewardCompleter!.isCompleted) {
+        return false;
+      }
+
+      final completer =
+          Completer<bool>();
+
+      _adRewardCompleter = completer;
+
+      AppLovinMAX.showRewardedAd(
+        _rewardedAdUnitId,
+      );
+
+      final rewarded =
+          await completer.future;
+
+      if (identical(
+        _adRewardCompleter,
+        completer,
+      )) {
+        _adRewardCompleter = null;
+      }
+
+      return rewarded;
+    } catch (e) {
+      if (_adRewardCompleter != null &&
+          !_adRewardCompleter!.isCompleted) {
+        _adRewardCompleter!.complete(false);
+      }
+
+      _adRewardCompleter = null;
+
+      _loadRewardedAd();
+
+      return false;
+    }
   }
 
   Future<void> _loadDashboard() async {
@@ -287,29 +508,70 @@ class _MainNavigationScreenState
     if (_busy) return;
 
     /*
-     * Mining cannot be claimed before the full 24-hour
-     * session has finished.
+     * Claim is impossible before the 24-hour session ends.
      */
     if (!_sessionFinished) {
-      final remaining = _sessionRemaining;
-
-      _showMessage(
-        'Mining is still running. '
-        'You can claim after '
-        '${_formatDuration(remaining)}.',
-      );
-
       return;
     }
 
     /*
-     * The final claim should be protected by a real rewarded
-     * advertisement flow. Until the actual rewarded-ad SDK is
-     * connected, we do not pretend that an ad was watched.
+     * Prevent multiple claim attempts while the ad is open.
      */
-    _showMessage(
-      'Please watch the required rewarded ad before claiming.',
-    );
+    setState(() {
+      _busy = true;
+      _waitingForClaimAd = true;
+    });
+
+    try {
+      /*
+       * The claim button goes DIRECTLY into the rewarded ad.
+       */
+      final rewarded =
+          await _showRewardedAd();
+
+      if (!rewarded) {
+        _showMessage(
+          'The rewarded ad was not completed. Mining reward was not claimed.',
+        );
+        return;
+      }
+
+      /*
+       * ONLY after AppLovin confirms the reward do we
+       * call the database claim function.
+       */
+      final result =
+          await _miningService.claimMining();
+
+      if (result['success'] == false) {
+        _showMessage(
+          result['message']?.toString() ??
+              'Unable to claim mining reward.',
+        );
+        return;
+      }
+
+      await _loadProfile();
+      await _loadMining();
+      await _loadMiningRate();
+      await _loadAdsCount();
+
+      _showMessage(
+        result['message']?.toString() ??
+            'Mining reward claimed successfully.',
+      );
+    } catch (e) {
+      _showMessage(
+        _cleanError(e),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _waitingForClaimAd = false;
+        });
+      }
+    }
   }
 
   Future<void> _watchAd() async {
@@ -324,9 +586,27 @@ class _MainNavigationScreenState
 
     setState(() {
       _busy = true;
+      _waitingForBoostAd = true;
     });
 
     try {
+      /*
+       * WATCH AD now opens the real rewarded ad directly.
+       */
+      final rewarded =
+          await _showRewardedAd();
+
+      if (!rewarded) {
+        _showMessage(
+          'The rewarded ad was not completed. No mining boost was added.',
+        );
+        return;
+      }
+
+      /*
+       * The database is updated ONLY after AppLovin
+       * confirms the reward.
+       */
       final adReference =
           'mobile_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -343,15 +623,11 @@ class _MainNavigationScreenState
         return;
       }
 
-      /*
-       * Re-read from database instead of trusting a local
-       * counter.
-       */
       await _loadAdsCount();
       await _loadMiningRate();
 
       _showMessage(
-        'Rewarded ad recorded successfully.',
+        'Ad completed successfully. +0.1 FAN/H boost added.',
       );
     } catch (e) {
       _showMessage(
@@ -361,6 +637,7 @@ class _MainNavigationScreenState
       if (mounted) {
         setState(() {
           _busy = false;
+          _waitingForBoostAd = false;
         });
       }
     }
@@ -388,7 +665,8 @@ class _MainNavigationScreenState
       await _loadProfile();
 
       _showMessage(
-        'Daily check-in completed successfully.',
+        result['message']?.toString() ??
+            'Daily check-in completed successfully.',
       );
     } catch (e) {
       _showMessage(
@@ -991,12 +1269,34 @@ class _MainNavigationScreenState
                   )
             : '00:00:00';
 
+    /*
+     * IMPORTANT:
+     *
+     * Before 24 hours:
+     * MINING...
+     *
+     * After 24 hours:
+     * CLAIM MINING
+     *
+     * When there is no active session:
+     * START MINING
+     */
     final buttonLabel =
         _busy
-            ? 'PLEASE WAIT...'
-            : _isMining
-                ? 'CLAIM MINING'
-                : 'START MINING';
+            ? _waitingForClaimAd
+                ? 'WATCHING AD...'
+                : _waitingForBoostAd
+                    ? 'WATCHING AD...'
+                    : 'PLEASE WAIT...'
+            : !_isMining
+                ? 'START MINING'
+                : _sessionFinished
+                    ? 'CLAIM MINING'
+                    : 'MINING...';
+
+    final buttonEnabled =
+        !_busy &&
+        (!_isMining || _sessionFinished);
 
     return _whiteCard(
       child: Column(
@@ -1098,7 +1398,7 @@ class _MainNavigationScreenState
             const SizedBox(height: 10),
             Text(
               _sessionFinished
-                  ? 'Session completed. Watch the required ad before claiming.'
+                  ? 'Session completed. You can claim your mining reward now.'
                   : 'Time remaining: ${_formatDuration(remaining)}',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -1121,20 +1421,23 @@ class _MainNavigationScreenState
             child:
                 ElevatedButton.icon(
               onPressed:
-                  _busy
-                      ? null
-                      : _isMining
+                  buttonEnabled
+                      ? _isMining
                           ? _claimMining
-                          : _startMining,
+                          : _startMining
+                      : null,
               icon: Icon(
                 _busy
                     ? Icons
                         .hourglass_top_rounded
-                    : _isMining
+                    : !_isMining
                         ? Icons
-                            .card_giftcard_rounded
-                        : Icons
-                            .hardware_rounded,
+                            .hardware_rounded
+                        : _sessionFinished
+                            ? Icons
+                                .card_giftcard_rounded
+                            : Icons
+                                .access_time_rounded,
                 size: 26,
               ),
               label: Text(
@@ -1302,10 +1605,12 @@ class _MainNavigationScreenState
                     size: 20,
                   ),
                   label:
-                      const Text(
-                    'WATCH AD',
+                      Text(
+                    _waitingForBoostAd
+                        ? 'WATCHING'
+                        : 'WATCH AD',
                     style:
-                        TextStyle(
+                        const TextStyle(
                       fontWeight:
                           FontWeight
                               .w800,
@@ -1469,7 +1774,9 @@ class _MainNavigationScreenState
                 child:
                     OutlinedButton.icon(
                   onPressed:
-                      _dailyCheckin,
+                      _busy
+                          ? null
+                          : _dailyCheckin,
                   icon:
                       const Icon(
                     Icons
