@@ -15,8 +15,8 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState
     extends State<MainNavigationScreen> {
-  final MiningService _miningService = MiningService.instance;
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final MiningService _miningService =
+      MiningService.instance;
 
   int _currentIndex = 0;
 
@@ -36,9 +36,12 @@ class _MainNavigationScreenState
   Timer? _timer;
 
   Duration get _sessionRemaining {
-    if (_endsAt == null) return Duration.zero;
+    if (_endsAt == null) {
+      return Duration.zero;
+    }
 
-    final remaining = _endsAt!.difference(DateTime.now());
+    final remaining =
+        _endsAt!.difference(DateTime.now());
 
     if (remaining.isNegative) {
       return Duration.zero;
@@ -48,15 +51,26 @@ class _MainNavigationScreenState
   }
 
   Duration get _sessionElapsed {
-    if (_startedAt == null) return Duration.zero;
+    if (_startedAt == null) {
+      return Duration.zero;
+    }
 
-    final elapsed = DateTime.now().difference(_startedAt!);
+    final elapsed =
+        DateTime.now().difference(_startedAt!);
 
     if (elapsed.isNegative) {
       return Duration.zero;
     }
 
     return elapsed;
+  }
+
+  bool get _sessionFinished {
+    if (!_isMining || _endsAt == null) {
+      return false;
+    }
+
+    return !DateTime.now().isBefore(_endsAt!);
   }
 
   @override
@@ -72,50 +86,81 @@ class _MainNavigationScreenState
   }
 
   Future<void> _loadDashboard() async {
+    if (!mounted) return;
+
+    setState(() {
+      _loading = true;
+    });
+
+    String? firstError;
+
     try {
-      setState(() {
-        _loading = true;
-      });
-
       await _loadProfile();
-      await _loadMining();
-      await _loadMiningRate();
-
-      _startUiTimer();
     } catch (e) {
-      _showMessage('Unable to load your account.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      firstError ??= _cleanError(e);
+    }
+
+    try {
+      await _loadMining();
+    } catch (e) {
+      firstError ??= _cleanError(e);
+    }
+
+    try {
+      await _loadMiningRate();
+    } catch (e) {
+      firstError ??= _cleanError(e);
+    }
+
+    try {
+      await _loadAdsCount();
+    } catch (e) {
+      firstError ??= _cleanError(e);
+    }
+
+    _startUiTimer();
+
+    if (mounted) {
+      setState(() {
+        _loading = false;
+      });
+    }
+
+    if (firstError != null && mounted) {
+      _showMessage(firstError);
     }
   }
 
   Future<void> _loadProfile() async {
-    final user = _supabase.auth.currentUser;
+    final result =
+        await _miningService.getProfile();
 
-    if (user == null) {
-      return;
-    }
+    final fan =
+        result['fan_balance'] ??
+        result['fanBalance'] ??
+        0;
 
-    final response = await _supabase
-        .from('profiles')
-        .select('fan_balance, afam_balance')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    if (response == null) return;
-
-    final fan = response['fan_balance'];
-    final afam = response['afam_balance'];
+    final afam =
+        result['afam_balance'] ??
+        result['afamBalance'] ??
+        0;
 
     if (!mounted) return;
 
     setState(() {
       _balance = _toDouble(fan);
       _afamBalance = _toDouble(afam);
+    });
+  }
+
+  Future<void> _loadAdsCount() async {
+    final count =
+        await _miningService.getAdsWatchedToday();
+
+    if (!mounted) return;
+
+    setState(() {
+      _adsWatched = count.clamp(0, 7);
     });
   }
 
@@ -146,9 +191,11 @@ class _MainNavigationScreenState
     final result =
         await _miningService.getActiveMining();
 
-    final active = result['active'];
+    final active =
+        result['active'] == true ||
+        result['is_active'] == true;
 
-    if (active != true) {
+    if (!active) {
       if (!mounted) return;
 
       setState(() {
@@ -185,12 +232,15 @@ class _MainNavigationScreenState
 
         if (_isMining &&
             _endsAt != null &&
-            DateTime.now().isAfter(_endsAt!)) {
+            !DateTime.now().isBefore(_endsAt!)) {
           await _loadMining();
           await _loadProfile();
+          await _loadMiningRate();
         }
 
-        setState(() {});
+        if (mounted) {
+          setState(() {});
+        }
       },
     );
   }
@@ -206,9 +256,7 @@ class _MainNavigationScreenState
       final result =
           await _miningService.startMining();
 
-      final success = result['success'];
-
-      if (success == false) {
+      if (result['success'] == false) {
         _showMessage(
           result['message']?.toString() ??
               'Unable to start mining.',
@@ -219,10 +267,12 @@ class _MainNavigationScreenState
       await _loadMining();
       await _loadMiningRate();
 
-      _showMessage('Mining started successfully.');
+      _showMessage(
+        'Mining started successfully.',
+      );
     } catch (e) {
       _showMessage(
-        'Unable to start mining. Please try again.',
+        _cleanError(e),
       );
     } finally {
       if (mounted) {
@@ -236,41 +286,30 @@ class _MainNavigationScreenState
   Future<void> _claimMining() async {
     if (_busy) return;
 
-    setState(() {
-      _busy = true;
-    });
-
-    try {
-      final result =
-          await _miningService.claimMining();
-
-      final success = result['success'];
-
-      if (success == false) {
-        _showMessage(
-          result['message']?.toString() ??
-              'Unable to claim mining.',
-        );
-        return;
-      }
-
-      await _loadProfile();
-      await _loadMining();
+    /*
+     * Mining cannot be claimed before the full 24-hour
+     * session has finished.
+     */
+    if (!_sessionFinished) {
+      final remaining = _sessionRemaining;
 
       _showMessage(
-        'Mining reward claimed successfully.',
+        'Mining is still running. '
+        'You can claim after '
+        '${_formatDuration(remaining)}.',
       );
-    } catch (e) {
-      _showMessage(
-        'Unable to claim mining reward.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-        });
-      }
+
+      return;
     }
+
+    /*
+     * The final claim should be protected by a real rewarded
+     * advertisement flow. Until the actual rewarded-ad SDK is
+     * connected, we do not pretend that an ad was watched.
+     */
+    _showMessage(
+      'Please watch the required rewarded ad before claiming.',
+    );
   }
 
   Future<void> _watchAd() async {
@@ -283,13 +322,6 @@ class _MainNavigationScreenState
       return;
     }
 
-    /*
-     * Actual rewarded-ad SDK will be connected here.
-     *
-     * For now we register the ad with Supabase.
-     * The server function remains responsible for
-     * validating/processing the reward.
-     */
     setState(() {
       _busy = true;
     });
@@ -311,18 +343,19 @@ class _MainNavigationScreenState
         return;
       }
 
-      setState(() {
-        _adsWatched++;
-      });
-
+      /*
+       * Re-read from database instead of trusting a local
+       * counter.
+       */
+      await _loadAdsCount();
       await _loadMiningRate();
 
       _showMessage(
-        'Ad recorded successfully. Reward is being processed.',
+        'Rewarded ad recorded successfully.',
       );
     } catch (e) {
       _showMessage(
-        'Something went wrong. Please try again.',
+        _cleanError(e),
       );
     } finally {
       if (mounted) {
@@ -359,7 +392,7 @@ class _MainNavigationScreenState
       );
     } catch (e) {
       _showMessage(
-        'Daily check-in is unavailable right now.',
+        _cleanError(e),
       );
     } finally {
       if (mounted) {
@@ -375,7 +408,9 @@ class _MainNavigationScreenState
   }
 
   double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) {
+      return 0.0;
+    }
 
     if (value is num) {
       return value.toDouble();
@@ -388,16 +423,36 @@ class _MainNavigationScreenState
   }
 
   DateTime? _parseDate(dynamic value) {
-    if (value == null) return null;
+    if (value == null) {
+      return null;
+    }
 
     return DateTime.tryParse(
       value.toString(),
     )?.toLocal();
   }
 
+  String _cleanError(Object error) {
+    var text = error.toString();
+
+    if (text.startsWith('Exception: ')) {
+      text = text.substring(11);
+    }
+
+    if (text.startsWith('PostgrestException: ')) {
+      text = text.substring(19);
+    }
+
+    return text.trim().isEmpty
+        ? 'Something went wrong. Please try again.'
+        : text.trim();
+  }
+
   String _formatDuration(Duration duration) {
     final hours =
-        duration.inHours.toString().padLeft(2, '0');
+        duration.inHours
+            .toString()
+            .padLeft(2, '0');
 
     final minutes =
         duration.inMinutes
@@ -424,7 +479,8 @@ class _MainNavigationScreenState
           content: Text(message),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius:
+                BorderRadius.circular(14),
           ),
         ),
       );
@@ -440,12 +496,15 @@ class _MainNavigationScreenState
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8FC),
+      backgroundColor:
+          const Color(0xFFF8F8FC),
       body: SafeArea(
         child: _loading
             ? const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF4A20B9),
+                child:
+                    CircularProgressIndicator(
+                  color:
+                      Color(0xFF4A20B9),
                 ),
               )
             : pages[_currentIndex],
@@ -462,7 +521,8 @@ class _MainNavigationScreenState
       child: CustomScrollView(
         physics:
             const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
+          parent:
+              BouncingScrollPhysics(),
         ),
         slivers: [
           SliverToBoxAdapter(
@@ -513,13 +573,16 @@ class _MainNavigationScreenState
           Container(
             width: 52,
             height: 52,
-            decoration: BoxDecoration(
+            decoration:
+                BoxDecoration(
               borderRadius:
                   BorderRadius.circular(15),
               gradient:
                   const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin:
+                    Alignment.topLeft,
+                end:
+                    Alignment.bottomRight,
                 colors: [
                   Color(0xFF5B2BD9),
                   Color(0xFF32148E),
@@ -527,10 +590,12 @@ class _MainNavigationScreenState
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF3B159B)
-                      .withOpacity(0.22),
+                  color:
+                      const Color(0xFF3B159B)
+                          .withOpacity(0.22),
                   blurRadius: 12,
-                  offset: const Offset(0, 5),
+                  offset:
+                      const Offset(0, 5),
                 ),
               ],
             ),
@@ -540,7 +605,8 @@ class _MainNavigationScreenState
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 31,
-                  fontWeight: FontWeight.w900,
+                  fontWeight:
+                      FontWeight.w900,
                 ),
               ),
             ),
@@ -554,25 +620,29 @@ class _MainNavigationScreenState
                 const Text(
                   'POWER FAN',
                   style: TextStyle(
-                    color: Color(0xFF35148F),
+                    color:
+                        Color(0xFF35148F),
                     fontSize: 25,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.6,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
                 Text(
                   'Mine FAN. Earn More',
                   style: TextStyle(
-                    color: Colors.grey.shade700,
+                    color:
+                        Colors.grey.shade700,
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontWeight:
+                        FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
           Stack(
-            clipBehavior: Clip.none,
+            clipBehavior:
+                Clip.none,
             children: [
               IconButton(
                 onPressed: () {
@@ -581,9 +651,11 @@ class _MainNavigationScreenState
                   );
                 },
                 icon: const Icon(
-                  Icons.notifications_none_rounded,
+                  Icons
+                      .notifications_none_rounded,
                   size: 31,
-                  color: Color(0xFF28116F),
+                  color:
+                      Color(0xFF28116F),
                 ),
               ),
               Positioned(
@@ -595,7 +667,8 @@ class _MainNavigationScreenState
                   decoration:
                       const BoxDecoration(
                     color: Colors.red,
-                    shape: BoxShape.circle,
+                    shape:
+                        BoxShape.circle,
                   ),
                 ),
               ),
@@ -609,13 +682,16 @@ class _MainNavigationScreenState
   Widget _buildBalanceCard() {
     return Container(
       height: 178,
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         borderRadius:
             BorderRadius.circular(25),
         gradient:
             const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
           colors: [
             Color(0xFF4820B7),
             Color(0xFF291075),
@@ -623,10 +699,12 @@ class _MainNavigationScreenState
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF35128D)
-                .withOpacity(0.28),
+            color:
+                const Color(0xFF35128D)
+                    .withOpacity(0.28),
             blurRadius: 18,
-            offset: const Offset(0, 8),
+            offset:
+                const Offset(0, 8),
           ),
         ],
       ),
@@ -638,8 +716,10 @@ class _MainNavigationScreenState
             child: Container(
               width: 150,
               height: 150,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
+              decoration:
+                  BoxDecoration(
+                shape:
+                    BoxShape.circle,
                 color: Colors.white
                     .withOpacity(0.06),
               ),
@@ -648,7 +728,8 @@ class _MainNavigationScreenState
           Positioned(
             right: 15,
             bottom: 5,
-            child: _buildMiningCharacter(),
+            child:
+                _buildMiningCharacter(),
           ),
           Padding(
             padding:
@@ -667,8 +748,8 @@ class _MainNavigationScreenState
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 7),
@@ -679,43 +760,59 @@ class _MainNavigationScreenState
                     Container(
                       width: 53,
                       height: 53,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+                      decoration:
+                          const BoxDecoration(
+                        shape:
+                            BoxShape.circle,
                         color:
-                            const Color(0xFFFFB800),
+                            Color(0xFFFFB800),
                       ),
-                      child: const Icon(
-                        Icons.star_rounded,
+                      child:
+                          const Icon(
+                        Icons
+                            .star_rounded,
                         color:
                             Color(0xFFE88700),
                         size: 35,
                       ),
                     ),
-                    const SizedBox(width: 11),
+                    const SizedBox(
+                      width: 11,
+                    ),
                     Flexible(
                       child: Text(
                         _balance
-                            .toStringAsFixed(4),
+                            .toStringAsFixed(
+                          4,
+                        ),
                         maxLines: 1,
                         overflow:
-                            TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
+                            TextOverflow
+                                .ellipsis,
+                        style:
+                            const TextStyle(
+                          color:
+                              Colors.white,
                           fontSize: 37,
                           fontWeight:
-                              FontWeight.w900,
-                          letterSpacing: -1.2,
+                              FontWeight
+                                  .w900,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 7),
+                    const SizedBox(
+                      width: 7,
+                    ),
                     const Text(
                       'FAN',
-                      style: TextStyle(
-                        color: Colors.white,
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.white,
                         fontSize: 20,
                         fontWeight:
-                            FontWeight.w700,
+                            FontWeight
+                                .w700,
                       ),
                     ),
                   ],
@@ -744,7 +841,8 @@ class _MainNavigationScreenState
       width: 155,
       height: 140,
       child: Stack(
-        alignment: Alignment.bottomCenter,
+        alignment:
+            Alignment.bottomCenter,
         children: [
           Positioned(
             bottom: 2,
@@ -752,15 +850,20 @@ class _MainNavigationScreenState
             child: Container(
               width: 76,
               height: 76,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF743BDF)
-                    .withOpacity(0.75),
+              decoration:
+                  BoxDecoration(
+                shape:
+                    BoxShape.circle,
+                color:
+                    const Color(
+                  0xFF743BDF,
+                ).withOpacity(0.75),
               ),
               child: const Center(
                 child: Icon(
                   Icons.bolt_rounded,
-                  color: Color(0xFFFFC400),
+                  color:
+                      Color(0xFFFFC400),
                   size: 48,
                 ),
               ),
@@ -777,7 +880,9 @@ class _MainNavigationScreenState
                 decoration:
                     BoxDecoration(
                   color:
-                      const Color(0xFF7B4B2A),
+                      const Color(
+                    0xFF7B4B2A,
+                  ),
                   borderRadius:
                       BorderRadius.circular(
                     10,
@@ -792,8 +897,10 @@ class _MainNavigationScreenState
             child: Transform.rotate(
               angle: -0.65,
               child: const Icon(
-                Icons.construction_rounded,
-                color: Color(0xFFE7D4FF),
+                Icons
+                    .construction_rounded,
+                color:
+                    Color(0xFFE7D4FF),
                 size: 45,
               ),
             ),
@@ -804,18 +911,23 @@ class _MainNavigationScreenState
             child: Container(
               width: 73,
               height: 73,
-              decoration: BoxDecoration(
+              decoration:
+                  const BoxDecoration(
                 color:
-                    const Color(0xFFF4A261),
-                shape: BoxShape.circle,
+                    Color(0xFFF4A261),
+                shape:
+                    BoxShape.circle,
               ),
-              child: const Column(
+              child:
+                  const Column(
                 mainAxisAlignment:
-                    MainAxisAlignment.center,
+                    MainAxisAlignment
+                        .center,
                 children: [
                   Row(
                     mainAxisAlignment:
-                        MainAxisAlignment.center,
+                        MainAxisAlignment
+                            .center,
                     children: [
                       _Eye(),
                       SizedBox(width: 11),
@@ -826,7 +938,8 @@ class _MainNavigationScreenState
                   Icon(
                     Icons
                         .sentiment_satisfied_alt_rounded,
-                    color: Color(0xFF32148E),
+                    color:
+                        Color(0xFF32148E),
                     size: 24,
                   ),
                 ],
@@ -839,11 +952,12 @@ class _MainNavigationScreenState
             child: Container(
               width: 98,
               height: 78,
-              decoration: BoxDecoration(
+              decoration:
+                  const BoxDecoration(
                 color:
-                    const Color(0xFF5323B7),
+                    Color(0xFF5323B7),
                 borderRadius:
-                    const BorderRadius.only(
+                    BorderRadius.only(
                   topLeft:
                       Radius.circular(28),
                   topRight:
@@ -862,11 +976,27 @@ class _MainNavigationScreenState
   }
 
   Widget _buildMiningCard() {
-    final remaining = _sessionRemaining;
+    final remaining =
+        _sessionRemaining;
 
-    final sessionText = _isMining
-        ? _formatDuration(remaining)
-        : '00:00:00';
+    final elapsed =
+        _sessionElapsed;
+
+    final sessionText =
+        _isMining
+            ? _sessionFinished
+                ? '24:00:00'
+                : _formatDuration(
+                    elapsed,
+                  )
+            : '00:00:00';
+
+    final buttonLabel =
+        _busy
+            ? 'PLEASE WAIT...'
+            : _isMining
+                ? 'CLAIM MINING'
+                : 'START MINING';
 
     return _whiteCard(
       child: Column(
@@ -888,10 +1018,12 @@ class _MainNavigationScreenState
                       children: [
                         const Text(
                           'STATUS: ',
-                          style: TextStyle(
+                          style:
+                              TextStyle(
                             fontSize: 17,
                             fontWeight:
-                                FontWeight.w800,
+                                FontWeight
+                                    .w800,
                           ),
                         ),
                         Text(
@@ -901,10 +1033,13 @@ class _MainNavigationScreenState
                           style:
                               const TextStyle(
                             color:
-                                Color(0xFF159B61),
+                                Color(
+                              0xFF159B61,
+                            ),
                             fontSize: 17,
                             fontWeight:
-                                FontWeight.w900,
+                                FontWeight
+                                    .w900,
                           ),
                         ),
                       ],
@@ -912,9 +1047,12 @@ class _MainNavigationScreenState
                     const SizedBox(height: 4),
                     Text(
                       _isMining
-                          ? 'Mining FAN right now'
+                          ? _sessionFinished
+                              ? 'Mining session completed'
+                              : 'Mining FAN right now'
                           : 'Start mining to earn FAN',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         color:
                             Colors.grey.shade700,
                         fontSize: 14,
@@ -927,7 +1065,8 @@ class _MainNavigationScreenState
           ),
           const SizedBox(height: 17),
           Divider(
-            color: Colors.grey.shade200,
+            color:
+                Colors.grey.shade200,
             height: 1,
           ),
           const SizedBox(height: 16),
@@ -943,7 +1082,8 @@ class _MainNavigationScreenState
               Container(
                 width: 1,
                 height: 58,
-                color: Colors.grey.shade200,
+                color:
+                    Colors.grey.shade200,
               ),
               Expanded(
                 child: _miningInfo(
@@ -954,32 +1094,53 @@ class _MainNavigationScreenState
               ),
             ],
           ),
+          if (_isMining) ...[
+            const SizedBox(height: 10),
+            Text(
+              _sessionFinished
+                  ? 'Session completed. Watch the required ad before claiming.'
+                  : 'Time remaining: ${_formatDuration(remaining)}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color:
+                    _sessionFinished
+                        ? const Color(
+                            0xFF159B61,
+                          )
+                        : Colors.black54,
+                fontSize: 12,
+                fontWeight:
+                    FontWeight.w700,
+              ),
+            ),
+          ],
           const SizedBox(height: 15),
           SizedBox(
             width: double.infinity,
             height: 58,
-            child: ElevatedButton.icon(
-              onPressed: _busy
-                  ? null
-                  : _isMining
-                      ? _claimMining
-                      : _startMining,
+            child:
+                ElevatedButton.icon(
+              onPressed:
+                  _busy
+                      ? null
+                      : _isMining
+                          ? _claimMining
+                          : _startMining,
               icon: Icon(
                 _busy
-                    ? Icons.hourglass_top_rounded
+                    ? Icons
+                        .hourglass_top_rounded
                     : _isMining
                         ? Icons
                             .card_giftcard_rounded
-                        : Icons.hardware_rounded,
+                        : Icons
+                            .hardware_rounded,
                 size: 26,
               ),
               label: Text(
-                _busy
-                    ? 'PLEASE WAIT...'
-                    : _isMining
-                        ? 'CLAIM MINING'
-                        : 'START MINING',
-                style: const TextStyle(
+                buttonLabel,
+                style:
+                    const TextStyle(
                   fontSize: 18,
                   fontWeight:
                       FontWeight.w800,
@@ -988,18 +1149,24 @@ class _MainNavigationScreenState
               style:
                   ElevatedButton.styleFrom(
                 backgroundColor:
-                    const Color(0xFF4A20B9),
+                    const Color(
+                  0xFF4A20B9,
+                ),
                 foregroundColor:
                     Colors.white,
                 disabledBackgroundColor:
-                    const Color(0xFF8D76CF),
+                    const Color(
+                  0xFF8D76CF,
+                ),
                 disabledForegroundColor:
                     Colors.white,
                 elevation: 0,
                 shape:
                     RoundedRectangleBorder(
                   borderRadius:
-                      BorderRadius.circular(17),
+                      BorderRadius.circular(
+                    17,
+                  ),
                 ),
               ),
             ),
@@ -1023,7 +1190,8 @@ class _MainNavigationScreenState
         children: [
           Icon(
             icon,
-            color: const Color(0xFF3C169B),
+            color:
+                const Color(0xFF3C169B),
             size: 43,
           ),
           const SizedBox(width: 10),
@@ -1037,7 +1205,8 @@ class _MainNavigationScreenState
                   maxLines: 1,
                   overflow:
                       TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 11,
                     fontWeight:
                         FontWeight.w800,
@@ -1049,7 +1218,8 @@ class _MainNavigationScreenState
                   maxLines: 1,
                   overflow:
                       TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     color:
                         Color(0xFF341490),
                     fontSize: 14,
@@ -1066,7 +1236,13 @@ class _MainNavigationScreenState
   }
 
   Widget _buildAdsCard() {
-    final progress = _adsWatched / 7;
+    final progress =
+        (_adsWatched / 7)
+            .clamp(0.0, 1.0);
+
+    final boost =
+        (_miningRate - 0.2)
+            .clamp(0.0, 0.7);
 
     return _whiteCard(
       child: Column(
@@ -1076,7 +1252,8 @@ class _MainNavigationScreenState
           Row(
             children: [
               _circleIcon(
-                Icons.rocket_launch_rounded,
+                Icons
+                    .rocket_launch_rounded,
                 const Color(0xFFF0EBFF),
                 const Color(0xFFE64949),
               ),
@@ -1088,18 +1265,22 @@ class _MainNavigationScreenState
                   children: [
                     Text(
                       'BOOST BY WATCHING ADS',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         fontSize: 16,
                         fontWeight:
-                            FontWeight.w900,
+                            FontWeight
+                                .w900,
                       ),
                     ),
                     SizedBox(height: 4),
                     Text(
                       'Each ad adds +0.1 FAN/H',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         fontSize: 13,
-                        color: Colors.black54,
+                        color:
+                            Colors.black54,
                       ),
                     ),
                   ],
@@ -1107,30 +1288,42 @@ class _MainNavigationScreenState
               ),
               SizedBox(
                 height: 49,
-                child: ElevatedButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : _watchAd,
-                  icon: const Icon(
+                child:
+                    ElevatedButton.icon(
+                  onPressed:
+                      _busy ||
+                              _adsWatched >= 7
+                          ? null
+                          : _watchAd,
+                  icon:
+                      const Icon(
                     Icons
                         .video_collection_rounded,
                     size: 20,
                   ),
-                  label: const Text(
+                  label:
+                      const Text(
                     'WATCH AD',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       fontWeight:
-                          FontWeight.w800,
+                          FontWeight
+                              .w800,
                     ),
                   ),
                   style:
-                      ElevatedButton.styleFrom(
+                      ElevatedButton
+                          .styleFrom(
                     backgroundColor:
-                        const Color(0xFF4A20B9),
+                        const Color(
+                      0xFF4A20B9,
+                    ),
                     foregroundColor:
                         Colors.white,
                     disabledBackgroundColor:
-                        const Color(0xFF8D76CF),
+                        const Color(
+                      0xFF8D76CF,
+                    ),
                     elevation: 0,
                     padding:
                         const EdgeInsets
@@ -1140,7 +1333,8 @@ class _MainNavigationScreenState
                     shape:
                         RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius.circular(
+                          BorderRadius
+                              .circular(
                         15,
                       ),
                     ),
@@ -1152,22 +1346,29 @@ class _MainNavigationScreenState
           const SizedBox(height: 17),
           Text(
             'Ads watched today: $_adsWatched / 7',
-            style: const TextStyle(
-              color: Color(0xFF35148F),
+            style:
+                const TextStyle(
+              color:
+                  Color(0xFF35148F),
               fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontWeight:
+                  FontWeight.w700,
             ),
           ),
           const SizedBox(height: 9),
           ClipRRect(
             borderRadius:
-                BorderRadius.circular(20),
+                BorderRadius.circular(
+              20,
+            ),
             child:
                 LinearProgressIndicator(
               value: progress,
               minHeight: 9,
               backgroundColor:
-                  const Color(0xFFE9E4FA),
+                  const Color(
+                0xFFE9E4FA,
+              ),
               valueColor:
                   const AlwaysStoppedAnimation(
                 Color(0xFF5A2AD0),
@@ -1179,9 +1380,11 @@ class _MainNavigationScreenState
             alignment:
                 Alignment.centerRight,
             child: Text(
-              '+${(_miningRate - 0.2).clamp(0.0, 0.7).toStringAsFixed(1)} FAN/H',
-              style: const TextStyle(
-                color: Color(0xFF35148F),
+              '+${boost.toStringAsFixed(1)} FAN/H',
+              style:
+                  const TextStyle(
+                color:
+                    Color(0xFF35148F),
                 fontSize: 14,
                 fontWeight:
                     FontWeight.w800,
@@ -1198,7 +1401,8 @@ class _MainNavigationScreenState
       child: Row(
         children: [
           _circleIcon(
-            Icons.assignment_turned_in_rounded,
+            Icons
+                .assignment_turned_in_rounded,
             const Color(0xFFE8F8F0),
             const Color(0xFF159B61),
           ),
@@ -1210,7 +1414,8 @@ class _MainNavigationScreenState
               children: [
                 Text(
                   'DAILY TASK',
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 17,
                     fontWeight:
                         FontWeight.w900,
@@ -1219,16 +1424,20 @@ class _MainNavigationScreenState
                 SizedBox(height: 5),
                 Text(
                   'Follow us on social media',
-                  style: TextStyle(
-                    color: Colors.black54,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.black54,
                     fontSize: 13,
                   ),
                 ),
                 SizedBox(height: 3),
                 Text(
                   'Follow and get 10 FAN reward',
-                  style: TextStyle(
-                    color: Colors.black54,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.black54,
                     fontSize: 13,
                   ),
                 ),
@@ -1240,11 +1449,17 @@ class _MainNavigationScreenState
               Row(
                 children: [
                   _socialIcon('X'),
-                  const SizedBox(width: 6),
+                  const SizedBox(
+                    width: 6,
+                  ),
                   _socialIcon('T'),
-                  const SizedBox(width: 6),
+                  const SizedBox(
+                    width: 6,
+                  ),
                   _socialIcon('I'),
-                  const SizedBox(width: 6),
+                  const SizedBox(
+                    width: 6,
+                  ),
                   _socialIcon('Y'),
                 ],
               ),
@@ -1255,20 +1470,26 @@ class _MainNavigationScreenState
                     OutlinedButton.icon(
                   onPressed:
                       _dailyCheckin,
-                  icon: const Icon(
-                    Icons.card_giftcard_rounded,
+                  icon:
+                      const Icon(
+                    Icons
+                        .card_giftcard_rounded,
                     size: 18,
                   ),
-                  label: const Text(
+                  label:
+                      const Text(
                     'FOLLOW & EARN',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       fontSize: 11,
                       fontWeight:
-                          FontWeight.w800,
+                          FontWeight
+                              .w800,
                     ),
                   ),
                   style:
-                      OutlinedButton.styleFrom(
+                      OutlinedButton
+                          .styleFrom(
                     foregroundColor:
                         const Color(
                       0xFF35148F,
@@ -1282,7 +1503,8 @@ class _MainNavigationScreenState
                     shape:
                         RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius.circular(
+                          BorderRadius
+                              .circular(
                         12,
                       ),
                     ),
@@ -1305,7 +1527,8 @@ class _MainNavigationScreenState
     return Container(
       width: 36,
       height: 36,
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.black,
         borderRadius:
             BorderRadius.circular(9),
@@ -1313,10 +1536,12 @@ class _MainNavigationScreenState
       child: Center(
         child: Text(
           letter,
-          style: const TextStyle(
+          style:
+              const TextStyle(
             color: Colors.white,
             fontSize: 17,
-            fontWeight: FontWeight.w900,
+            fontWeight:
+                FontWeight.w900,
           ),
         ),
       ),
@@ -1328,7 +1553,8 @@ class _MainNavigationScreenState
       child: Row(
         children: [
           _circleIcon(
-            Icons.verified_user_rounded,
+            Icons
+                .verified_user_rounded,
             const Color(0xFFECE8FF),
             const Color(0xFF4320A5),
           ),
@@ -1340,7 +1566,8 @@ class _MainNavigationScreenState
               children: [
                 Text(
                   'KYC VERIFICATION',
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 16,
                     fontWeight:
                         FontWeight.w900,
@@ -1349,8 +1576,10 @@ class _MainNavigationScreenState
                 SizedBox(height: 5),
                 Text(
                   'Verify your identity to secure your account',
-                  style: TextStyle(
-                    color: Colors.black54,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.black54,
                     fontSize: 12,
                   ),
                 ),
@@ -1366,18 +1595,25 @@ class _MainNavigationScreenState
             style:
                 OutlinedButton.styleFrom(
               foregroundColor:
-                  const Color(0xFF35148F),
-              side: const BorderSide(
-                color: Color(0xFF35148F),
+                  const Color(
+                0xFF35148F,
+              ),
+              side:
+                  const BorderSide(
+                color:
+                    Color(0xFF35148F),
                 width: 1.3,
               ),
               shape:
                   RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(12),
+                    BorderRadius.circular(
+                  12,
+                ),
               ),
               padding:
-                  const EdgeInsets.symmetric(
+                  const EdgeInsets
+                      .symmetric(
                 horizontal: 13,
                 vertical: 12,
               ),
@@ -1388,7 +1624,8 @@ class _MainNavigationScreenState
               children: [
                 Text(
                   'COMPLETE KYC',
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 11,
                     fontWeight:
                         FontWeight.w900,
@@ -1396,7 +1633,8 @@ class _MainNavigationScreenState
                 ),
                 SizedBox(width: 5),
                 Icon(
-                  Icons.chevron_right_rounded,
+                  Icons
+                      .chevron_right_rounded,
                   size: 20,
                 ),
               ],
@@ -1414,7 +1652,8 @@ class _MainNavigationScreenState
       width: double.infinity,
       padding:
           const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.white,
         borderRadius:
             BorderRadius.circular(22),
@@ -1425,7 +1664,8 @@ class _MainNavigationScreenState
               0.045,
             ),
             blurRadius: 12,
-            offset: const Offset(0, 4),
+            offset:
+                const Offset(0, 4),
           ),
         ],
       ),
@@ -1441,9 +1681,11 @@ class _MainNavigationScreenState
     return Container(
       width: 58,
       height: 58,
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: background,
-        shape: BoxShape.circle,
+        shape:
+            BoxShape.circle,
       ),
       child: Icon(
         icon,
@@ -1455,14 +1697,18 @@ class _MainNavigationScreenState
 
   Widget _buildBottomNavigationBar() {
     return Container(
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(0.07),
+                Colors.black.withOpacity(
+              0.07,
+            ),
             blurRadius: 15,
-            offset: const Offset(0, -3),
+            offset:
+                const Offset(0, -3),
           ),
         ],
       ),
@@ -1480,23 +1726,27 @@ class _MainNavigationScreenState
             children: [
               _navItem(
                 index: 0,
-                icon: Icons.home_rounded,
+                icon:
+                    Icons.home_rounded,
                 label: 'HOME',
               ),
               _navItem(
                 index: 1,
-                icon: Icons.groups_rounded,
+                icon:
+                    Icons.groups_rounded,
                 label: 'REFERRAL',
               ),
               _navItem(
                 index: 2,
-                icon: Icons
-                    .account_balance_wallet_rounded,
+                icon:
+                    Icons
+                        .account_balance_wallet_rounded,
                 label: 'WALLET',
               ),
               _navItem(
                 index: 3,
-                icon: Icons.settings_rounded,
+                icon:
+                    Icons.settings_rounded,
                 label: 'SETTINGS',
               ),
             ],
@@ -1536,13 +1786,18 @@ class _MainNavigationScreenState
                 icon,
                 size: 29,
                 color: selected
-                    ? const Color(0xFF4A20B9)
-                    : const Color(0xFF606060),
+                    ? const Color(
+                        0xFF4A20B9,
+                      )
+                    : const Color(
+                        0xFF606060,
+                      ),
               ),
               const SizedBox(height: 3),
               Text(
                 label,
-                style: TextStyle(
+                style:
+                    TextStyle(
                   color: selected
                       ? const Color(
                           0xFF35148F,
@@ -1552,8 +1807,10 @@ class _MainNavigationScreenState
                         ),
                   fontSize: 10,
                   fontWeight: selected
-                      ? FontWeight.w900
-                      : FontWeight.w600,
+                      ? FontWeight
+                          .w900
+                      : FontWeight
+                          .w600,
                 ),
               ),
             ],
@@ -1565,7 +1822,8 @@ class _MainNavigationScreenState
 
   Widget _buildReferralPage() {
     return _simplePage(
-      icon: Icons.groups_rounded,
+      icon:
+          Icons.groups_rounded,
       title: 'REFERRAL',
       subtitle:
           'Invite friends and grow your FAN mining rate.',
@@ -1574,13 +1832,15 @@ class _MainNavigationScreenState
           _infoBox(
             'Referral reward',
             '5 FAN',
-            Icons.card_giftcard_rounded,
+            Icons
+                .card_giftcard_rounded,
           ),
           const SizedBox(height: 12),
           _infoBox(
             'New user reward',
             '20 FAN',
-            Icons.person_add_alt_1_rounded,
+            Icons
+                .person_add_alt_1_rounded,
           ),
           const SizedBox(height: 12),
           _infoBox(
@@ -1596,7 +1856,8 @@ class _MainNavigationScreenState
   Widget _buildWalletPage() {
     return _simplePage(
       icon:
-          Icons.account_balance_wallet_rounded,
+          Icons
+              .account_balance_wallet_rounded,
       title: 'WALLET',
       subtitle:
           'Your AFAM wallet will be available soon.',
@@ -1604,7 +1865,8 @@ class _MainNavigationScreenState
         width: double.infinity,
         padding:
             const EdgeInsets.all(25),
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color: Colors.white,
           borderRadius:
               BorderRadius.circular(22),
@@ -1612,15 +1874,19 @@ class _MainNavigationScreenState
         child: Column(
           children: [
             const Icon(
-              Icons.account_balance_wallet_rounded,
-              color: Color(0xFF4320A5),
+              Icons
+                  .account_balance_wallet_rounded,
+              color:
+                  Color(0xFF4320A5),
               size: 58,
             ),
             const SizedBox(height: 15),
             const Text(
               'COMING SOON',
-              style: TextStyle(
-                color: Color(0xFF4320A5),
+              style:
+                  TextStyle(
+                color:
+                    Color(0xFF4320A5),
                 fontSize: 20,
                 fontWeight:
                     FontWeight.w900,
@@ -1629,9 +1895,12 @@ class _MainNavigationScreenState
             const SizedBox(height: 8),
             Text(
               'AFAM Balance: ${_afamBalance.toStringAsFixed(2)}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.black54,
+              textAlign:
+                  TextAlign.center,
+              style:
+                  const TextStyle(
+                color:
+                    Colors.black54,
                 fontSize: 14,
               ),
             ),
@@ -1643,19 +1912,22 @@ class _MainNavigationScreenState
 
   Widget _buildSettingsPage() {
     return _simplePage(
-      icon: Icons.settings_rounded,
+      icon:
+          Icons.settings_rounded,
       title: 'SETTINGS',
       subtitle:
           'Manage your POWER FAN account.',
       child: Column(
         children: [
           _settingsItem(
-            Icons.person_outline_rounded,
+            Icons
+                .person_outline_rounded,
             'Profile',
             'Manage your account information',
           ),
           _settingsItem(
-            Icons.notifications_none_rounded,
+            Icons
+                .notifications_none_rounded,
             'Notifications',
             'Manage notifications',
           ),
@@ -1678,16 +1950,24 @@ class _MainNavigationScreenState
           SizedBox(
             width: double.infinity,
             height: 52,
-            child: OutlinedButton.icon(
+            child:
+                OutlinedButton.icon(
               onPressed: () async {
-                await _supabase.auth.signOut();
+                await Supabase
+                    .instance
+                    .client
+                    .auth
+                    .signOut();
               },
-              icon: const Icon(
+              icon:
+                  const Icon(
                 Icons.logout_rounded,
               ),
-              label: const Text(
+              label:
+                  const Text(
                 'LOG OUT',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontWeight:
                       FontWeight.w800,
                 ),
@@ -1724,9 +2004,12 @@ class _MainNavigationScreenState
               Container(
                 width: 53,
                 height: 53,
-                decoration: BoxDecoration(
+                decoration:
+                    BoxDecoration(
                   color:
-                      const Color(0xFFEDE8FF),
+                      const Color(
+                    0xFFEDE8FF,
+                  ),
                   borderRadius:
                       BorderRadius.circular(
                     16,
@@ -1735,7 +2018,9 @@ class _MainNavigationScreenState
                 child: Icon(
                   icon,
                   color:
-                      const Color(0xFF4320A5),
+                      const Color(
+                    0xFF4320A5,
+                  ),
                   size: 30,
                 ),
               ),
@@ -1747,18 +2032,24 @@ class _MainNavigationScreenState
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         color:
-                            Color(0xFF35148F),
+                            Color(
+                          0xFF35148F,
+                        ),
                         fontSize: 25,
                         fontWeight:
-                            FontWeight.w900,
+                            FontWeight
+                                .w900,
                       ),
                     ),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: Colors.black54,
+                      style:
+                          const TextStyle(
+                        color:
+                            Colors.black54,
                         fontSize: 12,
                       ),
                     ),
@@ -1783,7 +2074,8 @@ class _MainNavigationScreenState
       width: double.infinity,
       padding:
           const EdgeInsets.all(17),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.white,
         borderRadius:
             BorderRadius.circular(19),
@@ -1803,16 +2095,19 @@ class _MainNavigationScreenState
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontWeight:
                         FontWeight.w700,
-                    color: Colors.black54,
+                    color:
+                        Colors.black54,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     color:
                         Color(0xFF35148F),
                     fontWeight:
@@ -1838,7 +2133,8 @@ class _MainNavigationScreenState
           const EdgeInsets.only(
         bottom: 10,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.white,
         borderRadius:
             BorderRadius.circular(17),
@@ -1857,14 +2153,16 @@ class _MainNavigationScreenState
         ),
         title: Text(
           title,
-          style: const TextStyle(
+          style:
+              const TextStyle(
             fontWeight:
                 FontWeight.w800,
           ),
         ),
         subtitle:
             Text(subtitle),
-        trailing: const Icon(
+        trailing:
+            const Icon(
           Icons.chevron_right_rounded,
           color: Colors.black45,
         ),
@@ -1886,8 +2184,10 @@ class _Eye extends StatelessWidget {
     return Container(
       width: 10,
       height: 13,
-      decoration: BoxDecoration(
-        color: const Color(0xFF291075),
+      decoration:
+          BoxDecoration(
+        color:
+            const Color(0xFF291075),
         borderRadius:
             BorderRadius.circular(8),
       ),
