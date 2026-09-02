@@ -1,6 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
+  AuthService._();
+
+  static final AuthService instance = AuthService._();
+
   final SupabaseClient _supabase = Supabase.instance.client;
 
   User? get currentUser => _supabase.auth.currentUser;
@@ -11,20 +15,21 @@ class AuthService {
       _supabase.auth.onAuthStateChange;
 
   Future<AuthResponse> register({
+    required String username,
     required String email,
     required String password,
-    required String username,
     String? referralCode,
   }) async {
-    final cleanEmail = email.trim().toLowerCase();
     final cleanUsername = username.trim();
-
-    if (cleanEmail.isEmpty) {
-      throw const AuthException('Please enter your email address.');
-    }
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanReferral = referralCode?.trim();
 
     if (cleanUsername.isEmpty) {
-      throw const AuthException('Please enter a username.');
+      throw const AuthException('Username is required.');
+    }
+
+    if (cleanEmail.isEmpty) {
+      throw const AuthException('Email is required.');
     }
 
     if (password.length < 6) {
@@ -33,32 +38,26 @@ class AuthService {
       );
     }
 
-    // Check username before creating the account.
-    final existing = await _supabase
-        .from('profiles')
-        .select('id')
-        .ilike('username', cleanUsername)
-        .limit(1);
-
-    if (existing.isNotEmpty) {
-      throw const AuthException('This username is already taken.');
-    }
-
     final response = await _supabase.auth.signUp(
       email: cleanEmail,
       password: password,
       data: {
         'username': cleanUsername,
-        if (referralCode != null && referralCode.trim().isNotEmpty)
-          'referral_code': referralCode.trim().toUpperCase(),
+        'referral_code': cleanReferral ?? '',
       },
     );
 
-    // If email confirmation is disabled in Supabase,
-    // a session is returned immediately.
     if (response.user == null) {
       throw const AuthException(
-        'Account could not be created. Please try again.',
+        'Registration failed. Please try again.',
+      );
+    }
+
+    // Idan Supabase Confirm Email yana ON,
+    // session zai kasance null.
+    if (response.session == null) {
+      throw const AuthException(
+        'Email confirmation is enabled. Please disable Confirm email in Supabase Authentication settings.',
       );
     }
 
@@ -72,20 +71,38 @@ class AuthService {
     final cleanEmail = email.trim().toLowerCase();
 
     if (cleanEmail.isEmpty) {
-      throw const AuthException('Please enter your email address.');
+      throw const AuthException('Email is required.');
     }
 
     if (password.isEmpty) {
-      throw const AuthException('Please enter your password.');
+      throw const AuthException('Password is required.');
     }
 
-    return await _supabase.auth.signInWithPassword(
+    final response = await _supabase.auth.signInWithPassword(
       email: cleanEmail,
       password: password,
     );
+
+    if (response.user == null || response.session == null) {
+      throw const AuthException(
+        'Login failed. Please check your email and password.',
+      );
+    }
+
+    return response;
   }
 
   Future<void> logout() async {
     await _supabase.auth.signOut();
+  }
+
+  Future<void> resetPassword(String email) async {
+    final cleanEmail = email.trim().toLowerCase();
+
+    if (cleanEmail.isEmpty) {
+      throw const AuthException('Email is required.');
+    }
+
+    await _supabase.auth.resetPasswordForEmail(cleanEmail);
   }
 }
