@@ -38,6 +38,12 @@ class _MainNavigationScreenState
   double _afamBalance = 0.0;
   double _miningRate = 0.2;
 
+  /*
+   * Rewarded ad count belongs to the current
+   * 24-hour mining session.
+   *
+   * Maximum: 7 ads per session.
+   */
   int _adsWatched = 0;
 
   bool _isMining = false;
@@ -225,8 +231,8 @@ class _MainNavigationScreenState
     try {
       final ready =
           await AppLovinMAX.isRewardedAdReady(
-            _rewardedAdUnitId,
-          );
+        _rewardedAdUnitId,
+      );
 
       if (ready == true) {
         return;
@@ -254,8 +260,8 @@ class _MainNavigationScreenState
     try {
       final ready =
           await AppLovinMAX.isRewardedAdReady(
-            _rewardedAdUnitId,
-          );
+        _rewardedAdUnitId,
+      );
 
       if (ready != true) {
         _loadRewardedAd();
@@ -375,8 +381,27 @@ class _MainNavigationScreenState
   }
 
   Future<void> _loadAdsCount() async {
+    /*
+     * Ads are counted only inside the current
+     * 24-hour mining session.
+     *
+     * If there is no active mining session,
+     * the next session starts at 0/7.
+     */
+    if (!_isMining || _startedAt == null) {
+      if (!mounted) return;
+
+      setState(() {
+        _adsWatched = 0;
+      });
+
+      return;
+    }
+
     final count =
-        await _miningService.getAdsWatchedToday();
+        await _miningService.getAdsWatchedForSession(
+      startedAt: _startedAt!,
+    );
 
     if (!mounted) return;
 
@@ -423,6 +448,7 @@ class _MainNavigationScreenState
         _isMining = false;
         _startedAt = null;
         _endsAt = null;
+        _adsWatched = 0;
       });
 
       return;
@@ -457,6 +483,7 @@ class _MainNavigationScreenState
           await _loadMining();
           await _loadProfile();
           await _loadMiningRate();
+          await _loadAdsCount();
         }
 
         if (mounted) {
@@ -485,8 +512,25 @@ class _MainNavigationScreenState
         return;
       }
 
+      /*
+       * Load the newly-created session first.
+       */
       await _loadMining();
+
+      /*
+       * Load the rate for the new session.
+       */
       await _loadMiningRate();
+
+      /*
+       * IMPORTANT:
+       *
+       * A new 24-hour mining session starts with
+       * its own ad counter.
+       *
+       * This therefore becomes 0/7 for a fresh session.
+       */
+      await _loadAdsCount();
 
       _showMessage(
         'Mining started successfully.',
@@ -577,9 +621,35 @@ class _MainNavigationScreenState
   Future<void> _watchAd() async {
     if (_busy) return;
 
+    /*
+     * Ads can only be watched during an active
+     * 24-hour mining session.
+     */
+    if (!_isMining) {
+      _showMessage(
+        'Start mining before watching boost ads.',
+      );
+      return;
+    }
+
+    /*
+     * Once the 24-hour session is complete,
+     * the user must claim the reward and start
+     * a new mining session before watching more ads.
+     */
+    if (_sessionFinished) {
+      _showMessage(
+        'Mining session is complete. Claim your reward and start a new session before watching more ads.',
+      );
+      return;
+    }
+
+    /*
+     * Maximum: 7 rewarded ads for ONE mining session.
+     */
     if (_adsWatched >= 7) {
       _showMessage(
-        'You have reached today\'s 7 ads limit.',
+        'You have reached the 7 ads limit for this mining session.',
       );
       return;
     }
@@ -623,7 +693,15 @@ class _MainNavigationScreenState
         return;
       }
 
+      /*
+       * Reload the session-based ad count.
+       */
       await _loadAdsCount();
+
+      /*
+       * Reload mining rate because the rewarded ad
+       * changes the mining rate.
+       */
       await _loadMiningRate();
 
       _showMessage(
@@ -1543,9 +1621,30 @@ class _MainNavigationScreenState
         (_adsWatched / 7)
             .clamp(0.0, 1.0);
 
+    /*
+     * Ad boost is calculated from the number of ads
+     * watched in THIS mining session only.
+     *
+     * Referral mining bonuses are intentionally not
+     * included in this display.
+     */
     final boost =
-        (_miningRate - 0.2)
+        (_adsWatched * 0.1)
             .clamp(0.0, 0.7);
+
+    /*
+     * WATCH AD is available only while:
+     *
+     * 1. Mining session is active.
+     * 2. Session has not finished.
+     * 3. Fewer than 7 ads have been watched.
+     * 4. No other operation is busy.
+     */
+    final canWatchAd =
+        !_busy &&
+        _isMining &&
+        !_sessionFinished &&
+        _adsWatched < 7;
 
     return _whiteCard(
       child: Column(
@@ -1594,10 +1693,9 @@ class _MainNavigationScreenState
                 child:
                     ElevatedButton.icon(
                   onPressed:
-                      _busy ||
-                              _adsWatched >= 7
-                          ? null
-                          : _watchAd,
+                      canWatchAd
+                          ? _watchAd
+                          : null,
                   icon:
                       const Icon(
                     Icons
@@ -1629,6 +1727,8 @@ class _MainNavigationScreenState
                         const Color(
                       0xFF8D76CF,
                     ),
+                    disabledForegroundColor:
+                        Colors.white,
                     elevation: 0,
                     padding:
                         const EdgeInsets
@@ -1650,7 +1750,7 @@ class _MainNavigationScreenState
           ),
           const SizedBox(height: 17),
           Text(
-            'Ads watched today: $_adsWatched / 7',
+            'Ads watched this session: $_adsWatched / 7',
             style:
                 const TextStyle(
               color:
