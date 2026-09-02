@@ -1,6 +1,7 @@
 name: powerfannetwork
 description: "Power Fan Network App"
 publish_to: 'none'
+
 version: 1.0.0+1
 
 environment:
@@ -9,14 +10,19 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   supabase_flutter: 2.15.4
   provider: ^6.1.2
   flutter_local_notifications: ^17.2.2
   http: ^1.2.2
 
+  # AppLovin MAX
+  applovin_max: ^4.6.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^4.0.0
 
 dependency_overrides:
