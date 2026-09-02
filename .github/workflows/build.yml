@@ -27,7 +27,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup Gradle 8.13
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
@@ -38,24 +38,49 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Precache Android Engine
-        run: flutter precache --android
-
-      - name: Force Gradle Wrapper 8.13
-        working-directory: android
+      - name: Force AppLovin MAX compileSdk to 36
+        shell: bash
         run: |
-          gradle wrapper --gradle-version 8.13
-          chmod +x gradlew
-          ./gradlew --version
+          set -e
 
-      - name: Verify Gradle Wrapper
-        working-directory: android
-        run: |
-          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
-          ./gradlew --version
+          APPLOVIN_DIR="$HOME/.pub-cache/hosted/pub.dev/applovin_max-4.6.4/android"
+
+          if [ ! -d "$APPLOVIN_DIR" ]; then
+            echo "AppLovin MAX directory not found:"
+            echo "$APPLOVIN_DIR"
+            exit 1
+          fi
+
+          echo "AppLovin MAX directory found:"
+          echo "$APPLOVIN_DIR"
+
+          BUILD_FILE="$APPLOVIN_DIR/build.gradle"
+
+          if [ -f "$BUILD_FILE" ]; then
+            echo "Original AppLovin build.gradle:"
+            cat "$BUILD_FILE"
+
+            sed -i \
+              -E 's/compileSdkVersion[[:space:]]+[0-9]+/compileSdkVersion 36/g' \
+              "$BUILD_FILE"
+
+            sed -i \
+              -E 's/compileSdk[[:space:]]+[0-9]+/compileSdk 36/g' \
+              "$BUILD_FILE"
+
+            echo "Updated AppLovin build.gradle:"
+            cat "$BUILD_FILE"
+          else
+            echo "AppLovin build.gradle not found."
+            exit 1
+          fi
 
       - name: Analyze
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings || true
+
+      - name: Generate Gradle Wrapper
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.13
 
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
