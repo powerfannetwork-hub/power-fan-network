@@ -1,6 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../services/mining_service.dart';
+import '../services/auth_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -10,25 +14,326 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  final MiningService _miningService = MiningService.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   int _currentIndex = 0;
 
   double _balance = 0.0;
-  double _baseRate = 0.2;
-  double _adBoost = 0.0;
+  double _afamBalance = 0.0;
+  double _miningRate = 0.2;
 
   int _adsWatched = 0;
-  bool _isMining = false;
-  Duration _miningTime = Duration.zero;
+  bool _loading = true;
+  bool _actionLoading = false;
 
-  Timer? _timer;
+  MiningSession? _session;
+
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _loadMiningData();
+
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!mounted) return;
+
+        setState(() {});
+
+        if (_session != null && !_session!.isActive) {
+          _refreshMiningData();
+        }
+      },
+    );
+  }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
-  double get _miningRate => _baseRate + _adBoost;
+  Future<void> _loadMiningData() async {
+    if (!mounted) return;
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final rate = await _miningService.getMiningRate();
+      final session = await _miningService.getSession();
+
+      double fanBalance = _balance;
+      double afamBalance = _afamBalance;
+
+      try {
+        final user = _supabase.auth.currentUser;
+
+        if (user != null) {
+          final profile = await _supabase
+              .from('profiles')
+              .select('fan_balance, afam_balance')
+              .eq('id', user.id)
+              .maybeSingle();
+
+          if (profile != null) {
+            fanBalance = _toDouble(profile['fan_balance']);
+            afamBalance = _toDouble(profile['afam_balance']);
+          }
+        }
+      } catch (_) {
+        // Keep the currently displayed balance if profile columns
+        // are unavailable.
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _miningRate = rate;
+        _session = session;
+        _balance = fanBalance;
+        _afamBalance = afamBalance;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+
+      _showMessage(
+        'Unable to load mining information.',
+      );
+    }
+  }
+
+  Future<void> _refreshMiningData() async {
+    try {
+      final rate = await _miningService.getMiningRate();
+      final session = await _miningService.getSession();
+
+      if (!mounted) return;
+
+      setState(() {
+        _miningRate = rate;
+        _session = session;
+      });
+
+      await _loadBalance();
+    } catch (_) {}
+  }
+
+  Future<void> _loadBalance() async {
+    try {
+      final user = _supabase.auth.currentUser;
+
+      if (user == null) return;
+
+      final profile = await _supabase
+          .from('profiles')
+          .select('fan_balance, afam_balance')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (profile == null || !mounted) return;
+
+      setState(() {
+        _balance = _toDouble(profile['fan_balance']);
+        _afamBalance = _toDouble(profile['afam_balance']);
+      });
+    } catch (_) {}
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  Future<void> _startMining() async {
+    if (_actionLoading) return;
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      final result = await _miningService.startMining();
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        _showMessage(
+          'Mining started successfully.',
+        );
+      } else if (result['already_active'] == true) {
+        _showMessage(
+          'Your mining session is already active.',
+        );
+      } else {
+        _showMessage(
+          result['message']?.toString() ??
+              'Unable to start mining.',
+        );
+      }
+
+      await _loadMiningData();
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        _friendlyError(e),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _claimMining() async {
+    if (_actionLoading) return;
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      final result = await _miningService.claimMining();
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        final reward = _toDouble(result['earned_fan']);
+
+        _showMessage(
+          reward > 0
+              ? 'Mining completed! You earned ${reward.toStringAsFixed(4)} FAN.'
+              : 'Mining reward claimed successfully.',
+        );
+      } else {
+        _showMessage(
+          result['message']?.toString() ??
+              'Unable to claim mining reward.',
+        );
+      }
+
+      await _loadMiningData();
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        _friendlyError(e),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _watchAd() async {
+    if (_actionLoading) return;
+
+    if (_adsWatched >= 7) {
+      _showMessage(
+        'You have reached today\'s 7 ads limit.',
+      );
+      return;
+    }
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      /*
+       * The database function records the rewarded-ad event.
+       *
+       * The actual advertising provider should later verify the
+       * reward server-side before the mining boost is permanently
+       * awarded.
+       */
+      final result = await _supabase.rpc(
+        'record_rewarded_ad',
+        params: {
+          'p_ad_ref': null,
+        },
+      );
+
+      if (!mounted) return;
+
+      if (result is Map) {
+        final data = Map<String, dynamic>.from(result);
+
+        if (data['success'] == false) {
+          _showMessage(
+            data['message']?.toString() ??
+                'Unable to record rewarded ad.',
+          );
+          return;
+        }
+      }
+
+      setState(() {
+        _adsWatched++;
+      });
+
+      await _refreshMiningData();
+
+      _showMessage(
+        'Rewarded ad recorded. Mining rate will update after verification.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        _friendlyError(e),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+
+    if (text.contains('Authentication required')) {
+      return 'Please login again.';
+    }
+
+    if (text.contains('already active')) {
+      return 'Your mining session is already active.';
+    }
+
+    if (text.contains('No active mining session')) {
+      return 'There is no active mining session.';
+    }
+
+    if (text.contains('PostgrestException')) {
+      return 'Something went wrong. Please try again.';
+    }
+
+    return 'Something went wrong. Please try again.';
+  }
 
   String _formatDuration(Duration duration) {
     final hours = duration.inHours.toString().padLeft(2, '0');
@@ -40,57 +345,68 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return '$hours:$minutes:$seconds';
   }
 
-  void _toggleMining() {
-    if (_isMining) {
-      _timer?.cancel();
-
-      setState(() {
-        _isMining = false;
-      });
-      return;
+  String _sessionStatus() {
+    if (_session == null) {
+      return 'READY';
     }
 
-    setState(() {
-      _isMining = true;
-    });
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-
-      setState(() {
-        _miningTime += const Duration(seconds: 1);
-
-        final earnedPerSecond = _miningRate / 3600;
-        _balance += earnedPerSecond;
-      });
-    });
-  }
-
-  void _watchAd() {
-    if (_adsWatched >= 7) {
-      _showMessage('You have reached today\'s 7 ads limit.');
-      return;
+    if (_session!.isActive) {
+      return 'MINING';
     }
 
-    setState(() {
-      _adsWatched++;
-      _adBoost = _adsWatched * 0.1;
-    });
-
-    _showMessage(
-      'Ad completed! Mining rate increased by +0.1 FAN/H.',
-    );
+    return 'COMPLETED';
   }
 
-  void _claimDailyTask() {
-    _showMessage('Daily social task will be connected soon.');
+  String _sessionDescription() {
+    if (_session == null) {
+      return 'Start mining to earn FAN';
+    }
+
+    if (_session!.isActive) {
+      return 'Mining FAN right now';
+    }
+
+    return 'Your 24-hour mining session has ended';
   }
 
-  void _openKyc() {
-    _showMessage('KYC verification is Coming Soon.');
+  String _sessionTimeText() {
+    if (_session == null) {
+      return '00:00:00 / 24:00:00';
+    }
+
+    final elapsed = _session!.elapsed;
+
+    final capped = elapsed.inSeconds > const Duration(hours: 24).inSeconds
+        ? const Duration(hours: 24)
+        : elapsed;
+
+    return '${_formatDuration(capped)} / 24:00:00';
+  }
+
+  double get _adBoost {
+    final value = _miningRate - 0.2;
+
+    if (value <= 0) {
+      return 0.0;
+    }
+
+    return value > 0.7 ? 0.7 : value;
+  }
+
+  int get _estimatedAdsFromRate {
+    if (_adBoost <= 0) return 0;
+
+    final count = (_adBoost / 0.1).round();
+
+    if (count < 0) return 0;
+    if (count > 7) return 7;
+
+    return count;
   }
 
   void _showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -102,6 +418,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
       );
+  }
+
+  Future<void> _logout() async {
+    try {
+      await AuthService.instance.logout();
+    } catch (_) {}
   }
 
   @override
@@ -123,38 +445,54 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Widget _buildHomePage() {
-    return CustomScrollView(
-      physics: const BouncingScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: _buildHeader(),
+    return RefreshIndicator(
+      color: const Color(0xFF4A20B9),
+      onRefresh: _loadMiningData,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-          sliver: SliverList(
-            delegate: SliverChildListDelegate(
-              [
-                _buildBalanceCard(),
-                const SizedBox(height: 16),
-                _buildMiningCard(),
-                const SizedBox(height: 14),
-                _buildAdsCard(),
-                const SizedBox(height: 14),
-                _buildDailyTaskCard(),
-                const SizedBox(height: 14),
-                _buildKycCard(),
-                const SizedBox(height: 12),
-              ],
+        slivers: [
+          SliverToBoxAdapter(
+            child: _buildHeader(),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              8,
+              18,
+              24,
+            ),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(
+                [
+                  _buildBalanceCard(),
+                  const SizedBox(height: 16),
+                  _buildMiningCard(),
+                  const SizedBox(height: 14),
+                  _buildAdsCard(),
+                  const SizedBox(height: 14),
+                  _buildDailyTaskCard(),
+                  const SizedBox(height: 14),
+                  _buildKycCard(),
+                  const SizedBox(height: 12),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        10,
+      ),
       child: Row(
         children: [
           Container(
@@ -172,7 +510,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF3B159B).withOpacity(0.22),
+                  color: const Color(0xFF3B159B)
+                      .withOpacity(0.22),
                   blurRadius: 12,
                   offset: const Offset(0, 5),
                 ),
@@ -219,7 +558,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             children: [
               IconButton(
                 onPressed: () {
-                  _showMessage('No new notifications.');
+                  _showMessage(
+                    'No new notifications.',
+                  );
                 },
                 icon: const Icon(
                   Icons.notifications_none_rounded,
@@ -261,7 +602,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF35128D).withOpacity(0.28),
+            color: const Color(0xFF35128D)
+                .withOpacity(0.28),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -287,7 +629,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             child: _buildMiningCharacter(),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(22, 21, 15, 18),
+            padding: const EdgeInsets.fromLTRB(
+              22,
+              21,
+              15,
+              18,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -302,7 +649,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
                 const SizedBox(height: 7),
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.center,
                   children: [
                     Container(
                       width: 53,
@@ -312,7 +660,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         color: const Color(0xFFFFB800),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.16),
+                            color:
+                                Colors.black.withOpacity(0.16),
                             blurRadius: 8,
                           ),
                         ],
@@ -325,17 +674,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     ),
                     const SizedBox(width: 11),
                     Flexible(
-                      child: Text(
-                        _balance.toStringAsFixed(4),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 37,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -1.2,
-                        ),
-                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              width: 100,
+                              height: 38,
+                              child: Center(
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              _balance.toStringAsFixed(4),
+                              maxLines: 1,
+                              overflow:
+                                  TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 37,
+                                fontWeight:
+                                    FontWeight.w900,
+                                letterSpacing: -1.2,
+                              ),
+                            ),
                     ),
                     const SizedBox(width: 7),
                     const Text(
@@ -350,10 +713,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '≈ \$${(_balance * 0.0).toStringAsFixed(2)}',
+                  'AFAM ${_afamBalance.toStringAsFixed(2)}',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.85),
-                    fontSize: 16,
+                    color:
+                        Colors.white.withOpacity(0.85),
+                    fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -380,9 +744,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               height: 76,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF743BDF).withOpacity(0.75),
+                color: const Color(0xFF743BDF)
+                    .withOpacity(0.75),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.16),
+                  color:
+                      Colors.white.withOpacity(0.16),
                   width: 2,
                 ),
               ),
@@ -405,7 +771,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 height: 13,
                 decoration: BoxDecoration(
                   color: const Color(0xFF7B4B2A),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius:
+                      BorderRadius.circular(10),
                 ),
               ),
             ),
@@ -432,15 +799,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 color: const Color(0xFFF4A261),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.45),
+                  color:
+                      Colors.white.withOpacity(0.45),
                   width: 2,
                 ),
               ),
               child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment:
+                        MainAxisAlignment.center,
                     children: [
                       _Eye(),
                       SizedBox(width: 11),
@@ -449,7 +819,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                   SizedBox(height: 8),
                   Icon(
-                    Icons.sentiment_satisfied_alt_rounded,
+                    Icons
+                        .sentiment_satisfied_alt_rounded,
                     color: Color(0xFF32148E),
                     size: 24,
                   ),
@@ -465,14 +836,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               height: 78,
               decoration: BoxDecoration(
                 color: const Color(0xFF5323B7),
-                borderRadius: const BorderRadius.only(
+                borderRadius:
+                    const BorderRadius.only(
                   topLeft: Radius.circular(28),
                   topRight: Radius.circular(28),
-                  bottomLeft: Radius.circular(15),
-                  bottomRight: Radius.circular(15),
+                  bottomLeft:
+                      Radius.circular(15),
+                  bottomRight:
+                      Radius.circular(15),
                 ),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.12),
+                  color:
+                      Colors.white.withOpacity(0.12),
                 ),
               ),
             ),
@@ -483,20 +858,34 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Widget _buildMiningCard() {
+    final status = _sessionStatus();
+    final active = _session?.isActive == true;
+    final completed =
+        _session != null && !active;
+
     return _whiteCard(
       child: Column(
         children: [
           Row(
             children: [
               _circleIcon(
-                Icons.handyman_rounded,
-                const Color(0xFFEAE5FF),
-                const Color(0xFF4520AA),
+                active
+                    ? Icons.bolt_rounded
+                    : completed
+                        ? Icons.task_alt_rounded
+                        : Icons.handyman_rounded,
+                active
+                    ? const Color(0xFFE8F8F0)
+                    : const Color(0xFFEAE5FF),
+                active
+                    ? const Color(0xFF159B61)
+                    : const Color(0xFF4520AA),
               ),
               const SizedBox(width: 15),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
@@ -504,26 +893,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           'STATUS: ',
                           style: TextStyle(
                             fontSize: 17,
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                FontWeight.w800,
                           ),
                         ),
                         Text(
-                          _isMining ? 'MINING' : 'READY',
-                          style: TextStyle(
-                            color: _isMining
-                                ? const Color(0xFF159B61)
-                                : const Color(0xFF159B61),
+                          status,
+                          style: const TextStyle(
+                            color: Color(0xFF159B61),
                             fontSize: 17,
-                            fontWeight: FontWeight.w900,
+                            fontWeight:
+                                FontWeight.w900,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _isMining
-                          ? 'Mining FAN right now'
-                          : 'Start mining to earn FAN',
+                      _sessionDescription(),
                       style: TextStyle(
                         color: Colors.grey.shade700,
                         fontSize: 14,
@@ -557,8 +944,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               Expanded(
                 child: _miningInfo(
                   Icons.access_time_rounded,
-                  'SESSION TIME',
-                  '${_formatDuration(_miningTime)} / 24:00:00',
+                  active
+                      ? 'SESSION TIME'
+                      : completed
+                          ? 'SESSION ENDED'
+                          : 'SESSION TIME',
+                  _sessionTimeText(),
                 ),
               ),
             ],
@@ -567,32 +958,73 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           SizedBox(
             width: double.infinity,
             height: 58,
-            child: ElevatedButton.icon(
-              onPressed: _toggleMining,
-              icon: Icon(
-                _isMining
-                    ? Icons.stop_circle_outlined
-                    : Icons.hardware_rounded,
-                size: 26,
-              ),
-              label: Text(
-                _isMining ? 'STOP MINING' : 'START MINING',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4A20B9),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(17),
-                ),
-              ),
+            child: _actionButton(
+              active
+                  ? 'MINING IN PROGRESS'
+                  : completed
+                      ? 'CLAIM MINING'
+                      : 'START MINING',
+              active
+                  ? Icons.bolt_rounded
+                  : completed
+                      ? Icons.redeem_rounded
+                      : Icons.hardware_rounded,
+              active
+                  ? null
+                  : completed
+                      ? _claimMining
+                      : _startMining,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _actionButton(
+    String label,
+    IconData icon,
+    VoidCallback? onPressed,
+  ) {
+    return ElevatedButton.icon(
+      onPressed: _actionLoading
+          ? null
+          : onPressed,
+      icon: _actionLoading
+          ? const SizedBox(
+              width: 23,
+              height: 23,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Colors.white,
+              ),
+            )
+          : Icon(
+              icon,
+              size: 26,
+            ),
+      label: Text(
+        _actionLoading
+            ? 'PLEASE WAIT'
+            : label,
+        style: const TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor:
+            const Color(0xFF4A20B9),
+        foregroundColor: Colors.white,
+        disabledBackgroundColor:
+            const Color(0xFF9B88D0),
+        disabledForegroundColor:
+            Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.circular(17),
+        ),
       ),
     );
   }
@@ -603,7 +1035,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     String value,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 9),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 9),
       child: Row(
         children: [
           Icon(
@@ -614,26 +1047,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   value,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFF341490),
                     fontSize: 14,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
               ],
@@ -645,11 +1083,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   Widget _buildAdsCard() {
-    final progress = _adsWatched / 7;
+    final displayedAds =
+        _adsWatched > 7 ? 7 : _adsWatched;
+
+    final progress = displayedAds / 7;
 
     return _whiteCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -661,13 +1103,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               const SizedBox(width: 14),
               const Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       'BOOST BY WATCHING ADS',
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w900,
+                        fontWeight:
+                            FontWeight.w900,
                       ),
                     ),
                     SizedBox(height: 4),
@@ -684,24 +1128,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               SizedBox(
                 height: 49,
                 child: ElevatedButton.icon(
-                  onPressed: _watchAd,
+                  onPressed: _actionLoading
+                      ? null
+                      : _watchAd,
                   icon: const Icon(
-                    Icons.video_collection_rounded,
+                    Icons
+                        .video_collection_rounded,
                     size: 20,
                   ),
                   label: const Text(
                     'WATCH AD',
                     style: TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4A20B9),
-                    foregroundColor: Colors.white,
+                  style:
+                      ElevatedButton.styleFrom(
+                    backgroundColor:
+                        const Color(0xFF4A20B9),
+                    foregroundColor:
+                        Colors.white,
+                    disabledBackgroundColor:
+                        const Color(0xFF9B88D0),
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                    padding:
+                        const EdgeInsets.symmetric(
+                      horizontal: 14,
+                    ),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(15),
                     ),
                   ),
                 ),
@@ -710,7 +1168,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           const SizedBox(height: 17),
           Text(
-            'Ads watched today: $_adsWatched / 7',
+            'Ads watched today: $displayedAds / 7',
             style: const TextStyle(
               color: Color(0xFF35148F),
               fontSize: 14,
@@ -719,19 +1177,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
           const SizedBox(height: 9),
           ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius:
+                BorderRadius.circular(20),
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 9,
-              backgroundColor: const Color(0xFFE9E4FA),
-              valueColor: const AlwaysStoppedAnimation(
+              backgroundColor:
+                  const Color(0xFFE9E4FA),
+              valueColor:
+                  const AlwaysStoppedAnimation(
                 Color(0xFF5A2AD0),
               ),
             ),
           ),
           const SizedBox(height: 8),
           Align(
-            alignment: Alignment.centerRight,
+            alignment:
+                Alignment.centerRight,
             child: Text(
               '+${_adBoost.toStringAsFixed(1)} FAN/H',
               style: const TextStyle(
@@ -741,6 +1203,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
             ),
           ),
+          if (_estimatedAdsFromRate > 0)
+            Padding(
+              padding:
+                  const EdgeInsets.only(top: 3),
+              child: Align(
+                alignment:
+                    Alignment.centerRight,
+                child: Text(
+                  'Verified boost: $_estimatedAdsFromRate ad${_estimatedAdsFromRate == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                    color: Colors.black45,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -758,13 +1236,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(width: 13),
           const Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'DAILY TASK',
                   style: TextStyle(
                     fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
                 SizedBox(height: 5),
@@ -803,7 +1283,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               SizedBox(
                 height: 42,
                 child: OutlinedButton.icon(
-                  onPressed: _claimDailyTask,
+                  onPressed: () {
+                    _showMessage(
+                      'Daily social task will be connected soon.',
+                    );
+                  },
                   icon: const Icon(
                     Icons.card_giftcard_rounded,
                     size: 18,
@@ -812,19 +1296,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     'FOLLOW & EARN',
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF35148F),
+                  style:
+                      OutlinedButton.styleFrom(
+                    foregroundColor:
+                        const Color(0xFF35148F),
                     side: const BorderSide(
-                      color: Color(0xFF35148F),
+                      color:
+                          Color(0xFF35148F),
                       width: 1.3,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(12),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    padding:
+                        const EdgeInsets.symmetric(
+                      horizontal: 10,
+                    ),
                   ),
                 ),
               ),
@@ -841,7 +1334,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       height: 36,
       decoration: BoxDecoration(
         color: Colors.black,
-        borderRadius: BorderRadius.circular(9),
+        borderRadius:
+            BorderRadius.circular(9),
       ),
       child: Center(
         child: Text(
@@ -868,13 +1362,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(width: 14),
           const Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'KYC VERIFICATION',
                   style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
                 SizedBox(height: 5),
@@ -889,29 +1385,40 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
           ),
           OutlinedButton(
-            onPressed: _openKyc,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF35148F),
+            onPressed: () {
+              _showMessage(
+                'KYC verification is Coming Soon.',
+              );
+            },
+            style:
+                OutlinedButton.styleFrom(
+              foregroundColor:
+                  const Color(0xFF35148F),
               side: const BorderSide(
                 color: Color(0xFF35148F),
                 width: 1.3,
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(12),
               ),
-              padding: const EdgeInsets.symmetric(
+              padding:
+                  const EdgeInsets.symmetric(
                 horizontal: 13,
                 vertical: 12,
               ),
             ),
             child: const Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               children: [
                 Text(
                   'COMPLETE KYC',
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                   ),
                 ),
                 SizedBox(width: 5),
@@ -935,10 +1442,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius:
+            BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.045),
+            color:
+                Colors.black.withOpacity(0.045),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -974,7 +1483,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.07),
+            color:
+                Colors.black.withOpacity(0.07),
             blurRadius: 15,
             offset: const Offset(0, -3),
           ),
@@ -983,7 +1493,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 7, 8, 6),
+          padding:
+              const EdgeInsets.fromLTRB(
+            8,
+            7,
+            8,
+            6,
+          ),
           child: Row(
             children: [
               _navItem(
@@ -998,7 +1514,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               _navItem(
                 index: 2,
-                icon: Icons.account_balance_wallet_rounded,
+                icon: Icons
+                    .account_balance_wallet_rounded,
                 label: 'WALLET',
               ),
               _navItem(
@@ -1011,320 +1528,3 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ),
       ),
     );
-  }
-
-  Widget _navItem({
-    required int index,
-    required IconData icon,
-    required String label,
-  }) {
-    final selected = _currentIndex == index;
-
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 29,
-                color: selected
-                    ? const Color(0xFF4A20B9)
-                    : const Color(0xFF606060),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected
-                      ? const Color(0xFF35148F)
-                      : const Color(0xFF606060),
-                  fontSize: 10,
-                  fontWeight:
-                      selected ? FontWeight.w900 : FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReferralPage() {
-    return _simplePage(
-      icon: Icons.groups_rounded,
-      title: 'REFERRAL',
-      subtitle: 'Invite friends and grow your FAN mining rate.',
-      child: Column(
-        children: [
-          _infoBox(
-            'Referral reward',
-            '5 FAN',
-            Icons.card_giftcard_rounded,
-          ),
-          const SizedBox(height: 12),
-          _infoBox(
-            'New user reward',
-            '20 FAN',
-            Icons.person_add_alt_1_rounded,
-          ),
-          const SizedBox(height: 12),
-          _infoBox(
-            'Mining boost',
-            '+0.02 FAN/H per active referral',
-            Icons.speed_rounded,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWalletPage() {
-    return _simplePage(
-      icon: Icons.account_balance_wallet_rounded,
-      title: 'WALLET',
-      subtitle: 'Your AFAM wallet will be available soon.',
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(25),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: const Column(
-          children: [
-            Icon(
-              Icons.account_balance_wallet_rounded,
-              color: Color(0xFF4320A5),
-              size: 58,
-            ),
-            SizedBox(height: 15),
-            Text(
-              'COMING SOON',
-              style: TextStyle(
-                color: Color(0xFF4320A5),
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'AFAM migration and wallet features will appear here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.black54,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSettingsPage() {
-    return _simplePage(
-      icon: Icons.settings_rounded,
-      title: 'SETTINGS',
-      subtitle: 'Manage your POWER FAN account.',
-      child: Column(
-        children: [
-          _settingsItem(
-            Icons.person_outline_rounded,
-            'Profile',
-            'Manage your account information',
-          ),
-          _settingsItem(
-            Icons.notifications_none_rounded,
-            'Notifications',
-            'Manage notifications',
-          ),
-          _settingsItem(
-            Icons.language_rounded,
-            'Language',
-            'English',
-          ),
-          _settingsItem(
-            Icons.security_rounded,
-            'Security',
-            'Account security',
-          ),
-          _settingsItem(
-            Icons.info_outline_rounded,
-            'About POWER FAN',
-            'Version 1.0.0',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _simplePage({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Widget child,
-  }) {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(18, 25, 18, 30),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 53,
-                height: 53,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDE8FF),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF4320A5),
-                  size: 30,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Color(0xFF35148F),
-                      fontSize: 25,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 25),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _infoBox(
-    String title,
-    String value,
-    IconData icon,
-  ) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(19),
-      ),
-      child: Row(
-        children: [
-          _circleIcon(
-            icon,
-            const Color(0xFFEDE8FF),
-            const Color(0xFF4320A5),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Color(0xFF35148F),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _settingsItem(
-    IconData icon,
-    String title,
-    String subtitle,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(17),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 4,
-        ),
-        leading: Icon(
-          icon,
-          color: const Color(0xFF4320A5),
-          size: 27,
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(
-          Icons.chevron_right_rounded,
-          color: Colors.black45,
-        ),
-        onTap: () {
-          _showMessage('$title will be connected soon.');
-        },
-      ),
-    );
-  }
-}
-
-class _Eye extends StatelessWidget {
-  const _Eye();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 10,
-      height: 13,
-      decoration: BoxDecoration(
-        color: const Color(0xFF291075),
-        borderRadius: BorderRadius.circular(8),
-      ),
-    );
-  }
-}
