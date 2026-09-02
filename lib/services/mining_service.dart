@@ -7,9 +7,7 @@ class MiningService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // ------------------------------------------------------------
-  // Helpers
-  // ------------------------------------------------------------
+  bool get isSignedIn => _supabase.auth.currentSession != null;
 
   Map<String, dynamic> _mapResult(dynamic result) {
     if (result is Map<String, dynamic>) {
@@ -64,16 +62,9 @@ class MiningService {
     return {
       'success': false,
       'error': true,
-      'message':
-          'Your session has expired. Please log in again.',
+      'message': 'Your session has expired. Please log in again.',
     };
   }
-
-  bool get isSignedIn => _supabase.auth.currentSession != null;
-
-  // ------------------------------------------------------------
-  // Mining Rate
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> getUserMiningRate() async {
     if (!isSignedIn) {
@@ -94,32 +85,24 @@ class MiningService {
     }
   }
 
-  // ------------------------------------------------------------
-  // Start Mining
-  // ------------------------------------------------------------
-
   Future<Map<String, dynamic>> startMining() async {
     if (!isSignedIn) {
       return _sessionError();
     }
 
     try {
-      // start_mining() has NO parameters.
       final result = await _supabase.rpc(
         'start_mining',
       );
 
       final data = _mapResult(result);
 
-      // Make sure success exists for easier UI handling.
       if (!data.containsKey('success')) {
         data['success'] = true;
       }
 
       return data;
     } catch (e) {
-      // IMPORTANT:
-      // Return the real Supabase error instead of hiding it.
       return _errorResult(
         e,
         fallbackMessage: 'Unable to start mining.',
@@ -127,18 +110,9 @@ class MiningService {
     }
   }
 
-  // ------------------------------------------------------------
-  // Get Active Mining
-  // ------------------------------------------------------------
-
   Future<Map<String, dynamic>> getActiveMining() async {
     if (!isSignedIn) {
-      return {
-        'active': false,
-        'success': false,
-        'message':
-            'Your session has expired. Please log in again.',
-      };
+      return _sessionError();
     }
 
     try {
@@ -154,10 +128,6 @@ class MiningService {
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Claim Mining
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> claimMining() async {
     if (!isSignedIn) {
@@ -178,10 +148,6 @@ class MiningService {
     }
   }
 
-  // ------------------------------------------------------------
-  // Rewarded Ad
-  // ------------------------------------------------------------
-
   Future<Map<String, dynamic>> recordRewardedAd({
     String? adRef,
   }) async {
@@ -193,7 +159,9 @@ class MiningService {
       final Map<String, dynamic> params = {};
 
       if (adRef != null && adRef.trim().isNotEmpty) {
-        params['p_ad_ref'] = adRef.trim();
+        // IMPORTANT:
+        // Supabase function parameter is p_ad_reference.
+        params['p_ad_reference'] = adRef.trim();
       }
 
       final result = await _supabase.rpc(
@@ -205,15 +173,10 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to record rewarded ad.',
+        fallbackMessage: 'Unable to record rewarded ad.',
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Verify Rewarded Ad
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> verifyRewardedAd(
     String adId,
@@ -242,15 +205,10 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to verify rewarded ad.',
+        fallbackMessage: 'Unable to verify rewarded ad.',
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Dashboard
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> getDashboard() async {
     if (!isSignedIn) {
@@ -266,15 +224,10 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to load dashboard.',
+        fallbackMessage: 'Unable to load dashboard.',
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Daily Check-in
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> dailyCheckin() async {
     if (!isSignedIn) {
@@ -290,15 +243,10 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to complete daily check-in.',
+        fallbackMessage: 'Unable to complete daily check-in.',
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Daily Social Task
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> completeDailySocialTask(
     String taskId,
@@ -327,15 +275,10 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to complete daily social task.',
+        fallbackMessage: 'Unable to complete daily social task.',
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Referral Stats
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> getReferralStats() async {
     if (!isSignedIn) {
@@ -351,15 +294,10 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to load referral statistics.',
+        fallbackMessage: 'Unable to load referral statistics.',
       );
     }
   }
-
-  // ------------------------------------------------------------
-  // Use Referral Code
-  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> useReferralCode(
     String referralCode,
@@ -390,8 +328,7 @@ class MiningService {
     } catch (e) {
       return _errorResult(
         e,
-        fallbackMessage:
-            'Unable to use referral code.',
+        fallbackMessage: 'Unable to use referral code.',
       );
     }
   }
