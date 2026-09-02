@@ -15,9 +15,9 @@ dependencies:
   provider: ^6.1.2
   flutter_local_notifications: ^17.2.2
   http: ^1.2.2
-
-  # AppLovin MAX
   applovin_max: ^4.6.4
+  package_info_plus: ^8.0.2
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
