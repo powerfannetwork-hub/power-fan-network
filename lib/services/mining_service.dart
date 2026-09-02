@@ -31,6 +31,24 @@ class MiningService {
       return Map<String, dynamic>.from(result);
     }
 
+    if (result is List && result.isNotEmpty) {
+      final first = result.first;
+
+      if (first is Map<String, dynamic>) {
+        return first;
+      }
+
+      if (first is Map) {
+        return Map<String, dynamic>.from(first);
+      }
+    }
+
+    if (result is num) {
+      return <String, dynamic>{
+        'rate': result.toDouble(),
+      };
+    }
+
     throw Exception(
       'Unexpected Supabase response: ${result.runtimeType}',
     );
@@ -68,6 +86,76 @@ class MiningService {
     return Exception(
       'Unable to $action.\n$error',
     );
+  }
+
+  Future<Map<String, dynamic>> getProfile() async {
+    try {
+      await _requireUser();
+
+      final user = _supabase.auth.currentUser!;
+
+      final response = await _supabase
+          .from('profiles')
+          .select('fan_balance, afam_balance')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (response == null) {
+        return <String, dynamic>{
+          'fan_balance': 0.0,
+          'afam_balance': 0.0,
+        };
+      }
+
+      return Map<String, dynamic>.from(response);
+    } catch (error) {
+      throw _formatSupabaseError(
+        error,
+        action: 'load account balance',
+      );
+    }
+  }
+
+  Future<int> getAdsWatchedToday() async {
+    try {
+      await _requireUser();
+
+      final user = _supabase.auth.currentUser!;
+
+      final now = DateTime.now();
+      final startOfDay = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
+
+      final endOfDay =
+          startOfDay.add(const Duration(days: 1));
+
+      final rows = await _supabase
+          .from('ad_boosts')
+          .select('id')
+          .eq('user_id', user.id)
+          .gte(
+            'created_at',
+            startOfDay.toUtc().toIso8601String(),
+          )
+          .lt(
+            'created_at',
+            endOfDay.toUtc().toIso8601String(),
+          );
+
+      if (rows is List) {
+        return rows.length > 7 ? 7 : rows.length;
+      }
+
+      return 0;
+    } catch (error) {
+      throw _formatSupabaseError(
+        error,
+        action: 'load today\'s ad count',
+      );
+    }
   }
 
   Future<Map<String, dynamic>> getUserMiningRate() async {
@@ -161,14 +249,27 @@ class MiningService {
     try {
       await _requireUser();
 
+      /*
+       * p_ad_ref has a database default value.
+       *
+       * Calling the RPC without parameters is safer than
+       * sending a parameter name that may be stale in the
+       * PostgREST schema cache.
+       *
+       * The local reference is therefore not trusted as proof
+       * of an advertisement. Final ad verification must be
+       * handled by the rewarded-ad verification flow.
+       */
       final result = await _supabase.rpc(
         'record_rewarded_ad',
-        params: <String, dynamic>{
-          'p_ad_ref': adRef,
-        },
       );
 
-      return _mapResult(result);
+      final data = _mapResult(result);
+
+      return <String, dynamic>{
+        ...data,
+        'ad_ref': adRef,
+      };
     } catch (error) {
       throw _formatSupabaseError(
         error,
