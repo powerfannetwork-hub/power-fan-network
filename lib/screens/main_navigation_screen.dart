@@ -1528,3 +1528,403 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ),
       ),
     );
+  }
+
+  Widget _navItem({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final selected =
+        _currentIndex == index;
+
+    return Expanded(
+      child: InkWell(
+        borderRadius:
+            BorderRadius.circular(16),
+        onTap: () {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(
+            vertical: 5,
+          ),
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 29,
+                color: selected
+                    ? const Color(0xFF4A20B9)
+                    : const Color(0xFF606060),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? const Color(0xFF35148F)
+                      : const Color(0xFF606060),
+                  fontSize: 10,
+                  fontWeight: selected
+                      ? FontWeight.w900
+                      : FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReferralPage() {
+    return _simplePage(
+      icon: Icons.groups_rounded,
+      title: 'REFERRAL',
+      subtitle:
+          'Invite friends and grow your FAN mining rate.',
+      child: Column(
+        children: [
+          _infoBox(
+            'Referral reward',
+            '5 FAN',
+            Icons.card_giftcard_rounded,
+          ),
+          const SizedBox(height: 12),
+          _infoBox(
+            'New user reward',
+            '20 FAN',
+            Icons.person_add_alt_1_rounded,
+          ),
+          const SizedBox(height: 12),
+          _infoBox(
+            'Mining boost',
+            '+0.02 FAN/H per active referral',
+            Icons.speed_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletPage() {
+    return _simplePage(
+      icon:
+          Icons.account_balance_wallet_rounded,
+      title: 'WALLET',
+      subtitle:
+          'Your AFAM wallet will be available soon.',
+      child: Container(
+        width: double.infinity,
+        padding:
+            const EdgeInsets.all(25),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius:
+              BorderRadius.circular(22),
+        ),
+        child: Column(
+          children: [
+            const Icon(
+              Icons
+                  .account_balance_wallet_rounded,
+              color: Color(0xFF4320A5),
+              size: 58,
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              'COMING SOON',
+              style: TextStyle(
+                color: Color(0xFF4320A5),
+                fontSize: 20,
+                fontWeight:
+                    FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'AFAM Balance: ${_afamBalance.toStringAsFixed(2)}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'AFAM migration and wallet features will appear here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black54,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsPage() {
+    return _simplePage(
+      icon: Icons.settings_rounded,
+      title: 'SETTINGS',
+      subtitle:
+          'Manage your POWER FAN account.',
+      child: Column(
+        children: [
+          _settingsItem(
+            Icons.person_outline_rounded,
+            'Profile',
+            'Manage your account information',
+          ),
+          _settingsItem(
+            Icons.notifications_none_rounded,
+            'Notifications',
+            'Manage notifications',
+          ),
+          _settingsItem(
+            Icons.language_rounded,
+            'Language',
+            'English',
+          ),
+          _settingsItem(
+            Icons.security_rounded,
+            'Security',
+            'Account security',
+          ),
+          _settingsItem(
+            Icons.info_outline_rounded,
+            'About POWER FAN',
+            'Version 1.0.0',
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(17),
+            ),
+            child: ListTile(
+              leading: const Icon(
+                Icons.logout_rounded,
+                color: Colors.red,
+              ),
+              title: const Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+              onTap: _logout,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _simplePage({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
+    return SingleChildScrollView(
+      physics:
+          const BouncingScrollPhysics(),
+      padding:
+          const EdgeInsets.fromLTRB(
+        18,
+        25,
+        18,
+        30,
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 53,
+                height: 53,
+                decoration: BoxDecoration(
+                  color:
+                      const Color(0xFFEDE8FF),
+                  borderRadius:
+                      BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  icon,
+                  color:
+                      const Color(0xFF4320A5),
+                  size: 30,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style:
+                          const TextStyle(
+                        color:
+                            Color(0xFF35148F),
+                        fontSize: 25,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style:
+                          const TextStyle(
+                        color:
+                            Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 25),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _infoBox(
+    String title,
+    String value,
+    IconData icon,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(19),
+      ),
+      child: Row(
+        children: [
+          _circleIcon(
+            icon,
+            const Color(0xFFEDE8FF),
+            const Color(0xFF4320A5),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight:
+                        FontWeight.w700,
+                    color:
+                        Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color:
+                        Color(0xFF35148F),
+                    fontWeight:
+                        FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsItem(
+    IconData icon,
+    String title,
+    String subtitle,
+  ) {
+    return Container(
+      margin:
+          const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(17),
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 4,
+        ),
+        leading: Icon(
+          icon,
+          color:
+              const Color(0xFF4320A5),
+          size: 27,
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight:
+                FontWeight.w800,
+          ),
+        ),
+        subtitle:
+            Text(subtitle),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: Colors.black45,
+        ),
+        onTap: () {
+          _showMessage(
+            '$title will be connected soon.',
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Eye extends StatelessWidget {
+  const _Eye();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 10,
+      height: 13,
+      decoration: BoxDecoration(
+        color: const Color(0xFF291075),
+        borderRadius:
+            BorderRadius.circular(8),
+      ),
+    );
+  }
+}
