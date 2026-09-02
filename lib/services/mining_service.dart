@@ -7,162 +7,176 @@ class MiningService {
 
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Get the current user's mining rate.
-  ///
-  /// Base rate = 0.20 FAN/H
-  /// Ad boost = +0.10 FAN/H per ad
-  /// Referral boost = +0.02 FAN/H per active referral
-  Future<double> getMiningRate() async {
+  Future<Map<String, dynamic>> getUserMiningRate() async {
     final result = await _supabase.rpc('get_user_mining_rate');
 
-    if (result == null) {
-      return 0.20;
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    if (result is num) {
-      return result.toDouble();
-    }
-
-    return double.tryParse(result.toString()) ?? 0.20;
+    return {
+      'rate': result,
+    };
   }
 
-  /// Start a new 24-hour mining session.
   Future<Map<String, dynamic>> startMining() async {
     final result = await _supabase.rpc('start_mining');
 
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    throw Exception('Unable to start mining.');
+    return {
+      'success': false,
+      'message': 'Unable to start mining.',
+    };
   }
 
-  /// Get the user's currently active mining session.
   Future<Map<String, dynamic>> getActiveMining() async {
     final result = await _supabase.rpc('get_active_mining');
 
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    throw Exception('Unable to get active mining session.');
+    return {
+      'active': false,
+    };
   }
 
-  /// Claim the FAN earned from the active mining session.
   Future<Map<String, dynamic>> claimMining() async {
     final result = await _supabase.rpc('claim_mining');
 
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    throw Exception('Unable to claim mining reward.');
+    return {
+      'success': false,
+      'message': 'Unable to claim mining.',
+    };
   }
 
-  /// Convenience method to determine whether mining is currently active.
-  Future<bool> isMiningActive() async {
-    try {
-      final result = await getActiveMining();
+  Future<Map<String, dynamic>> recordRewardedAd({
+    String? adRef,
+  }) async {
+    final Map<String, dynamic> params = {};
 
-      return result['active'] == true;
-    } catch (_) {
-      return false;
+    if (adRef != null && adRef.trim().isNotEmpty) {
+      params['p_ad_ref'] = adRef.trim();
     }
+
+    final result = await _supabase.rpc(
+      'record_rewarded_ad',
+      params: params,
+    );
+
+    if (result is Map<String, dynamic>) {
+      return result;
+    }
+
+    return {
+      'success': true,
+      'result': result,
+    };
   }
 
-  /// Get the active mining session data.
-  Future<MiningSession?> getSession() async {
-    try {
-      final result = await getActiveMining();
+  Future<Map<String, dynamic>> verifyRewardedAd(
+    String adId,
+  ) async {
+    final result = await _supabase.rpc(
+      'verify_rewarded_ad',
+      params: {
+        'p_ad_id': adId,
+      },
+    );
 
-      if (result['active'] != true) {
-        return null;
-      }
-
-      return MiningSession(
-        sessionId: result['session_id']?.toString(),
-        startedAt: _parseDate(result['started_at']),
-        endsAt: _parseDate(result['ends_at']),
-        rate: _parseDouble(result['rate']),
-      );
-    } catch (_) {
-      return null;
+    if (result is Map<String, dynamic>) {
+      return result;
     }
+
+    return {
+      'success': true,
+      'result': result,
+    };
   }
 
-  DateTime? _parseDate(dynamic value) {
-    if (value == null) {
-      return null;
+  Future<Map<String, dynamic>> getDashboard() async {
+    final result = await _supabase.rpc('get_dashboard');
+
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    return DateTime.tryParse(value.toString());
+    return {
+      'success': true,
+      'dashboard': result,
+    };
   }
 
-  double _parseDouble(dynamic value) {
-    if (value == null) {
-      return 0.0;
+  Future<Map<String, dynamic>> dailyCheckin() async {
+    final result = await _supabase.rpc('daily_checkin');
+
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(value.toString()) ?? 0.0;
-  }
-}
-
-class MiningSession {
-  final String? sessionId;
-  final DateTime? startedAt;
-  final DateTime? endsAt;
-  final double rate;
-
-  const MiningSession({
-    required this.sessionId,
-    required this.startedAt,
-    required this.endsAt,
-    required this.rate,
-  });
-
-  bool get isActive {
-    if (endsAt == null) {
-      return false;
-    }
-
-    return DateTime.now().isBefore(endsAt!);
+    return {
+      'success': true,
+      'result': result,
+    };
   }
 
-  Duration get remaining {
-    if (endsAt == null) {
-      return Duration.zero;
+  Future<Map<String, dynamic>> completeDailySocialTask(
+    String taskId,
+  ) async {
+    final result = await _supabase.rpc(
+      'complete_daily_social_task',
+      params: {
+        'p_task_id': taskId,
+      },
+    );
+
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    final difference = endsAt!.difference(DateTime.now());
-
-    if (difference.isNegative) {
-      return Duration.zero;
-    }
-
-    return difference;
+    return {
+      'success': true,
+      'result': result,
+    };
   }
 
-  Duration get elapsed {
-    if (startedAt == null) {
-      return Duration.zero;
+  Future<Map<String, dynamic>> getReferralStats() async {
+    final result = await _supabase.rpc('get_referral_stats');
+
+    if (result is Map<String, dynamic>) {
+      return result;
     }
 
-    final difference = DateTime.now().difference(startedAt!);
-
-    if (difference.isNegative) {
-      return Duration.zero;
-    }
-
-    return difference;
+    return {
+      'success': true,
+      'stats': result,
+    };
   }
 
-  double get estimatedEarned {
-    final hours = elapsed.inSeconds / 3600.0;
+  Future<Map<String, dynamic>> useReferralCode(
+    String referralCode,
+  ) async {
+    final result = await _supabase.rpc(
+      'use_referral_code',
+      params: {
+        'p_referral_code': referralCode.trim(),
+      },
+    );
 
-    return hours * rate;
+    if (result is Map<String, dynamic>) {
+      return result;
+    }
+
+    return {
+      'success': true,
+      'result': result,
+    };
   }
 }
