@@ -116,33 +116,32 @@ class MiningService {
     }
   }
 
-  Future<int> getAdsWatchedToday() async {
+  /// Returns the number of rewarded ads watched during
+  /// the current 24-hour mining session.
+  ///
+  /// This is intentionally session-based, not calendar-day-based.
+  Future<int> getAdsWatchedForSession({
+    required DateTime startedAt,
+  }) async {
     try {
       await _requireUser();
 
       final user = _supabase.auth.currentUser!;
 
-      final now = DateTime.now();
-      final startOfDay = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      );
-
-      final endOfDay =
-          startOfDay.add(const Duration(days: 1));
+      final sessionStart = startedAt.toUtc();
+      final now = DateTime.now().toUtc();
 
       final rows = await _supabase
           .from('ad_boosts')
           .select('id')
           .eq('user_id', user.id)
           .gte(
-            'created_at',
-            startOfDay.toUtc().toIso8601String(),
+            'watched_at',
+            sessionStart.toIso8601String(),
           )
-          .lt(
-            'created_at',
-            endOfDay.toUtc().toIso8601String(),
+          .lte(
+            'watched_at',
+            now.toIso8601String(),
           );
 
       if (rows is List) {
@@ -153,7 +152,7 @@ class MiningService {
     } catch (error) {
       throw _formatSupabaseError(
         error,
-        action: 'load today\'s ad count',
+        action: 'load session ad count',
       );
     }
   }
@@ -250,15 +249,14 @@ class MiningService {
       await _requireUser();
 
       /*
-       * p_ad_ref has a database default value.
+       * p_ad_reference has a database default value.
        *
-       * Calling the RPC without parameters is safer than
-       * sending a parameter name that may be stale in the
-       * PostgREST schema cache.
+       * The RPC is intentionally called without parameters.
+       * The local ad reference is not trusted as proof that
+       * an advertisement was actually completed.
        *
-       * The local reference is therefore not trusted as proof
-       * of an advertisement. Final ad verification must be
-       * handled by the rewarded-ad verification flow.
+       * Final advertisement verification should be handled
+       * by the rewarded-ad verification flow.
        */
       final result = await _supabase.rpc(
         'record_rewarded_ad',
