@@ -85,14 +85,6 @@ jobs:
           with open(path, "r", encoding="utf-8") as f:
               text = f.read()
 
-          # Convert:
-          # Colors.white.withValues(
-          #   alpha: 0.5,
-          # )
-          #
-          # into:
-          # Colors.white.withOpacity(0.5)
-
           pattern = r'\.withValues\(\s*alpha\s*:\s*([^,\)]+)\s*,?\s*\)'
 
           text = re.sub(
@@ -102,8 +94,6 @@ jobs:
               flags=re.MULTILINE,
           )
 
-          # Also handle single-line forms:
-          # .withValues(alpha: 0.5)
           pattern_single = r'\.withValues\(\s*alpha\s*:\s*([^,\)]+)\s*\)'
 
           text = re.sub(
@@ -127,12 +117,12 @@ jobs:
 
           echo "SUCCESS: No withValues() remains."
 
-      - name: Fix AppLovin Compile SDK
+      - name: Configure Android SDK 36
         shell: bash
         run: |
           set -e
 
-          echo "Checking Android compile SDK..."
+          echo "Configuring application compileSdk and targetSdk..."
 
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' \
@@ -142,9 +132,93 @@ jobs:
               android/app/build.gradle.kts
           fi
 
-          echo "Android SDK configuration:"
+          echo "Application Android SDK configuration:"
           grep -nE "compileSdk|targetSdk|minSdk" \
             android/app/build.gradle.kts || true
+
+      - name: Fix AppLovin MAX Compile SDK
+        shell: bash
+        run: |
+          set -e
+
+          echo "Locating applovin_max Android module..."
+
+          APPLOVIN_DIR=$(find "$HOME/.pub-cache" \
+            -type d \
+            -path "*/hosted/pub.dev/applovin_max-*/android" \
+            | head -n 1)
+
+          if [ -z "$APPLOVIN_DIR" ]; then
+            echo "ERROR: applovin_max Android module was not found."
+            exit 1
+          fi
+
+          echo "Found AppLovin Android module:"
+          echo "$APPLOVIN_DIR"
+
+          BUILD_FILE="$APPLOVIN_DIR/build.gradle"
+
+          if [ ! -f "$BUILD_FILE" ]; then
+            BUILD_FILE="$APPLOVIN_DIR/build.gradle.kts"
+          fi
+
+          if [ ! -f "$BUILD_FILE" ]; then
+            echo "ERROR: AppLovin build.gradle/build.gradle.kts not found."
+            exit 1
+          fi
+
+          echo "Using build file:"
+          echo "$BUILD_FILE"
+
+          python3 - "$BUILD_FILE" <<'PY'
+          import sys
+          import re
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          original = text
+
+          # Groovy:
+          # compileSdkVersion 31
+          # compileSdkVersion 34
+          text = re.sub(
+              r'compileSdkVersion\s+\d+',
+              'compileSdkVersion 36',
+              text
+          )
+
+          # Kotlin DSL:
+          # compileSdk = 31
+          text = re.sub(
+              r'compileSdk\s*=\s*\d+',
+              'compileSdk = 36',
+              text
+          )
+
+          # Some Android library projects use:
+          # compileSdkVersion flutter.compileSdkVersion
+          text = re.sub(
+              r'compileSdkVersion\s+flutter\.compileSdkVersion',
+              'compileSdkVersion 36',
+              text
+          )
+
+          if text == original:
+              print("WARNING: No existing compileSdk declaration was replaced.")
+              print("Showing Android build file:")
+              print(text)
+          else:
+              with open(path, "w", encoding="utf-8") as f:
+                  f.write(text)
+
+              print("SUCCESS: AppLovin MAX compileSdk patched to 36.")
+          PY
+
+          echo "Final AppLovin compileSdk configuration:"
+          grep -nE "compileSdk|compileSdkVersion" "$BUILD_FILE" || true
 
       - name: Analyze Flutter Project
         run: flutter analyze
