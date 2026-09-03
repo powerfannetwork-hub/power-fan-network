@@ -78,10 +78,6 @@ jobs:
       - name: Analyze
         run: flutter analyze lib --no-fatal-infos --no-fatal-warnings || true
 
-      - name: Generate Gradle Wrapper
-        working-directory: android
-        run: gradle wrapper --gradle-version 8.13
-
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
 
