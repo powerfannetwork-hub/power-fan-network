@@ -22,15 +22,17 @@ class ReferralInfo {
   });
 
   factory ReferralInfo.fromMap(Map<String, dynamic> data) {
+    final bonusPerReferral =
+        _toDouble(data['mining_bonus_per_active_referral']);
+
     return ReferralInfo(
       referralCode: data['referral_code']?.toString() ?? '',
       referredBy: data['referred_by']?.toString(),
       totalReferrals: _toInt(data['total_referrals']),
       activeReferrals: _toInt(data['active_referrals']),
-      miningBonusPerActiveReferral:
-          _toDouble(data['mining_bonus_per_active_referral']) > 0
-              ? _toDouble(data['mining_bonus_per_active_referral'])
-              : AppConfig.referralMiningBoost,
+      miningBonusPerActiveReferral: bonusPerReferral > 0
+          ? bonusPerReferral
+          : AppConfig.referralMiningBoost,
       miningBonus: _toDouble(data['mining_bonus']),
       totalInviterRewards: _toDouble(
         data['total_inviter_rewards'],
@@ -134,6 +136,12 @@ class ReferralService {
   }) : _supabase =
             client ?? Supabase.instance.client;
 
+  ReferralService._internal()
+      : _supabase = Supabase.instance.client;
+
+  static final ReferralService instance =
+      ReferralService._internal();
+
   final SupabaseClient _supabase;
 
   Future<void> _requireUser() async {
@@ -209,7 +217,6 @@ class ReferralService {
     );
   }
 
-  /// Returns the signed-in user's referral information.
   Future<ReferralInfo> getReferralInfo() async {
     try {
       await _requireUser();
@@ -229,14 +236,6 @@ class ReferralService {
     }
   }
 
-  /// Applies another user's referral code.
-  ///
-  /// Backend rules:
-  /// - New user receives 20 FAN.
-  /// - Inviter receives 5 FAN.
-  /// - A referral can only be applied once.
-  /// - Self-referral is blocked.
-  /// - Rewards are created server-side.
   Future<ReferralResult> applyReferralCode(
     String referralCode,
   ) async {
@@ -277,10 +276,6 @@ class ReferralService {
     }
   }
 
-  /// Returns the referral mining bonus.
-  ///
-  /// Each ACTIVE referral contributes:
-  /// +0.02 FAN/H
   Future<double> getReferralMiningBonus() async {
     try {
       await _requireUser();
@@ -319,28 +314,21 @@ class ReferralService {
     }
   }
 
-  /// Returns only the active referral count.
   Future<int> getActiveReferralCount() async {
     final info = await getReferralInfo();
-
     return info.activeReferrals;
   }
 
-  /// Returns total number of referrals.
   Future<int> getTotalReferralCount() async {
     final info = await getReferralInfo();
-
     return info.totalReferrals;
   }
 
-  /// Returns the user's own referral code.
   Future<String> getMyReferralCode() async {
     final info = await getReferralInfo();
-
     return info.referralCode;
   }
 
-  /// Returns the mining bonus produced by active referrals.
   Future<double> calculateReferralMiningBonus() async {
     final info = await getReferralInfo();
 
@@ -348,7 +336,6 @@ class ReferralService {
         AppConfig.referralMiningBoost;
   }
 
-  /// Returns whether the user has already been referred.
   Future<bool> hasReferrer() async {
     final info = await getReferralInfo();
 
@@ -356,7 +343,6 @@ class ReferralService {
         info.referredBy!.isNotEmpty;
   }
 
-  /// Returns a simple summary suitable for UI.
   Future<Map<String, dynamic>> getSummary() async {
     final info = await getReferralInfo();
 
