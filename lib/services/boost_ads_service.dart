@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:applovin_max/applovin_max.dart';
 
@@ -18,90 +17,27 @@ class BoostAdsService {
   bool _initialized = false;
   bool _initializing = false;
 
-  Completer<bool>? _showCompleter;
+  Completer<bool>? _rewardCompleter;
 
   int _adsWatched = 0;
 
-  String get _sdkKey {
-    if (Platform.isAndroid) {
-      return _readConfigValue([
-        'appLovinSdkKeyAndroid',
-        'applovinSdkKeyAndroid',
-        'appLovinSdkKey',
-        'applovinSdkKey',
-      ]);
-    }
+  // ============================================================
+  // CONFIGURATION
+  // ============================================================
 
-    return _readConfigValue([
-      'appLovinSdkKeyIos',
-      'applovinSdkKeyIos',
-      'appLovinSdkKey',
-      'applovinSdkKey',
-    ]);
-  }
+  String get sdkKey => AppConfig.appLovinSdkKey.trim();
 
-  String get _rewardedAdUnitId {
-    if (Platform.isAndroid) {
-      return _readConfigValue([
-        'appLovinRewardedAdUnitIdAndroid',
-        'applovinRewardedAdUnitIdAndroid',
-        'rewardedAdUnitIdAndroid',
-        'androidRewardedAdUnitId',
-      ]);
-    }
+  String get rewardedAdUnitId =>
+      AppConfig.appLovinRewardedAdUnitId.trim();
 
-    return _readConfigValue([
-      'appLovinRewardedAdUnitIdIos',
-      'applovinRewardedAdUnitIdIos',
-      'rewardedAdUnitIdIos',
-      'iosRewardedAdUnitId',
-    ]);
-  }
-
-  String _readConfigValue(List<String> candidates) {
-    /*
-     * AppConfig is intentionally accessed through known field names
-     * where available. If the project has not configured AppLovin yet,
-     * this returns an empty value instead of crashing the application.
-     */
-
-    try {
-      final dynamic config = AppConfig;
-
-      for (final name in candidates) {
-        try {
-          final value = _readDynamicField(config, name);
-
-          if (value != null && value.toString().trim().isNotEmpty) {
-            return value.toString().trim();
-          }
-        } catch (_) {
-          // Try the next known field name.
-        }
-      }
-    } catch (_) {
-      // Configuration is unavailable.
-    }
-
-    return '';
-  }
-
-  dynamic _readDynamicField(dynamic object, String name) {
-    /*
-     * Dart does not provide normal runtime reflection in Flutter.
-     * This method is intentionally kept as a safe fallback.
-     *
-     * The actual AppConfig constants should be wired explicitly once
-     * AppLovin credentials are supplied.
-     */
-    return null;
-  }
-
-  bool get isConfigured {
-    return _sdkKey.isNotEmpty && _rewardedAdUnitId.isNotEmpty;
-  }
+  bool get isConfigured =>
+      sdkKey.isNotEmpty && rewardedAdUnitId.isNotEmpty;
 
   bool get isInitialized => _initialized;
+
+  // ============================================================
+  // SESSION STATE
+  // ============================================================
 
   int get adsWatched => _adsWatched;
 
@@ -117,6 +53,10 @@ class BoostAdsService {
       _adsWatched,
     );
   }
+
+  // ============================================================
+  // INITIALIZE APPLOVIN
+  // ============================================================
 
   Future<bool> initialize() async {
     if (_initialized) {
@@ -137,38 +77,55 @@ class BoostAdsService {
       AppLovinMAX.setRewardedAdListener(
         RewardedAdListener(
           onAdLoadedCallback: (ad) {
-            // Ad is ready.
+            // Rewarded ad is ready.
           },
-          onAdLoadFailedCallback: (adUnitId, error) {
-            _completeShow(false);
+          onAdLoadFailedCallback: (
+            adUnitId,
+            error,
+          ) {
+            _completeReward(false);
           },
           onAdDisplayedCallback: (ad) {
             // Ad displayed.
           },
-          onAdDisplayFailedCallback: (ad, error) {
-            _completeShow(false);
+          onAdDisplayFailedCallback: (
+            ad,
+            error,
+          ) {
+            _completeReward(false);
           },
           onAdClickedCallback: (ad) {
-            // Click does not grant FAN.
+            // Clicking does NOT grant FAN.
           },
           onAdHiddenCallback: (ad) {
             /*
-             * If the reward callback was not received, do not
-             * automatically grant a mining boost.
+             * Do not grant anything here.
+             *
+             * The reward is granted only when
+             * onAdReceivedRewardCallback fires.
              */
-            _completeShow(false);
+            _completeReward(false);
+
+            _loadRewardedAd();
           },
-          onAdReceivedRewardCallback: (ad, reward) {
-            _completeShow(true);
+          onAdReceivedRewardCallback: (
+            ad,
+            reward,
+          ) {
+            /*
+             * AppLovin has confirmed that the user
+             * earned the rewarded-ad reward.
+             */
+            _completeReward(true);
           },
           onAdRevenuePaidCallback: (ad) {
-            // Revenue callback is informational only.
+            // Revenue information only.
           },
         ),
       );
 
       final configuration =
-          await AppLovinMAX.initialize(_sdkKey);
+          await AppLovinMAX.initialize(sdkKey);
 
       if (configuration == null) {
         _initialized = false;
@@ -188,29 +145,38 @@ class BoostAdsService {
     }
   }
 
+  // ============================================================
+  // LOAD REWARDED AD
+  // ============================================================
+
   Future<void> _loadRewardedAd() async {
-    if (!_initialized || _rewardedAdUnitId.isEmpty) {
+    if (!_initialized || rewardedAdUnitId.isEmpty) {
       return;
     }
 
     try {
-      await AppLovinMAX.loadRewardedAd(
-        _rewardedAdUnitId,
+      AppLovinMAX.loadRewardedAd(
+        rewardedAdUnitId,
       );
     } catch (_) {
-      // Loading can be retried later.
+      // Ignore load error.
+      // The next request can try again.
     }
   }
 
+  // ============================================================
+  // CHECK READY
+  // ============================================================
+
   Future<bool> isRewardedAdReady() async {
-    if (!_initialized || _rewardedAdUnitId.isEmpty) {
+    if (!_initialized || rewardedAdUnitId.isEmpty) {
       return false;
     }
 
     try {
       final ready =
           await AppLovinMAX.isRewardedAdReady(
-        _rewardedAdUnitId,
+        rewardedAdUnitId,
       );
 
       return ready == true;
@@ -218,6 +184,10 @@ class BoostAdsService {
       return false;
     }
   }
+
+  // ============================================================
+  // LOAD SESSION AD COUNT
+  // ============================================================
 
   Future<int> getAdsWatchedForSession({
     required DateTime startedAt,
@@ -241,6 +211,10 @@ class BoostAdsService {
     }
   }
 
+  // ============================================================
+  // WATCH + RECORD
+  // ============================================================
+
   Future<Map<String, dynamic>> watchAdAndRecord({
     required DateTime startedAt,
     DateTime? endsAt,
@@ -249,7 +223,9 @@ class BoostAdsService {
       return <String, dynamic>{
         'success': false,
         'message':
-            'You have reached the maximum of ${AppConfig.maxAdsPerSession} ads for this mining session.',
+            'You have reached the maximum of '
+            '${AppConfig.maxAdsPerSession} ads '
+            'for this mining session.',
         'ads_watched': _adsWatched,
         'remaining_ads': 0,
         'ad_boost': currentAdBoost,
@@ -303,20 +279,18 @@ class BoostAdsService {
       return <String, dynamic>{
         'success': false,
         'message':
-            'The ad was not completed, so no mining boost was added.',
+            'The ad was not completed, so no FAN '
+            'mining boost was added.',
         'ads_watched': _adsWatched,
         'remaining_ads': remainingAds,
         'ad_boost': currentAdBoost,
       };
     }
 
-    /*
-     * The client only records the completion after MAX reports
-     * that the reward was earned.
-     *
-     * The authoritative server-side S2S callback should still be
-     * enabled in AppLovin before production release.
-     */
+    // ========================================================
+    // SERVER RECORDING
+    // ========================================================
+
     try {
       final result =
           await _miningService.recordRewardedAd();
@@ -331,22 +305,27 @@ class BoostAdsService {
           'success': false,
           'message':
               result['message']?.toString() ??
-                  'The ad reward could not be recorded.',
+                  'The rewarded ad could not be recorded.',
           'ads_watched': _adsWatched,
           'remaining_ads': remainingAds,
           'ad_boost': currentAdBoost,
         };
       }
 
-      final returnedCount = result['ads_watched'];
+      final serverCount =
+          result['ads_watched'];
 
-      if (returnedCount is num) {
-        _adsWatched = returnedCount.toInt().clamp(
+      if (serverCount is num) {
+        _adsWatched = serverCount.toInt().clamp(
               0,
               AppConfig.maxAdsPerSession,
             );
       } else {
-        _adsWatched++;
+        _adsWatched =
+            (_adsWatched + 1).clamp(
+          0,
+          AppConfig.maxAdsPerSession,
+        );
       }
 
       await _loadRewardedAd();
@@ -354,7 +333,8 @@ class BoostAdsService {
       return <String, dynamic>{
         'success': true,
         'message':
-            '+${AppConfig.adBoostPerAd.toStringAsFixed(2)} FAN/H mining boost added.',
+            '+${AppConfig.adBoostPerAd.toStringAsFixed(2)} '
+            'FAN/H mining boost added.',
         'ads_watched': _adsWatched,
         'remaining_ads': remainingAds,
         'ad_boost': currentAdBoost,
@@ -366,7 +346,8 @@ class BoostAdsService {
       return <String, dynamic>{
         'success': false,
         'message':
-            'The ad was completed, but the server could not record the reward.',
+            'The ad was completed, but the server '
+            'could not record the reward.',
         'error': error.toString(),
         'ads_watched': _adsWatched,
         'remaining_ads': remainingAds,
@@ -375,17 +356,22 @@ class BoostAdsService {
     }
   }
 
+  // ============================================================
+  // SHOW REWARDED AD
+  // ============================================================
+
   Future<bool> _showRewardedAd() async {
-    if (_showCompleter != null) {
+    if (_rewardCompleter != null) {
       return false;
     }
 
     final completer = Completer<bool>();
-    _showCompleter = completer;
+
+    _rewardCompleter = completer;
 
     try {
       AppLovinMAX.showRewardedAd(
-        _rewardedAdUnitId,
+        rewardedAdUnitId,
       );
 
       return await completer.future.timeout(
@@ -393,22 +379,31 @@ class BoostAdsService {
         onTimeout: () => false,
       );
     } catch (_) {
-      _completeShow(false);
+      _completeReward(false);
       return false;
     } finally {
-      _showCompleter = null;
+      _rewardCompleter = null;
     }
   }
 
-  void _completeShow(bool rewarded) {
-    final completer = _showCompleter;
+  // ============================================================
+  // COMPLETE REWARD
+  // ============================================================
 
-    if (completer == null || completer.isCompleted) {
+  void _completeReward(bool rewarded) {
+    final completer = _rewardCompleter;
+
+    if (completer == null ||
+        completer.isCompleted) {
       return;
     }
 
     completer.complete(rewarded);
   }
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
 
   Future<void> refreshSessionCount({
     required DateTime startedAt,
@@ -419,6 +414,10 @@ class BoostAdsService {
       endsAt: endsAt,
     );
   }
+
+  // ============================================================
+  // RESET LOCAL STATE
+  // ============================================================
 
   void resetLocalState() {
     _adsWatched = 0;
