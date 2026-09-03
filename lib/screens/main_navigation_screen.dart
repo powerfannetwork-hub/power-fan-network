@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../components/boost_ads_card.dart';
+import '../components/boost/boost_ads_card.dart';
 import '../components/daily_social_card.dart';
 import '../components/kyc_card.dart';
 import '../components/mining_card.dart';
 import '../components/referral_card.dart';
-import '../services/boost_ads_service.dart';
 import '../services/kyc_service.dart';
 import '../services/mining_service.dart';
 import '../services/profile_service.dart';
@@ -31,25 +30,19 @@ class _MainNavigationScreenState
   final MiningService _miningService =
       MiningService.instance;
 
-  final ProfileService _profileService =
-      ProfileService.instance;
+  final SocialTaskService _socialTaskService =
+      SocialTaskService.instance;
 
   final ReferralService _referralService =
       ReferralService();
 
-  final SocialTaskService _socialTaskService =
-      SocialTaskService.instance;
+  final ProfileService _profileService =
+      ProfileService();
 
   final KycService _kycService =
-      KycService.instance;
-
-  final BoostAdsService _boostAdsService =
-      BoostAdsService.instance;
+      KycService();
 
   int _currentIndex = 0;
-
-  bool _loading = true;
-  bool _actionLoading = false;
 
   double _fanBalance = 0.0;
   double _afamBalance = 0.0;
@@ -61,6 +54,7 @@ class _MainNavigationScreenState
   DateTime? _miningEndsAt;
 
   int _adsWatched = 0;
+
   int _checkInDays = 0;
   int _activeReferrals = 0;
 
@@ -68,7 +62,14 @@ class _MainNavigationScreenState
   bool _kyc1Verified = false;
   bool _kyc2Eligible = false;
 
-  List<DailySocialTask> _socialTasks = [];
+  bool _loading = true;
+  bool _refreshing = false;
+
+  List<ReferralItem> _referrals =
+      <ReferralItem>[];
+
+  List<DailySocialTask> _socialTasks =
+      <DailySocialTask>[];
 
   final List<String> _titles = const [
     'POWER FAN',
@@ -80,158 +81,155 @@ class _MainNavigationScreenState
   @override
   void initState() {
     super.initState();
-    _loadAllData();
+    _loadInitialData();
   }
 
-  Future<void> _loadAllData() async {
+  Future<void> _loadInitialData() async {
     if (!mounted) return;
 
     setState(() {
       _loading = true;
     });
 
+    await _loadData();
+
+    if (!mounted) return;
+
+    setState(() {
+      _loading = false;
+    });
+  }
+
+  Future<void> _loadData() async {
     try {
-      final profileFuture =
-          _profileService.getProfile();
-
-      final miningFuture =
-          _miningService.getActiveMining();
-
-      final rateFuture =
-          _miningService.getUserMiningRate();
-
-      final referralFuture =
-          _referralService.getReferralInfo();
-
-      final kycFuture =
-          _kycService.getStatus();
-
-      final socialFuture =
-          _loadSocialTasksSafely();
-
       final results = await Future.wait<dynamic>([
-        profileFuture,
-        miningFuture,
-        rateFuture,
-        referralFuture,
-        kycFuture,
-        socialFuture,
+        _miningService.getProfile(),
+        _miningService.getActiveMining(),
+        _miningService.getUserMiningRate(),
+        _referralService.getReferralInfo(),
+        _kycService.getStatus(),
+        _socialTaskService.getDailyTasksForCard(),
+        _profileService.getProfile(),
       ]);
 
       if (!mounted) return;
 
-      final profile = results[0] as ProfileData?;
-      final mining =
+      final balanceData =
+          results[0] as Map<String, dynamic>;
+
+      final miningData =
           results[1] as Map<String, dynamic>;
-      final rate =
+
+      final rateData =
           results[2] as Map<String, dynamic>;
-      final referral =
+
+      final referralInfo =
           results[3] as ReferralInfo;
-      final kyc =
+
+      final kycStatus =
           results[4] as KycStatus;
-      final social =
+
+      final socialTasks =
           results[5] as List<DailySocialTask>;
 
-      _fanBalance =
-          _toDouble(
-            profile?.fanBalance ??
-                mining['fan_balance'],
-          );
+      final profile =
+          results[6] as ProfileData;
 
-      _afamBalance =
-          _toDouble(
-            profile?.afamBalance ??
-                mining['afam_balance'],
-          );
+      final miningStarted =
+          _parseDateTime(
+        miningData['started_at'] ??
+            miningData['mining_started_at'] ??
+            miningData['startedAt'],
+      );
 
-      _miningRate =
-          _extractMiningRate(
-            rate,
-            profile?.miningRate,
-          );
+      final miningEnds =
+          _parseDateTime(
+        miningData['ends_at'] ??
+            miningData['mining_ends_at'] ??
+            miningData['endsAt'],
+      );
 
-      _isMining =
+      final miningActive =
           _toBool(
-            mining['mining_active'] ??
-                mining['is_mining'] ??
-                mining['active'] ??
-                profile?.miningActive,
-          );
+        miningData['is_mining'] ??
+            miningData['mining_active'] ??
+            miningData['active'],
+      );
 
-      _miningStartedAt =
-          _parseDate(
-            mining['started_at'] ??
-                mining['mining_started_at'] ??
-                profile?.miningStartedAt,
-          );
-
-      _miningEndsAt =
-          _parseDate(
-            mining['ends_at'] ??
-                mining['mining_ends_at'] ??
-                profile?.miningEndsAt,
-          );
-
-      _activeReferrals =
-          referral.activeReferrals;
-
-      _checkInDays =
-          kyc.checkInDays;
-
-      _activeReferrals =
-          kyc.activeReferrals;
-
-      _faceVerified =
-          kyc.faceVerified;
-
-      _kyc1Verified =
-          kyc.kyc1Verified;
-
-      _kyc2Eligible =
-          kyc.kyc2Eligible;
-
-      _socialTasks =
-          social;
-
-      await _loadSessionAdCount();
-
-      if (!mounted) return;
+      final rate =
+          _extractRate(rateData);
 
       setState(() {
-        _loading = false;
+        _fanBalance = _toDouble(
+          balanceData['fan_balance'],
+        );
+
+        _afamBalance = _toDouble(
+          balanceData['afam_balance'],
+        );
+
+        _miningStartedAt = miningStarted;
+        _miningEndsAt = miningEnds;
+
+        _isMining =
+            miningActive &&
+            miningStarted != null &&
+            miningEnds != null &&
+            DateTime.now().isBefore(
+              miningEnds,
+            );
+
+        _miningRate =
+            rate > 0 ? rate : 0.2;
+
+        _activeReferrals =
+            referralInfo.activeReferrals;
+
+        _checkInDays =
+            kycStatus.checkInDays;
+
+        _faceVerified =
+            kycStatus.faceVerified;
+
+        _kyc1Verified =
+            kycStatus.kyc1Verified;
+
+        _kyc2Eligible =
+            kycStatus.kyc2Eligible;
+
+        _socialTasks = socialTasks;
+
+        if (profile.referralCode != null) {
+          // Profile data is intentionally loaded
+          // here so the service stays synchronized.
+        }
       });
+
+      await _refreshAdCount();
+      await _loadReferralItems();
     } catch (error) {
       if (!mounted) return;
 
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              _cleanError(error),
+            ),
+          ),
+        );
+    }
+  }
+
+  Future<void> _refreshAdCount() async {
+    if (!_isMining ||
+        _miningStartedAt == null) {
+      if (!mounted) return;
+
       setState(() {
-        _loading = false;
-      });
-
-      _showMessage(
-        _friendlyError(error),
-      );
-    }
-  }
-
-  Future<List<DailySocialTask>>
-      _loadSocialTasksSafely() async {
-    try {
-      return await _socialTaskService
-          .getDailyTasksForCard();
-    } catch (_) {
-      return <DailySocialTask>[];
-    }
-  }
-
-  Future<void> _loadSessionAdCount() async {
-    if (_miningStartedAt == null) {
-      if (mounted) {
-        setState(() {
-          _adsWatched = 0;
-        });
-      } else {
         _adsWatched = 0;
-      }
+      });
 
       return;
     }
@@ -243,361 +241,179 @@ class _MainNavigationScreenState
         startedAt: _miningStartedAt!,
       );
 
-      if (!mounted) {
-        _adsWatched = count;
-        return;
-      }
-
-      setState(() {
-        _adsWatched = count;
-      });
-    } catch (_) {
       if (!mounted) return;
 
       setState(() {
-        _adsWatched = 0;
+        _adsWatched =
+            count.clamp(0, 7);
       });
+    } catch (_) {
+      // The BoostAdsCard has its own
+      // session-based count loading.
     }
   }
 
-  double _extractMiningRate(
-    Map<String, dynamic> data,
-    double? profileRate,
-  ) {
-    final value =
-        data['rate'] ??
-        data['mining_rate'] ??
-        data['value'] ??
-        profileRate ??
-        0.2;
+  Future<void> _loadReferralItems() async {
+    try {
+      final info =
+          await _referralService
+              .getReferralInfo();
 
-    return _toDouble(value);
+      if (!mounted) return;
+
+      /*
+       * The referral summary endpoint gives us
+       * the authoritative active count.
+       *
+       * Individual referral rows can be loaded
+       * later when the backend exposes the full
+       * referral list endpoint.
+       */
+      setState(() {
+        _activeReferrals =
+            info.activeReferrals;
+
+        _referrals =
+            <ReferralItem>[];
+      });
+    } catch (_) {
+      // Keep the dashboard usable if referral
+      // details are temporarily unavailable.
+    }
+  }
+
+  Future<void> _refreshDashboard() async {
+    if (_refreshing) return;
+
+    setState(() {
+      _refreshing = true;
+    });
+
+    await _loadData();
+
+    if (!mounted) return;
+
+    setState(() {
+      _refreshing = false;
+    });
   }
 
   Future<void> _startMining() async {
-    if (_actionLoading) return;
-
-    if (_isMining) {
-      _showMessage(
-        'Your mining session is already active.',
-      );
-      return;
-    }
-
-    setState(() {
-      _actionLoading = true;
-    });
+    if (_loading) return;
 
     try {
       final result =
           await _miningService.startMining();
 
-      if (!mounted) return;
-
-      await _refreshMiningState(
-        showLoading: false,
+      final startedAt =
+          _parseDateTime(
+        result['started_at'] ??
+            result['mining_started_at'] ??
+            result['startedAt'],
       );
+
+      final endsAt =
+          _parseDateTime(
+        result['ends_at'] ??
+            result['mining_ends_at'] ??
+            result['endsAt'],
+      );
+
+      final now =
+          DateTime.now();
+
+      final effectiveStartedAt =
+          startedAt ?? now;
+
+      final effectiveEndsAt =
+          endsAt ??
+              effectiveStartedAt.add(
+                const Duration(hours: 24),
+              );
 
       if (!mounted) return;
 
       setState(() {
-        _actionLoading = false;
+        _isMining = true;
+        _miningStartedAt =
+            effectiveStartedAt;
+        _miningEndsAt =
+            effectiveEndsAt;
+        _adsWatched = 0;
       });
 
-      final message =
-          _stringValue(
-            result['message'],
-          );
+      await _loadData();
+
+      if (!mounted) return;
 
       _showMessage(
-        message.isNotEmpty
-            ? message
-            : 'Mining started for 24 hours.',
+        'Mining started for 24 hours.',
       );
     } catch (error) {
       if (!mounted) return;
 
-      setState(() {
-        _actionLoading = false;
-      });
-
       _showMessage(
-        _friendlyError(error),
+        _cleanError(error),
       );
     }
   }
 
   Future<void> _claimMining() async {
-    if (_actionLoading) return;
+    if (!_isMining) return;
 
-    if (!_isMining) {
-      _showMessage(
-        'There is no active mining session.',
-      );
-      return;
-    }
+    final endsAt =
+        _miningEndsAt;
 
-    if (_miningEndsAt != null &&
-        DateTime.now().isBefore(
-          _miningEndsAt!,
-        )) {
+    if (endsAt != null &&
+        DateTime.now().isBefore(endsAt)) {
       _showMessage(
         'Your mining session is still active.',
       );
       return;
     }
 
-    setState(() {
-      _actionLoading = true;
-    });
-
     try {
       final result =
           await _miningService.claimMining();
 
-      if (!mounted) return;
+      final success =
+          result['success'] != false;
 
-      await _refreshMiningState(
-        showLoading: false,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _actionLoading = false;
-      });
-
-      final message =
-          _stringValue(
-            result['message'],
-          );
-
-      _showMessage(
-        message.isNotEmpty
-            ? message
-            : 'Mining reward claimed successfully.',
-      );
-    } catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        _actionLoading = false;
-      });
-
-      _showMessage(
-        _friendlyError(error),
-      );
-    }
-  }
-
-  Future<void> _watchAd() async {
-    if (_actionLoading) return;
-
-    if (!_isMining) {
-      _showMessage(
-        'Start mining before watching rewarded ads.',
-      );
-      return;
-    }
-
-    if (_adsWatched >= 7) {
-      _showMessage(
-        'You have reached the 7 ads limit for this session.',
-      );
-      return;
-    }
-
-    if (_miningStartedAt == null) {
-      _showMessage(
-        'Mining session information is not available yet.',
-      );
-      return;
-    }
-
-    setState(() {
-      _actionLoading = true;
-    });
-
-    try {
-      final watched =
-          await _boostAdsService
-              .watchAdAndRecord();
-
-      if (!mounted) return;
-
-      if (watched) {
-        await _loadSessionAdCount();
-        await _refreshMiningRate();
-
-        if (!mounted) return;
-
+      if (!success) {
         _showMessage(
-          'Ad completed. Mining rate increased by +0.10 FAN/H.',
+          result['message']?.toString() ??
+              'Unable to claim mining reward.',
         );
+        return;
       }
 
       if (!mounted) return;
 
       setState(() {
-        _actionLoading = false;
+        _isMining = false;
+        _miningStartedAt = null;
+        _miningEndsAt = null;
+        _adsWatched = 0;
       });
-    } catch (error) {
-      if (!mounted) return;
 
-      setState(() {
-        _actionLoading = false;
-      });
+      await _loadData();
+
+      if (!mounted) return;
 
       _showMessage(
-        _friendlyError(error),
+        'Mining reward claimed successfully.',
       );
-    }
-  }
-
-  Future<void> _refreshMiningState({
-    bool showLoading = true,
-  }) async {
-    if (showLoading && mounted) {
-      setState(() {
-        _loading = true;
-      });
-    }
-
-    try {
-      final profile =
-          await _profileService.getProfile();
-
-      final mining =
-          await _miningService.getActiveMining();
-
-      final rate =
-          await _miningService.getUserMiningRate();
-
-      if (!mounted) return;
-
-      setState(() {
-        _fanBalance =
-            _toDouble(
-              profile?.fanBalance ??
-                  mining['fan_balance'],
-            );
-
-        _afamBalance =
-            _toDouble(
-              profile?.afamBalance ??
-                  mining['afam_balance'],
-            );
-
-        _miningRate =
-            _extractMiningRate(
-              rate,
-              profile?.miningRate,
-            );
-
-        _isMining =
-            _toBool(
-              mining['mining_active'] ??
-                  mining['is_mining'] ??
-                  mining['active'] ??
-                  profile?.miningActive,
-            );
-
-        _miningStartedAt =
-            _parseDate(
-              mining['started_at'] ??
-                  mining['mining_started_at'] ??
-                  profile?.miningStartedAt,
-            );
-
-        _miningEndsAt =
-            _parseDate(
-              mining['ends_at'] ??
-                  mining['mining_ends_at'] ??
-                  profile?.miningEndsAt,
-            );
-      });
-
-      await _loadSessionAdCount();
-
-      if (showLoading && mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
     } catch (error) {
       if (!mounted) return;
 
-      if (showLoading) {
-        setState(() {
-          _loading = false;
-        });
-      }
-
-      throw Exception(
-        _friendlyError(error),
+      _showMessage(
+        _cleanError(error),
       );
     }
   }
 
-  Future<void> _refreshMiningRate() async {
-    try {
-      final rate =
-          await _miningService.getUserMiningRate();
-
-      if (!mounted) return;
-
-      setState(() {
-        _miningRate =
-            _extractMiningRate(
-          rate,
-          null,
-        );
-      });
-    } catch (_) {
-      // Keep the existing displayed rate if the
-      // refresh fails temporarily.
-    }
-  }
-
-  Future<void> _refreshReferralAndKyc() async {
-    try {
-      final referral =
-          await _referralService
-              .getReferralInfo();
-
-      final kyc =
-          await _kycService.getStatus();
-
-      if (!mounted) return;
-
-      setState(() {
-        _activeReferrals =
-            referral.activeReferrals;
-
-        _checkInDays =
-            kyc.checkInDays;
-
-        _faceVerified =
-            kyc.faceVerified;
-
-        _kyc1Verified =
-            kyc.kyc1Verified;
-
-        _kyc2Eligible =
-            kyc.kyc2Eligible;
-      });
-    } catch (_) {
-      // Preserve existing values when a secondary
-      // refresh is temporarily unavailable.
-    }
-  }
-
-  Future<void> _refreshEverything() async {
-    try {
-      await _loadAllData();
-    } catch (_) {
-      // _loadAllData handles its own UI errors.
-    }
+  Future<void> _onBoostUpdated() async {
+    await _loadData();
   }
 
   Future<void> _completeSocialTask(
@@ -605,8 +421,9 @@ class _MainNavigationScreenState
   ) async {
     try {
       final serviceTask =
-          await _socialTaskService
-              .findTask(task.id);
+          await _socialTaskService.findTask(
+        task.id,
+      );
 
       if (serviceTask == null) {
         _showMessage(
@@ -624,60 +441,47 @@ class _MainNavigationScreenState
       if (!mounted) return;
 
       if (result.success) {
-        await _refreshMiningState(
-          showLoading: false,
-        );
-
-        await _loadAllData();
-
-        if (!mounted) return;
+        setState(() {
+          _fanBalance =
+              result.fanBalance;
+        });
 
         _showMessage(
-          result.message.isNotEmpty
-              ? result.message
-              : '+${result.rewardFan.toStringAsFixed(0)} FAN reward claimed.',
+          '+${result.rewardFan.toStringAsFixed(0)} FAN reward claimed.',
         );
+
+        await _loadData();
       } else {
         _showMessage(
-          result.message.isNotEmpty
-              ? result.message
-              : 'The social task has not been fully verified yet.',
+          result.message.isEmpty
+              ? 'The social task could not be claimed.'
+              : result.message,
         );
       }
     } catch (error) {
       if (!mounted) return;
 
       _showMessage(
-        _friendlyError(error),
+        _cleanError(error),
       );
     }
   }
 
   Future<void> _faceVerification() async {
     try {
-      final result =
-          await _kycService
-              .startFaceVerification();
+      await _kycService
+          .startFaceVerification();
 
       if (!mounted) return;
 
-      final message =
-          _stringValue(
-            result['message'],
-          );
-
       _showMessage(
-        message.isNotEmpty
-            ? message
-            : 'Face verification will be available soon.',
+        'Face Verification will be available soon.',
       );
-
-      await _refreshReferralAndKyc();
     } catch (error) {
       if (!mounted) return;
 
       _showMessage(
-        _friendlyError(error),
+        _cleanError(error),
       );
     }
   }
@@ -685,21 +489,21 @@ class _MainNavigationScreenState
   Future<void> _pingReferral(
     ReferralItem referral,
   ) async {
-    // The current referral service does not expose
-    // a trusted "ping referral" RPC yet.
-    //
-    // Therefore this button only informs the user
-    // that the reminder feature is pending its
-    // notification backend instead of pretending
-    // that a server notification was sent.
-    _showMessage(
-      'Mining reminder will be available with notifications.',
+    /*
+     * The notification backend is not yet exposed
+     * by the current referral service.
+     *
+     * We intentionally do not fake a successful
+     * server notification here.
+     */
+    throw Exception(
+      'Referral reminder service is not available yet.',
     );
   }
 
   Widget _buildHome() {
     return RefreshIndicator(
-      onRefresh: _refreshEverything,
+      onRefresh: _refreshDashboard,
       child: ListView(
         physics:
             const AlwaysScrollableScrollPhysics(),
@@ -722,30 +526,21 @@ class _MainNavigationScreenState
             endsAt: _miningEndsAt,
             adsWatched: _adsWatched,
             maxAds: 7,
-            onStartMining:
-                _actionLoading
-                    ? null
-                    : _startMining,
-            onClaimMining:
-                _actionLoading
-                    ? null
-                    : _claimMining,
-            onWatchAd:
-                _actionLoading
-                    ? null
-                    : _watchAd,
+            onStartMining: _startMining,
+            onClaimMining: _claimMining,
           ),
 
           const SizedBox(height: 16),
 
           BoostAdsCard(
             isMining: _isMining,
-            adsWatched: _adsWatched,
-            maxAds: 7,
-            onWatchAd:
-                _actionLoading
-                    ? null
-                    : _watchAd,
+            sessionFinished:
+                _sessionFinished,
+            startedAt: _miningStartedAt,
+            endsAt: _miningEndsAt,
+            onMessage: _showMessage,
+            onBoostUpdated:
+                _onBoostUpdated,
           ),
 
           const SizedBox(height: 16),
@@ -754,6 +549,7 @@ class _MainNavigationScreenState
             tasks: _socialTasks,
             onClaim:
                 _completeSocialTask,
+            loading: _loading,
           ),
 
           const SizedBox(height: 16),
@@ -779,9 +575,27 @@ class _MainNavigationScreenState
           const SizedBox(height: 16),
 
           _buildQuickReferral(),
+
+          const SizedBox(height: 10),
         ],
       ),
     );
+  }
+
+  bool get _sessionFinished {
+    if (!_isMining) {
+      return false;
+    }
+
+    final endsAt =
+        _miningEndsAt;
+
+    if (endsAt == null) {
+      return false;
+    }
+
+    return !DateTime.now()
+        .isBefore(endsAt);
   }
 
   Widget _buildWelcomeHeader() {
@@ -802,7 +616,9 @@ class _MainNavigationScreenState
             size: 29,
           ),
         ),
+
         const SizedBox(width: 12),
+
         const Expanded(
           child: Column(
             crossAxisAlignment:
@@ -829,6 +645,7 @@ class _MainNavigationScreenState
             ],
           ),
         ),
+
         IconButton(
           onPressed: () {
             Navigator.push(
@@ -868,26 +685,28 @@ class _MainNavigationScreenState
                   FontWeight.w800,
             ),
           ),
+
           const SizedBox(height: 14),
+
           Row(
             children: [
               Expanded(
                 child: _balanceItem(
                   title: 'FAN',
-                  value:
-                      _fanBalance
-                          .toStringAsFixed(4),
+                  value: _fanBalance
+                      .toStringAsFixed(4),
                   icon:
                       Icons.bolt_rounded,
                 ),
               ),
+
               const SizedBox(width: 12),
+
               Expanded(
                 child: _balanceItem(
                   title: 'AFAM',
-                  value:
-                      _afamBalance
-                          .toStringAsFixed(4),
+                  value: _afamBalance
+                      .toStringAsFixed(4),
                   icon: Icons
                       .account_balance_wallet_outlined,
                 ),
@@ -921,7 +740,9 @@ class _MainNavigationScreenState
                 const Color(0xFF3B159B),
             size: 23,
           ),
+
           const SizedBox(width: 9),
+
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -937,7 +758,9 @@ class _MainNavigationScreenState
                         FontWeight.w600,
                   ),
                 ),
+
                 const SizedBox(height: 2),
+
                 Text(
                   value,
                   maxLines: 1,
@@ -960,11 +783,9 @@ class _MainNavigationScreenState
 
   Widget _buildQuickReferral() {
     return ReferralCard(
-      referrals:
-          const <ReferralItem>[],
-      activeReferrals:
-          _activeReferrals,
+      referrals: _referrals,
       onPing: _pingReferral,
+      loading: _loading,
     );
   }
 
@@ -995,6 +816,7 @@ class _MainNavigationScreenState
     return Scaffold(
       backgroundColor:
           const Color(0xFFF8F8FC),
+
       appBar: AppBar(
         elevation: 0,
         backgroundColor:
@@ -1010,13 +832,36 @@ class _MainNavigationScreenState
                 FontWeight.w800,
           ),
         ),
+        actions: [
+          if (_refreshing)
+            const Padding(
+              padding:
+                  EdgeInsets.only(
+                right: 16,
+              ),
+              child: Center(
+                child:
+                    SizedBox(
+                  width: 18,
+                  height: 18,
+                  child:
+                      CircularProgressIndicator(
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
-      body: _loading
-          ? const Center(
-              child:
-                  CircularProgressIndicator(),
-            )
-          : _buildCurrentPage(),
+
+      body:
+          _loading
+              ? const Center(
+                  child:
+                      CircularProgressIndicator(),
+                )
+              : _buildCurrentPage(),
+
       bottomNavigationBar:
           NavigationBar(
         backgroundColor:
@@ -1074,66 +919,41 @@ class _MainNavigationScreenState
     );
   }
 
-  void _showMessage(String message) {
-    if (!mounted) return;
+  double _extractRate(
+    Map<String, dynamic> data,
+  ) {
+    final values = [
+      data['rate'],
+      data['mining_rate'],
+      data['value'],
+    ];
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(14),
-          ),
-        ),
-      );
-  }
+    for (final value in values) {
+      final parsed =
+          _toDouble(value);
 
-  String _friendlyError(Object error) {
-    final text =
-        error.toString().trim();
-
-    if (text.startsWith(
-      'Exception: ',
-    )) {
-      return text.substring(11).trim();
+      if (parsed > 0) {
+        return parsed;
+      }
     }
 
-    if (text.isEmpty) {
-      return 'Something went wrong. Please try again.';
-    }
-
-    return text;
+    return 0.2;
   }
 
-  static String _stringValue(
+  double _toDouble(
     dynamic value,
   ) {
-    return value?.toString().trim() ?? '';
-  }
-
-  static double _toDouble(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return 0.0;
-    }
-
     if (value is num) {
       return value.toDouble();
     }
 
     return double.tryParse(
-          value.toString(),
+          value?.toString() ?? '',
         ) ??
         0.0;
   }
 
-  static bool _toBool(
+  bool _toBool(
     dynamic value,
   ) {
     if (value is bool) {
@@ -1145,16 +965,14 @@ class _MainNavigationScreenState
     }
 
     final text =
-        value?.toString()
-            .toLowerCase()
-            .trim();
+        value?.toString().trim().toLowerCase();
 
     return text == 'true' ||
         text == '1' ||
         text == 'yes';
   }
 
-  static DateTime? _parseDate(
+  DateTime? _parseDateTime(
     dynamic value,
   ) {
     if (value == null) {
@@ -1162,11 +980,65 @@ class _MainNavigationScreenState
     }
 
     if (value is DateTime) {
-      return value;
+      return value.toLocal();
+    }
+
+    final text =
+        value.toString().trim();
+
+    if (text.isEmpty) {
+      return null;
     }
 
     return DateTime.tryParse(
-      value.toString(),
-    );
+      text,
+    )?.toLocal();
+  }
+
+  String _cleanError(
+    Object error,
+  ) {
+    var text =
+        error.toString().trim();
+
+    if (text.startsWith(
+      'Exception: ',
+    )) {
+      text =
+          text.substring(11);
+    }
+
+    if (text.startsWith(
+      'PostgrestException: ',
+    )) {
+      text =
+          text.substring(19);
+    }
+
+    return text.isEmpty
+        ? 'Something went wrong. Please try again.'
+        : text;
+  }
+
+  void _showMessage(
+    String message,
+  ) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content:
+              Text(message),
+          behavior:
+              SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(14),
+          ),
+        ),
+      );
   }
 }
