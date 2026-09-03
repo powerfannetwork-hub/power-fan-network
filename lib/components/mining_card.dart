@@ -40,7 +40,9 @@ class _MiningCardState extends State<MiningCard> {
   @override
   void initState() {
     super.initState();
+
     _updateRemaining();
+
     _timer = Timer.periodic(
       const Duration(seconds: 1),
       (_) => _updateRemaining(),
@@ -71,6 +73,7 @@ class _MiningCardState extends State<MiningCard> {
 
     final now = DateTime.now();
     final difference = widget.endsAt!.difference(now);
+
     final next = difference.isNegative
         ? Duration.zero
         : difference;
@@ -110,12 +113,12 @@ class _MiningCardState extends State<MiningCard> {
     final total =
         widget.endsAt!.difference(widget.startedAt!).inSeconds;
 
-    if (total <= 0) return 0.0;
+    if (total <= 0) {
+      return 0.0;
+    }
 
     final remaining = _remaining.inSeconds;
-
     final completed = total - remaining;
-
     final value = completed / total;
 
     return value.clamp(0.0, 1.0);
@@ -153,7 +156,7 @@ class _MiningCardState extends State<MiningCard> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: _purple.withValues(alpha: 0.18),
+            color: _purple.withOpacity(0.18),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -168,7 +171,7 @@ class _MiningCardState extends State<MiningCard> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
+                  color: Colors.white.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Icon(
@@ -180,8 +183,7 @@ class _MiningCardState extends State<MiningCard> {
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'FAN Mining',
@@ -197,9 +199,7 @@ class _MiningCardState extends State<MiningCard> {
                           ? 'Mining is active'
                           : 'Ready to start mining',
                       style: TextStyle(
-                        color: Colors.white.withValues(
-                          alpha: 0.72,
-                        ),
+                        color: Colors.white.withOpacity(0.72),
                         fontSize: 12.5,
                       ),
                     ),
@@ -213,8 +213,8 @@ class _MiningCardState extends State<MiningCard> {
                 ),
                 decoration: BoxDecoration(
                   color: widget.isMining
-                      ? _green.withValues(alpha: 0.95)
-                      : Colors.white.withValues(alpha: 0.14),
+                      ? _green.withOpacity(0.95)
+                      : Colors.white.withOpacity(0.14),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -234,7 +234,7 @@ class _MiningCardState extends State<MiningCard> {
           Text(
             'FAN Balance',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
+              color: Colors.white.withOpacity(0.72),
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),
@@ -283,7 +283,7 @@ class _MiningCardState extends State<MiningCard> {
                 value: _progress,
                 minHeight: 7,
                 backgroundColor:
-                    Colors.white.withValues(alpha: 0.14),
+                    Colors.white.withOpacity(0.14),
                 valueColor:
                     const AlwaysStoppedAnimation<Color>(
                   Colors.white,
@@ -300,9 +300,7 @@ class _MiningCardState extends State<MiningCard> {
                 Text(
                   '24-hour mining session',
                   style: TextStyle(
-                    color: Colors.white.withValues(
-                      alpha: 0.68,
-                    ),
+                    color: Colors.white.withOpacity(0.68),
                     fontSize: 11,
                   ),
                 ),
@@ -379,9 +377,7 @@ class _MiningCardState extends State<MiningCard> {
                     'Ads watched this session: '
                     '${widget.adsWatched} / ${widget.maxAds}',
                     style: TextStyle(
-                      color: Colors.white.withValues(
-                        alpha: 0.76,
-                      ),
+                      color: Colors.white.withOpacity(0.76),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -432,9 +428,7 @@ class _MiningCardState extends State<MiningCard> {
               'New mining session: 24 hours • Ads reset to 0 / 7',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(
-                  alpha: 0.68,
-                ),
+                color: Colors.white.withOpacity(0.68),
                 fontSize: 11.5,
               ),
             ),
@@ -462,7 +456,7 @@ class _InfoBox extends StatelessWidget {
         vertical: 12,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: Colors.white.withOpacity(0.10),
         borderRadius: BorderRadius.circular(15),
       ),
       child: Column(
@@ -471,7 +465,7 @@ class _InfoBox extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.65),
+              color: Colors.white.withOpacity(0.65),
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
             ),
