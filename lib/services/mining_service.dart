@@ -1,41 +1,39 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../globals/app_constants.dart';
+
 class MiningService {
-  MiningService._();
+  MiningService({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
 
-  static final MiningService instance = MiningService._();
+  static final MiningService instance = MiningService();
 
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final SupabaseClient _client;
 
-  Future<void> _requireUser() async {
-    final session = _supabase.auth.currentSession;
-    final user = _supabase.auth.currentUser;
+  SupabaseClient get client => _client;
 
-    if (session == null || user == null) {
-      throw const AuthException(
-        'Your session has expired. Please log in again.',
-      );
+  String? get _userId => _client.auth.currentUser?.id;
+
+  void _requireAuthenticated() {
+    if (_userId == null) {
+      throw const AuthException('User is not authenticated.');
     }
   }
 
-  Map<String, dynamic> _mapResult(dynamic result) {
-    if (result == null) {
-      return <String, dynamic>{};
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(data);
     }
 
-    if (result is Map<String, dynamic>) {
-      return result;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
     }
 
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
-    }
-
-    if (result is List && result.isNotEmpty) {
-      final first = result.first;
+    if (data is List && data.isNotEmpty) {
+      final first = data.first;
 
       if (first is Map<String, dynamic>) {
-        return first;
+        return Map<String, dynamic>.from(first);
       }
 
       if (first is Map) {
@@ -43,314 +41,371 @@ class MiningService {
       }
     }
 
-    if (result is num) {
-      return <String, dynamic>{
-        'rate': result.toDouble(),
-      };
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic data) {
+    if (data is! List) {
+      return <Map<String, dynamic>>[];
     }
 
-    throw Exception(
-      'Unexpected Supabase response: ${result.runtimeType}',
+    return data
+        .whereType<Map>()
+        .map(
+          (item) => Map<String, dynamic>.from(item),
+        )
+        .toList();
+  }
+
+  int _asInt(dynamic value, {int fallback = 0}) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  double _asDouble(dynamic value, {double fallback = 0}) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  DateTime? _asDateTime(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    return DateTime.tryParse(value.toString());
+  }
+
+  Future<Map<String, dynamic>?> getProfile() async {
+    _requireAuthenticated();
+
+    final userId = _userId!;
+
+    final response = await _client
+        .from('profiles')
+        .select()
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(response);
+  }
+
+  Future<double> getUserMiningRate() async {
+    _requireAuthenticated();
+
+    final data = await _client.rpc(
+      AppConfig.rpcGetUserMiningRate,
     );
-  }
 
-  Exception _formatSupabaseError(
-    Object error, {
-    required String action,
-  }) {
-    if (error is PostgrestException) {
-      final message = error.message.trim();
-      final details = error.details?.toString().trim() ?? '';
-      final hint = error.hint?.trim() ?? '';
-      final code = error.code?.trim() ?? '';
-
-      final parts = <String>[
-        if (message.isNotEmpty) message,
-        if (code.isNotEmpty) 'Code: $code',
-        if (details.isNotEmpty && details != 'Bad Request')
-          'Details: $details',
-        if (hint.isNotEmpty) 'Hint: $hint',
-      ];
-
-      return Exception(
-        parts.isEmpty
-            ? 'Unable to $action.'
-            : parts.join('\n'),
-      );
+    if (data is num) {
+      return data.toDouble();
     }
 
-    if (error is AuthException) {
-      return Exception(error.message);
-    }
+    final map = _asMap(data);
 
-    return Exception(
-      'Unable to $action.\n$error',
+    return _asDouble(
+      map['mining_rate'] ??
+          map['rate'] ??
+          map['current_rate'] ??
+          AppConfig.baseMiningRate,
+      fallback: AppConfig.baseMiningRate,
     );
-  }
-
-  Future<Map<String, dynamic>> getProfile() async {
-    try {
-      await _requireUser();
-
-      final user = _supabase.auth.currentUser!;
-
-      final response = await _supabase
-          .from('profiles')
-          .select('fan_balance, afam_balance')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (response == null) {
-        return <String, dynamic>{
-          'fan_balance': 0.0,
-          'afam_balance': 0.0,
-        };
-      }
-
-      return Map<String, dynamic>.from(response);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'load account balance',
-      );
-    }
-  }
-
-  /// Returns the number of rewarded ads watched during
-  /// the current 24-hour mining session.
-  ///
-  /// This is intentionally session-based, not calendar-day-based.
-  Future<int> getAdsWatchedForSession({
-    required DateTime startedAt,
-  }) async {
-    try {
-      await _requireUser();
-
-      final user = _supabase.auth.currentUser!;
-
-      final sessionStart = startedAt.toUtc();
-      final now = DateTime.now().toUtc();
-
-      final rows = await _supabase
-          .from('ad_boosts')
-          .select('id')
-          .eq('user_id', user.id)
-          .gte(
-            'watched_at',
-            sessionStart.toIso8601String(),
-          )
-          .lte(
-            'watched_at',
-            now.toIso8601String(),
-          );
-
-      if (rows is List) {
-        return rows.length > 7 ? 7 : rows.length;
-      }
-
-      return 0;
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'load session ad count',
-      );
-    }
-  }
-
-  Future<Map<String, dynamic>> getUserMiningRate() async {
-    try {
-      await _requireUser();
-
-      final result = await _supabase.rpc(
-        'get_user_mining_rate',
-      );
-
-      if (result is num) {
-        return <String, dynamic>{
-          'rate': result.toDouble(),
-        };
-      }
-
-      final data = _mapResult(result);
-
-      if (data['rate'] == null &&
-          data['mining_rate'] == null &&
-          data['value'] == null) {
-        return <String, dynamic>{
-          ...data,
-          'rate': 0.2,
-        };
-      }
-
-      return data;
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'load mining rate',
-      );
-    }
   }
 
   Future<Map<String, dynamic>> startMining() async {
-    try {
-      await _requireUser();
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'start_mining',
-      );
+    final data = await _client.rpc(
+      AppConfig.rpcStartMining,
+    );
 
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'start mining',
-      );
-    }
+    return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> getActiveMining() async {
-    try {
-      await _requireUser();
+  Future<Map<String, dynamic>?> getActiveMining() async {
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'get_active_mining',
-      );
+    final data = await _client.rpc(
+      AppConfig.rpcGetActiveMining,
+    );
 
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'load mining session',
-      );
+    final map = _asMap(data);
+
+    if (map.isEmpty) {
+      return null;
     }
+
+    return map;
   }
 
   Future<Map<String, dynamic>> claimMining() async {
-    try {
-      await _requireUser();
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'claim_mining',
-      );
+    final data = await _client.rpc(
+      AppConfig.rpcClaimMining,
+    );
 
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'claim mining reward',
-      );
-    }
+    return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> recordRewardedAd({
-    String? adRef,
-  }) async {
-    try {
-      await _requireUser();
+  Future<Map<String, dynamic>> recordRewardedAd() async {
+    _requireAuthenticated();
 
-      /*
-       * p_ad_reference has a database default value.
-       *
-       * The RPC is intentionally called without parameters.
-       * The local ad reference is not trusted as proof that
-       * an advertisement was actually completed.
-       *
-       * Final advertisement verification should be handled
-       * by the rewarded-ad verification flow.
-       */
-      final result = await _supabase.rpc(
-        'record_rewarded_ad',
-      );
+    final data = await _client.rpc(
+      AppConfig.rpcRecordRewardedAd,
+    );
 
-      final data = _mapResult(result);
-
-      return <String, dynamic>{
-        ...data,
-        'ad_ref': adRef,
-      };
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'record rewarded ad',
-      );
-    }
+    return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> verifyRewardedAd({
-    required String adId,
-  }) async {
-    try {
-      await _requireUser();
+  Future<Map<String, dynamic>> verifyRewardedAd(
+    String adId,
+  ) async {
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'verify_rewarded_ad',
-        params: <String, dynamic>{
-          'p_ad_id': adId,
-        },
-      );
-
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'verify rewarded ad',
-      );
+    if (adId.trim().isEmpty) {
+      throw ArgumentError('adId cannot be empty.');
     }
+
+    final data = await _client.rpc(
+      AppConfig.rpcVerifyRewardedAd,
+      params: <String, dynamic>{
+        'p_ad_id': adId,
+      },
+    );
+
+    return _asMap(data);
+  }
+
+  Future<int> getAdsWatchedForSession({
+    required DateTime startedAt,
+    DateTime? endsAt,
+  }) async {
+    _requireAuthenticated();
+
+    final start = startedAt.toUtc();
+
+    final query = _client
+        .from('ad_rewards')
+        .select('id')
+        .eq('user_id', _userId!)
+        .gte('watched_at', start.toIso8601String());
+
+    final response = endsAt == null
+        ? await query
+        : await query.lte(
+            'watched_at',
+            endsAt.toUtc().toIso8601String(),
+          );
+
+    return response.length;
+  }
+
+  Future<int> getSessionAdCount({
+    required DateTime startedAt,
+    DateTime? endsAt,
+  }) async {
+    return getAdsWatchedForSession(
+      startedAt: startedAt,
+      endsAt: endsAt,
+    );
   }
 
   Future<Map<String, dynamic>> dailyCheckin() async {
-    try {
-      await _requireUser();
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'daily_checkin',
-      );
+    final data = await _client.rpc(
+      AppConfig.rpcDailyCheckin,
+    );
 
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'complete daily check-in',
-      );
-    }
+    return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> completeDailySocialTask({
-    required String taskId,
-  }) async {
-    try {
-      await _requireUser();
+  Future<Map<String, dynamic>> completeDailySocialTask(
+    String taskId,
+  ) async {
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'complete_daily_social_task',
-        params: <String, dynamic>{
-          'p_task_id': taskId,
-        },
-      );
-
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'complete social task',
-      );
+    if (taskId.trim().isEmpty) {
+      throw ArgumentError('taskId cannot be empty.');
     }
+
+    final data = await _client.rpc(
+      AppConfig.rpcClaimDailySocialReward,
+      params: <String, dynamic>{
+        'p_task_id': taskId,
+      },
+    );
+
+    return _asMap(data);
   }
 
   Future<Map<String, dynamic>> getDashboard() async {
-    try {
-      await _requireUser();
+    _requireAuthenticated();
 
-      final result = await _supabase.rpc(
-        'get_dashboard',
-      );
+    final data = await _client.rpc(
+      AppConfig.rpcGetDashboard,
+    );
 
-      return _mapResult(result);
-    } catch (error) {
-      throw _formatSupabaseError(
-        error,
-        action: 'load dashboard',
-      );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getMiningStatus() async {
+    final active = await getActiveMining();
+    final rate = await getUserMiningRate();
+
+    final profile = await getProfile();
+
+    return <String, dynamic>{
+      'active': active != null,
+      'mining': active,
+      'rate': rate,
+      'profile': profile,
+    };
+  }
+
+  Future<int> getActiveReferralCount() async {
+    _requireAuthenticated();
+
+    final data = await _client.rpc(
+      'calculate_active_referrals',
+      params: <String, dynamic>{
+        'p_user_id': _userId!,
+      },
+    );
+
+    if (data is num) {
+      return data.toInt();
     }
+
+    final map = _asMap(data);
+
+    return _asInt(
+      map['active_referrals'] ??
+          map['count'] ??
+          map['referrals'],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getMyMiningSessions({
+    int limit = 20,
+  }) async {
+    _requireAuthenticated();
+
+    final safeLimit = limit.clamp(1, 100);
+
+    final response = await _client
+        .from('mining_sessions')
+        .select()
+        .eq('user_id', _userId!)
+        .order('created_at', ascending: false)
+        .limit(safeLimit);
+
+    return _asMapList(response);
+  }
+
+  Future<Map<String, dynamic>?> getLatestMiningSession() async {
+    _requireAuthenticated();
+
+    final response = await _client
+        .from('mining_sessions')
+        .select()
+        .eq('user_id', _userId!)
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    if (response.isEmpty) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(response.first);
+  }
+
+  bool isSessionActive(Map<String, dynamic>? session) {
+    if (session == null || session.isEmpty) {
+      return false;
+    }
+
+    final status = session['status']?.toString().toLowerCase();
+
+    if (status == 'active') {
+      final endsAt = _asDateTime(
+        session['ends_at'] ??
+            session['mining_ends_at'],
+      );
+
+      if (endsAt == null) {
+        return true;
+      }
+
+      return endsAt.isAfter(DateTime.now().toUtc());
+    }
+
+    final miningActive = session['mining_active'];
+
+    if (miningActive is bool) {
+      return miningActive;
+    }
+
+    return false;
+  }
+
+  double calculateMaximumAdBoost(int adsWatched) {
+    final safeAds = adsWatched.clamp(
+      0,
+      AppConfig.maxAdsPerSession,
+    );
+
+    final boost =
+        safeAds * AppConfig.adBoostPerAd;
+
+    return boost.clamp(
+      0,
+      AppConfig.maxAdBoost,
+    );
+  }
+
+  double calculateMiningRate({
+    int activeReferrals = 0,
+    int adsWatched = 0,
+  }) {
+    final safeReferrals =
+        activeReferrals < 0 ? 0 : activeReferrals;
+
+    final safeAds = adsWatched.clamp(
+      0,
+      AppConfig.maxAdsPerSession,
+    );
+
+    final referralBoost =
+        safeReferrals * AppConfig.referralMiningBoost;
+
+    final adBoost =
+        calculateMaximumAdBoost(safeAds);
+
+    return AppConfig.baseMiningRate +
+        referralBoost +
+        adBoost;
   }
 }
