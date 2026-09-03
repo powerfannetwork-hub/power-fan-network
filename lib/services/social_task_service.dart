@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../components/daily_social_card.dart';
 import '../globals/app_constants.dart';
 
 class SocialTask {
@@ -10,6 +11,7 @@ class SocialTask {
   final String title;
   final String taskUrl;
   final double rewardFan;
+
   final bool requiresFollow;
   final bool requiresComment;
   final bool requiresShare;
@@ -37,89 +39,89 @@ class SocialTask {
     required this.claimed,
   });
 
-  factory SocialTask.fromMap(Map<String, dynamic> map) {
+  factory SocialTask.fromMap(
+    Map<String, dynamic> map,
+  ) {
     return SocialTask(
-      id: (map['id'] ?? '').toString(),
-      platform: (map['platform'] ?? '').toString(),
-      title: (map['title'] ?? '').toString(),
-      taskUrl: (map['task_url'] ?? '').toString(),
-      rewardFan: _toDouble(map['reward_fan']),
-      requiresFollow: _toBool(map['requires_follow']),
-      requiresComment: _toBool(map['requires_comment']),
-      requiresShare: _toBool(map['requires_share']),
-      followVerified: _toBool(map['follow_verified']),
-      commentVerified: _toBool(map['comment_verified']),
-      shareVerified: _toBool(map['share_verified']),
-      canClaim: _toBool(map['can_claim']),
-      claimed: _toBool(map['claimed']),
+      id: _string(map['id']),
+      platform: _string(map['platform']),
+      title: _string(map['title']),
+      taskUrl: _string(
+        map['task_url'] ?? map['url'],
+      ),
+      rewardFan: _double(
+        map['reward_fan'] ?? map['reward'],
+      ),
+      requiresFollow:
+          _bool(map['requires_follow']),
+      requiresComment:
+          _bool(map['requires_comment']),
+      requiresShare:
+          _bool(map['requires_share']),
+      followVerified:
+          _bool(map['follow_verified']),
+      commentVerified:
+          _bool(map['comment_verified']),
+      shareVerified:
+          _bool(map['share_verified']),
+      canClaim:
+          _bool(map['can_claim']),
+      claimed:
+          _bool(map['claimed']),
     );
   }
 
-  bool get fullyVerified =>
-      (!requiresFollow || followVerified) &&
-      (!requiresComment || commentVerified) &&
-      (!requiresShare || shareVerified);
+  bool get fullyVerified {
+    final followOk =
+        !requiresFollow || followVerified;
 
-  bool get hasRequiredActions =>
-      requiresFollow || requiresComment || requiresShare;
+    final commentOk =
+        !requiresComment || commentVerified;
 
-  bool get isReadyToClaim =>
-      canClaim && fullyVerified && !claimed;
+    final shareOk =
+        !requiresShare || shareVerified;
 
-  bool get isComplete => claimed;
-
-  int get verifiedActionCount {
-    var count = 0;
-
-    if (!requiresFollow || followVerified) {
-      count++;
-    }
-
-    if (!requiresComment || commentVerified) {
-      count++;
-    }
-
-    if (!requiresShare || shareVerified) {
-      count++;
-    }
-
-    return count;
+    return followOk &&
+        commentOk &&
+        shareOk;
   }
 
-  int get requiredActionCount {
-    var count = 0;
-
-    if (requiresFollow) {
-      count++;
-    }
-
-    if (requiresComment) {
-      count++;
-    }
-
-    if (requiresShare) {
-      count++;
-    }
-
-    return count;
+  bool get isReadyToClaim {
+    return canClaim &&
+        fullyVerified &&
+        !claimed;
   }
 
-  static double _toDouble(dynamic value) {
+  static String _string(dynamic value) {
+    return value?.toString().trim() ?? '';
+  }
+
+  static double _double(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0.0;
   }
 
-  static bool _toBool(dynamic value) {
+  static bool _bool(dynamic value) {
     if (value is bool) {
       return value;
     }
 
-    final text = value?.toString().toLowerCase().trim();
+    if (value is num) {
+      return value != 0;
+    }
 
-    return text == 'true' || text == '1';
+    final text =
+        value?.toString().trim().toLowerCase();
+
+    return text == 'true' ||
+        text == '1' ||
+        text == 'yes';
   }
 }
 
@@ -140,23 +142,47 @@ class SocialTaskClaimResult {
     required this.message,
   });
 
-  factory SocialTaskClaimResult.fromMap(Map<String, dynamic> map) {
+  factory SocialTaskClaimResult.fromMap(
+    Map<String, dynamic> map,
+  ) {
     return SocialTaskClaimResult(
-      success: map['success'] == true,
-      taskId: (map['task_id'] ?? '').toString(),
-      rewardFan: _toDouble(map['reward_fan']),
-      fanBalance: _toDouble(map['fan_balance']),
-      claimed: map['claimed'] == true,
-      message: (map['message'] ?? '').toString(),
+      success: _bool(map['success']),
+      taskId: _string(map['task_id']),
+      rewardFan: _double(
+        map['reward_fan'],
+      ),
+      fanBalance: _double(
+        map['fan_balance'],
+      ),
+      claimed: _bool(map['claimed']),
+      message: _string(
+        map['message'],
+      ),
     );
   }
 
-  static double _toDouble(dynamic value) {
+  static String _string(dynamic value) {
+    return value?.toString().trim() ?? '';
+  }
+
+  static double _double(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0.0;
+  }
+
+  static bool _bool(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+
+    return value?.toString().toLowerCase() ==
+        'true';
   }
 }
 
@@ -190,45 +216,74 @@ class SocialTaskStartResult {
     required this.message,
   });
 
-  factory SocialTaskStartResult.fromMap(Map<String, dynamic> map) {
+  factory SocialTaskStartResult.fromMap(
+    Map<String, dynamic> map,
+  ) {
     return SocialTaskStartResult(
-      success: map['success'] == true,
-      taskId: (map['task_id'] ?? '').toString(),
-      platform: (map['platform'] ?? '').toString(),
-      taskUrl: (map['task_url'] ?? '').toString(),
-      rewardFan: _toDouble(map['reward_fan']),
-      followVerified: map['follow_verified'] == true,
-      commentVerified: map['comment_verified'] == true,
-      shareVerified: map['share_verified'] == true,
-      canClaim: map['can_claim'] == true,
-      claimed: map['claimed'] == true,
-      message: (map['message'] ?? '').toString(),
+      success: _bool(map['success']),
+      taskId: _string(map['task_id']),
+      platform: _string(map['platform']),
+      taskUrl: _string(
+        map['task_url'],
+      ),
+      rewardFan: _double(
+        map['reward_fan'],
+      ),
+      followVerified:
+          _bool(map['follow_verified']),
+      commentVerified:
+          _bool(map['comment_verified']),
+      shareVerified:
+          _bool(map['share_verified']),
+      canClaim:
+          _bool(map['can_claim']),
+      claimed:
+          _bool(map['claimed']),
+      message:
+          _string(map['message']),
     );
   }
 
-  static double _toDouble(dynamic value) {
+  static String _string(dynamic value) {
+    return value?.toString().trim() ?? '';
+  }
+
+  static double _double(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0.0;
+  }
+
+  static bool _bool(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+
+    return value?.toString().toLowerCase() ==
+        'true';
   }
 }
 
 class SocialTaskService {
   SocialTaskService._();
 
-  static final SocialTaskService instance = SocialTaskService._();
+  static final SocialTaskService instance =
+      SocialTaskService._();
 
-  final SupabaseClient _supabase = Supabase.instance.client;
-
-  // ============================================================
-  // AUTHENTICATION
-  // ============================================================
+  final SupabaseClient _supabase =
+      Supabase.instance.client;
 
   void _requireUser() {
-    final user = _supabase.auth.currentUser;
-    final session = _supabase.auth.currentSession;
+    final user =
+        _supabase.auth.currentUser;
+
+    final session =
+        _supabase.auth.currentSession;
 
     if (user == null || session == null) {
       throw const AuthException(
@@ -237,22 +292,24 @@ class SocialTaskService {
     }
   }
 
-  // ============================================================
-  // ERROR HANDLING
-  // ============================================================
-
   Exception _formatError(
     Object error, {
     required String action,
   }) {
     if (error is PostgrestException) {
-      final message = error.message.trim();
-      final details = error.details?.toString().trim() ?? '';
-      final hint = error.hint?.trim() ?? '';
+      final message =
+          error.message.trim();
+
+      final details =
+          error.details?.toString().trim() ?? '';
+
+      final hint =
+          error.hint?.trim() ?? '';
 
       final parts = <String>[
         if (message.isNotEmpty) message,
-        if (details.isNotEmpty && details != 'Bad Request')
+        if (details.isNotEmpty &&
+            details != 'Bad Request')
           details,
         if (hint.isNotEmpty) hint,
       ];
@@ -269,19 +326,17 @@ class SocialTaskService {
     }
 
     return Exception(
-      'Unable to $action.\n$error',
+      'Unable to $action.',
     );
   }
 
-  // ============================================================
-  // GET TODAY'S TASKS
-  // ============================================================
-
-  Future<List<SocialTask>> getDailyTasks() async {
+  Future<List<SocialTask>>
+      getDailyTasks() async {
     try {
       _requireUser();
 
-      final result = await _supabase.rpc(
+      final result =
+          await _supabase.rpc(
         'get_daily_social_tasks',
       );
 
@@ -292,8 +347,11 @@ class SocialTaskService {
       return result
           .whereType<Map>()
           .map(
-            (item) => SocialTask.fromMap(
-              Map<String, dynamic>.from(item),
+            (item) =>
+                SocialTask.fromMap(
+              Map<String, dynamic>.from(
+                item,
+              ),
             ),
           )
           .toList();
@@ -305,30 +363,78 @@ class SocialTaskService {
     }
   }
 
-  // ============================================================
-  // START TASK
-  // ============================================================
+  Future<List<DailySocialTask>>
+      getDailyTasksForCard() async {
+    final tasks =
+        await getDailyTasks();
 
-  Future<SocialTaskStartResult> startTask({
+    return tasks.map((task) {
+      final platform =
+          _normalizePlatform(
+        task.platform,
+      );
+
+      final officialUrl =
+          _officialLinks[platform];
+
+      final url =
+          officialUrl ??
+          task.taskUrl;
+
+      final description =
+          _descriptionForPlatform(
+        task.platform,
+      );
+
+      return DailySocialTask(
+        id: task.id,
+        platform: task.platform,
+        title: task.title.isEmpty
+            ? 'Follow on ${task.platform}'
+            : task.title,
+        description:
+            description.isEmpty
+                ? 'Complete the required social-media actions.'
+                : description,
+        url: url,
+        reward:
+            task.rewardFan <= 0
+                ? AppConfig.dailySocialReward
+                : task.rewardFan,
+        completed:
+            task.claimed,
+      );
+    }).toList();
+  }
+
+  Future<SocialTaskStartResult>
+      startTask({
     required String taskId,
   }) async {
     try {
       _requireUser();
 
-      if (taskId.trim().isEmpty) {
-        throw Exception('Invalid social task.');
+      final cleanId =
+          taskId.trim();
+
+      if (cleanId.isEmpty) {
+        throw Exception(
+          'Invalid social task.',
+        );
       }
 
-      final result = await _supabase.rpc(
+      final result =
+          await _supabase.rpc(
         'start_social_task',
         params: <String, dynamic>{
-          'p_task_id': taskId,
+          'p_task_id': cleanId,
         },
       );
 
-      final map = _mapResult(result);
-
-      return SocialTaskStartResult.fromMap(map);
+      return SocialTaskStartResult
+          .fromMap(
+        _mapResult(result),
+      );
     } catch (error) {
       throw _formatError(
         error,
@@ -337,19 +443,19 @@ class SocialTaskService {
     }
   }
 
-  // ============================================================
-  // OPEN TASK LINK
-  // ============================================================
-
   Future<bool> openTask({
     required SocialTask task,
   }) async {
-    if (task.taskUrl.trim().isEmpty) {
+    final url =
+        task.taskUrl.trim();
+
+    if (url.isEmpty) {
       return false;
     }
 
     try {
-      final uri = Uri.tryParse(task.taskUrl);
+      final uri =
+          Uri.tryParse(url);
 
       if (uri == null) {
         return false;
@@ -357,25 +463,24 @@ class SocialTaskService {
 
       return await launchUrl(
         uri,
-        mode: LaunchMode.externalApplication,
+        mode:
+            LaunchMode.externalApplication,
       );
     } catch (error) {
       debugPrint(
-        'SocialTaskService.openTask error: $error',
+        'SocialTaskService.openTask: $error',
       );
 
       return false;
     }
   }
 
-  // ============================================================
-  // OPEN TASK AND REGISTER IT
-  // ============================================================
-
-  Future<SocialTaskStartResult> openAndStartTask({
+  Future<SocialTaskStartResult>
+      openAndStartTask({
     required SocialTask task,
   }) async {
-    final started = await startTask(
+    final started =
+        await startTask(
       taskId: task.id,
     );
 
@@ -383,7 +488,8 @@ class SocialTaskService {
       return started;
     }
 
-    final opened = await openTask(
+    final opened =
+        await openTask(
       task: task,
     );
 
@@ -394,11 +500,16 @@ class SocialTaskService {
         platform: started.platform,
         taskUrl: started.taskUrl,
         rewardFan: started.rewardFan,
-        followVerified: started.followVerified,
-        commentVerified: started.commentVerified,
-        shareVerified: started.shareVerified,
-        canClaim: started.canClaim,
-        claimed: started.claimed,
+        followVerified:
+            started.followVerified,
+        commentVerified:
+            started.commentVerified,
+        shareVerified:
+            started.shareVerified,
+        canClaim:
+            started.canClaim,
+        claimed:
+            started.claimed,
         message:
             'Unable to open the social-media task.',
       );
@@ -407,17 +518,21 @@ class SocialTaskService {
     return started;
   }
 
-  // ============================================================
-  // REFRESH TASK
-  // ============================================================
-
   Future<SocialTask?> getTask({
     required String taskId,
   }) async {
-    final tasks = await getDailyTasks();
+    final cleanId =
+        taskId.trim();
+
+    if (cleanId.isEmpty) {
+      return null;
+    }
+
+    final tasks =
+        await getDailyTasks();
 
     for (final task in tasks) {
-      if (task.id == taskId) {
+      if (task.id == cleanId) {
         return task;
       }
     }
@@ -425,95 +540,68 @@ class SocialTaskService {
     return null;
   }
 
-  // ============================================================
-  // CHECK IF CLAIM IS ALLOWED
-  // ============================================================
+  Future<SocialTask?> findTask(
+    String taskId,
+  ) async {
+    return getTask(
+      taskId: taskId,
+    );
+  }
 
   bool canClaim({
     required SocialTask task,
   }) {
-    if (task.claimed) {
-      return false;
-    }
-
-    if (!task.canClaim) {
-      return false;
-    }
-
-    if (!task.fullyVerified) {
-      return false;
-    }
-
-    return true;
+    return task.canClaim &&
+        task.fullyVerified &&
+        !task.claimed;
   }
 
-  // ============================================================
-  // CLAIM REWARD
-  // ============================================================
-
-  Future<SocialTaskClaimResult> claimReward({
+  Future<SocialTaskClaimResult>
+      claimReward({
     required String taskId,
   }) async {
     try {
       _requireUser();
 
-      if (taskId.trim().isEmpty) {
-        throw Exception('Invalid social task.');
+      final cleanId =
+          taskId.trim();
+
+      if (cleanId.isEmpty) {
+        throw Exception(
+          'Invalid social task.',
+        );
       }
 
-      // ----------------------------------------------------------
-      // IMPORTANT SECURITY RULE
-      // ----------------------------------------------------------
-      //
-      // We do NOT add FAN here ourselves.
-      //
-      // The database function:
-      //
-      // claim_daily_social_reward()
-      //
-      // checks:
-      //
-      // follow_verified
-      // comment_verified
-      // share_verified
-      // can_claim
-      // claimed
-      //
-      // and ONLY THEN adds the configured reward.
-      //
-      // Therefore the Flutter client cannot simply give itself
-      // FAN by changing a local variable.
-      // ----------------------------------------------------------
-
-      final result = await _supabase.rpc(
+      final result =
+          await _supabase.rpc(
         'claim_daily_social_reward',
         params: <String, dynamic>{
-          'p_task_id': taskId,
+          'p_task_id': cleanId,
         },
       );
 
-      final map = _mapResult(result);
-
-      return SocialTaskClaimResult.fromMap(map);
+      return SocialTaskClaimResult
+          .fromMap(
+        _mapResult(result),
+      );
     } catch (error) {
       throw _formatError(
         error,
-        action: 'claim social task reward',
+        action:
+            'claim social task reward',
       );
     }
   }
 
-  // ============================================================
-  // CLAIM ONLY AFTER FRESH BACKEND CHECK
-  // ============================================================
-
-  Future<SocialTaskClaimResult> verifyAndClaim({
+  Future<SocialTaskClaimResult>
+      verifyAndClaim({
     required String taskId,
   }) async {
     try {
       _requireUser();
 
-      final task = await getTask(
+      final task =
+          await getTask(
         taskId: taskId,
       );
 
@@ -529,52 +617,62 @@ class SocialTaskService {
         );
       }
 
-      if (!task.canClaim || !task.fullyVerified) {
+      if (!task.canClaim) {
+        throw Exception(
+          'This task is not ready to claim.',
+        );
+      }
+
+      if (!task.fullyVerified) {
         throw Exception(
           'Your Follow, Comment and Share actions have not been fully verified yet.',
         );
       }
 
-      return await claimReward(
+      return claimReward(
         taskId: taskId,
       );
     } catch (error) {
       throw _formatError(
         error,
-        action: 'verify and claim social task',
+        action:
+            'verify and claim social task',
       );
     }
   }
 
-  // ============================================================
-  // HELPERS
-  // ============================================================
+  Future<bool> openDailyTask(
+    DailySocialTask task,
+  ) async {
+    final uri =
+        Uri.tryParse(
+      task.url,
+    );
 
-  Map<String, dynamic> _mapResult(dynamic result) {
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
+    if (uri == null) {
+      return false;
     }
 
-    if (result is List && result.isNotEmpty) {
-      final first = result.first;
+    try {
+      return await launchUrl(
+        uri,
+        mode:
+            LaunchMode.externalApplication,
+      );
+    } catch (error) {
+      debugPrint(
+        'SocialTaskService.openDailyTask: $error',
+      );
 
-      if (first is Map) {
-        return Map<String, dynamic>.from(first);
-      }
+      return false;
     }
-
-    return <String, dynamic>{
-      'success': false,
-      'message': 'Invalid response from the service.',
-    };
   }
 
-  // ============================================================
-  // PLATFORM DISPLAY NAME
-  // ============================================================
-
-  String platformName(String platform) {
-    switch (platform.toLowerCase()) {
+  String platformName(
+    String platform,
+  ) {
+    switch (
+        _normalizePlatform(platform)) {
       case 'facebook':
         return 'Facebook';
 
@@ -585,6 +683,7 @@ class SocialTaskService {
         return 'TikTok';
 
       case 'x':
+      case 'twitter':
         return 'X';
 
       case 'telegram':
@@ -598,16 +697,18 @@ class SocialTaskService {
     }
   }
 
-  // ============================================================
-  // REQUIRED ACTION DESCRIPTION
-  // ============================================================
-
-  String actionDescription(SocialTask task) {
-    final actions = <String>[];
+  String actionDescription(
+    SocialTask task,
+  ) {
+    final actions =
+        <String>[];
 
     if (task.requiresFollow) {
       actions.add(
-        task.platform.toLowerCase() == 'youtube'
+        _normalizePlatform(
+                  task.platform,
+                ) ==
+                'youtube'
             ? 'Subscribe'
             : 'Follow',
       );
@@ -636,19 +737,15 @@ class SocialTaskService {
     return '${actions[0]}, ${actions[1]} and ${actions[2]}';
   }
 
-  // ============================================================
-  // REWARD TEXT
-  // ============================================================
-
-  String rewardText(SocialTask task) {
+  String rewardText(
+    SocialTask task,
+  ) {
     return '${task.rewardFan.toStringAsFixed(0)} ${AppConfig.miningCoinName}';
   }
 
-  // ============================================================
-  // VERIFICATION TEXT
-  // ============================================================
-
-  String verificationText(SocialTask task) {
+  String verificationText(
+    SocialTask task,
+  ) {
     if (task.claimed) {
       return 'Reward claimed';
     }
@@ -663,4 +760,88 @@ class SocialTaskService {
 
     return 'Waiting for verification';
   }
+
+  Map<String, dynamic> _mapResult(
+    dynamic result,
+  ) {
+    if (result is Map) {
+      return Map<String, dynamic>.from(
+        result,
+      );
+    }
+
+    if (result is List &&
+        result.isNotEmpty) {
+      final first =
+          result.first;
+
+      if (first is Map) {
+        return Map<String, dynamic>.from(
+          first,
+        );
+      }
+    }
+
+    return <String, dynamic>{
+      'success': false,
+      'message':
+          'Invalid response from the service.',
+    };
+  }
+
+  String _normalizePlatform(
+    String value,
+  ) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(' ', '')
+        .replaceAll('_', '')
+        .replaceAll('-', '');
+  }
+
+  String _descriptionForPlatform(
+    String platform,
+  ) {
+    switch (
+        _normalizePlatform(platform)) {
+      case 'facebook':
+        return 'Follow POWER FAN NETWORK on Facebook, then complete the required actions.';
+
+      case 'youtube':
+        return 'Subscribe to POWER FAN NETWORK on YouTube, then complete the required actions.';
+
+      case 'tiktok':
+        return 'Follow POWER FAN NETWORK on TikTok, then complete the required actions.';
+
+      case 'x':
+      case 'twitter':
+        return 'Follow POWER FAN NETWORK on X, then complete the required actions.';
+
+      case 'telegram':
+        return 'Join the official POWER FAN NETWORK Telegram, then complete the required actions.';
+
+      case 'instagram':
+        return 'Follow POWER FAN NETWORK on Instagram, then complete the required actions.';
+
+      default:
+        return '';
+    }
+  }
+
+  static const Map<String, String>
+      _officialLinks = {
+    'facebook':
+        'https://www.facebook.com/share/18ipQKYcCV/',
+    'youtube':
+        'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
+    'tiktok':
+        'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
+    'x':
+        'https://x.com/Powerfannetwork',
+    'telegram':
+        'https://t.me/PowerFannetwork',
+    'instagram':
+        'https://www.instagram.com/powerfannetwok/',
+  };
 }
