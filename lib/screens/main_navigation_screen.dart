@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/mining_service.dart';
-import '../services/social_task_service.dart';
-import '../components/boost_ads_card.dart';
+import '../../services/mining_service.dart';
+import '../../services/social_task_service.dart';
+import '../../components/boost_ads_card.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -49,7 +49,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         const SizedBox(height: 20), const Text('Daily Social Tasks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ..._socialTasks.map((task) => ListTile(
           title: Text(task.title), subtitle: Text(task.description),
-          trailing: task.claimed ? const Icon(Icons.check, color: Colors.green) : ElevatedButton(child: Text('Claim'), onPressed: () => _openLinkAndClaim(task)),
+          trailing: task.claimed ? const Icon(Icons.check, color: Colors.green) : ElevatedButton(child: const Text('Claim'), onPressed: () => _openLinkAndClaim(task)),
         )),
       ]),
     );
