@@ -198,11 +198,6 @@ class _MainNavigationScreenState
             kycStatus.kyc2Eligible;
 
         _socialTasks = socialTasks;
-
-        if (profile.referralCode != null) {
-          // Profile data is intentionally loaded
-          // here so the service stays synchronized.
-        }
       });
 
       await _refreshAdCount();
