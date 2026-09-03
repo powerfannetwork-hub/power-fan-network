@@ -61,13 +61,13 @@ class _LoginPageState extends State<LoginPage> {
           _passwordController.text;
 
       if (email.isEmpty) {
-        throw const AuthException(
+        throw Exception(
           'Email is required.',
         );
       }
 
       if (password.isEmpty) {
-        throw const AuthException(
+        throw Exception(
           'Password is required.',
         );
       }
@@ -82,13 +82,13 @@ class _LoginPageState extends State<LoginPage> {
             _usernameController.text.trim();
 
         if (username.isEmpty) {
-          throw const AuthException(
+          throw Exception(
             'Username is required.',
           );
         }
 
         if (password.length < 6) {
-          throw const AuthException(
+          throw Exception(
             'Password must be at least 6 characters.',
           );
         }
@@ -106,7 +106,8 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      final appState = context.read<AppState>();
+      final appState =
+          context.read<AppState>();
 
       await appState.refresh();
 
@@ -119,21 +120,18 @@ class _LoginPageState extends State<LoginPage> {
         ),
         (route) => false,
       );
-    } on AuthException catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        _error = error.message;
-      });
     } catch (error) {
       if (!mounted) return;
 
+      String message = error.toString();
+
+      if (message.startsWith('Exception: ')) {
+        message =
+            message.substring('Exception: '.length);
+      }
+
       setState(() {
-        _error =
-            error.toString().replaceFirst(
-                  'Exception: ',
-                  '',
-                );
+        _error = message;
       });
     } finally {
       if (!mounted) return;
