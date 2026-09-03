@@ -38,26 +38,22 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Force Gradle Wrapper 8.13
+      - name: Check Gradle Wrapper
         shell: bash
         run: |
           set -e
 
-          WRAPPER_FILE="android/gradle/wrapper/gradle-wrapper.properties"
+          echo "Current directory:"
+          pwd
 
-          echo "Updating Gradle Wrapper:"
-          echo "$WRAPPER_FILE"
+          echo "Project files:"
+          ls -la
 
-          cat > "$WRAPPER_FILE" <<'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
-          EOF
+          echo "Android directory:"
+          ls -la android
 
-          echo "Final gradle-wrapper.properties:"
-          cat "$WRAPPER_FILE"
+          echo "Gradle wrapper properties:"
+          cat android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Verify Gradle Wrapper
         working-directory: android
