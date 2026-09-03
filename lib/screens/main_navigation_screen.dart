@@ -131,10 +131,7 @@ class _MainNavigationScreenState
 
       final socialTasks =
           results[5] as List<DailySocialTask>;
-
-      final profile =
-          results[6] as ProfileData;
-
+    
       final miningStarted =
           _parseDateTime(
         miningData['started_at'] ??
