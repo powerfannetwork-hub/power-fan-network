@@ -1,10 +1,10 @@
-name: Flutter CI
+name: Build POWER FAN NETWORK APK
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Setup Flutter 3.24.0
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -39,35 +39,14 @@ jobs:
         run: flutter pub get
 
       - name: Prepare Gradle Wrapper
+        working-directory: android
         shell: bash
         run: |
           set -e
 
-          echo "Project directory:"
-          pwd
-
-          echo "Checking Android project:"
-          ls -la android
-
-          echo "Checking existing wrapper files:"
-
-          if [ -f "android/gradlew" ]; then
-            echo "android/gradlew already exists."
-          else
-            echo "android/gradlew does not exist."
-          fi
-
-          if [ -f "android/gradle/wrapper/gradle-wrapper.properties" ]; then
-            echo "Correct wrapper properties already exist."
-          else
-            echo "Wrapper properties do not exist at expected location."
-          fi
-
-          cd android
+          echo "Preparing Gradle wrapper..."
 
           mkdir -p gradle/wrapper
-
-          echo "Generating Gradle Wrapper 8.13..."
 
           gradle wrapper \
             --gradle-version 8.13 \
@@ -76,22 +55,7 @@ jobs:
 
           chmod +x gradlew
 
-          echo "Generated wrapper files:"
-          ls -la
-          ls -la gradle/wrapper
-
-          echo "Gradle wrapper properties:"
-          cat gradle/wrapper/gradle-wrapper.properties
-
-      - name: Verify Gradle Wrapper
-        working-directory: android
-        shell: bash
-        run: |
-          set -e
-
-          chmod +x gradlew
-
-          echo "Gradle Wrapper version:"
+          echo "Gradle wrapper created successfully."
           ./gradlew --version
 
       - name: Fix Flutter 3.24 Color API Compatibility
@@ -101,105 +65,126 @@ jobs:
 
           echo "Searching all Dart files for withValues()..."
 
-          FILES=$(grep -RIl \
-            --include="*.dart" \
-            "\.withValues(" \
-            lib || true)
+          FILES=$(grep -RIl --include="*.dart" "\.withValues(" lib || true)
 
           if [ -z "$FILES" ]; then
-            echo "No withValues() usage found."
+            echo "No withValues() found."
           else
             echo "Files containing withValues():"
             echo "$FILES"
 
-            while IFS= read -r file; do
-              [ -z "$file" ] && continue
-
+            for file in $FILES; do
               echo "Fixing: $file"
 
-              sed -i \
-                -E 's/\.withValues\([[:space:]]*alpha:[[:space:]]*/.withOpacity(/g' \
-                "$file"
+              python3 - "$file" <<'PY'
+          import sys
+          import re
 
-            done <<< "$FILES"
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          # Convert:
+          # Colors.white.withValues(
+          #   alpha: 0.5,
+          # )
+          #
+          # into:
+          # Colors.white.withOpacity(0.5)
+
+          pattern = r'\.withValues\(\s*alpha\s*:\s*([^,\)]+)\s*,?\s*\)'
+
+          text = re.sub(
+              pattern,
+              r'.withOpacity(\1)',
+              text,
+              flags=re.MULTILINE,
+          )
+
+          # Also handle single-line forms:
+          # .withValues(alpha: 0.5)
+          pattern_single = r'\.withValues\(\s*alpha\s*:\s*([^,\)]+)\s*\)'
+
+          text = re.sub(
+              pattern_single,
+              r'.withOpacity(\1)',
+              text,
+          )
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(text)
+          PY
+            done
           fi
 
           echo "Checking for remaining withValues()..."
 
-          if grep -RIn \
-            --include="*.dart" \
-            "\.withValues(" \
-            lib; then
-
+          if grep -RIn --include="*.dart" "\.withValues(" lib; then
             echo "ERROR: withValues() still exists in the Dart source."
             exit 1
           fi
 
-          echo "SUCCESS: No withValues() usages remain."
+          echo "SUCCESS: No withValues() remains."
 
-      - name: Force AppLovin MAX compileSdk to 36
+      - name: Fix AppLovin Compile SDK
         shell: bash
         run: |
           set -e
 
-          APPLOVIN_DIR="$HOME/.pub-cache/hosted/pub.dev/applovin_max-4.6.4/android"
+          echo "Checking Android compile SDK..."
 
-          if [ ! -d "$APPLOVIN_DIR" ]; then
-            echo "AppLovin MAX directory not found:"
-            echo "$APPLOVIN_DIR"
-            exit 1
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' \
+              android/app/build.gradle.kts
+
+            sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' \
+              android/app/build.gradle.kts
           fi
 
-          echo "AppLovin MAX directory found:"
-          echo "$APPLOVIN_DIR"
+          echo "Android SDK configuration:"
+          grep -nE "compileSdk|targetSdk|minSdk" \
+            android/app/build.gradle.kts || true
 
-          BUILD_FILE="$APPLOVIN_DIR/build.gradle"
+      - name: Analyze Flutter Project
+        run: flutter analyze
 
-          if [ -f "$BUILD_FILE" ]; then
+      - name: Build Release APK
+        working-directory: android
+        shell: bash
+        run: |
+          set -e
 
-            echo "Original AppLovin build.gradle:"
-            cat "$BUILD_FILE"
+          chmod +x gradlew
 
-            sed -i \
-              -E 's/compileSdkVersion[[:space:]]+[0-9]+/compileSdkVersion 36/g' \
-              "$BUILD_FILE"
-
-            sed -i \
-              -E 's/compileSdk[[:space:]]+[0-9]+/compileSdk 36/g' \
-              "$BUILD_FILE"
-
-            echo "Updated AppLovin build.gradle:"
-            cat "$BUILD_FILE"
-
-          else
-            echo "AppLovin build.gradle not found."
-            exit 1
-          fi
-
-      - name: Analyze
-        run: flutter analyze lib --no-fatal-infos --no-fatal-warnings || true
-
-      - name: Build APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+          ./gradlew \
+            assembleRelease \
+            --no-daemon \
+            --stacktrace
 
       - name: Verify APK
         shell: bash
         run: |
           set -e
 
-          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+          echo "Searching for APK..."
 
-          if [ ! -f "$APK_PATH" ]; then
-            echo "ERROR: APK was not generated."
+          APK=$(find android/app/build/outputs/apk/release \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not produced."
             exit 1
           fi
 
-          echo "APK generated successfully:"
-          ls -lh "$APK_PATH"
+          echo "APK successfully created:"
+          ls -lh "$APK"
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: power-fan-network-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: power-fan-network-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
