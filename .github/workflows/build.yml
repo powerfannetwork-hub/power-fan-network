@@ -55,7 +55,6 @@ jobs:
 
           chmod +x gradlew
 
-          echo "Gradle wrapper created successfully."
           ./gradlew --version
 
       - name: Fix Flutter 3.24 Color API Compatibility
@@ -63,16 +62,11 @@ jobs:
         run: |
           set -e
 
-          echo "Searching all Dart files for withValues()..."
+          echo "Searching Dart files for withValues()..."
 
           FILES=$(grep -RIl --include="*.dart" "\.withValues(" lib || true)
 
-          if [ -z "$FILES" ]; then
-            echo "No withValues() found."
-          else
-            echo "Files containing withValues():"
-            echo "$FILES"
-
+          if [ -n "$FILES" ]; then
             for file in $FILES; do
               echo "Fixing: $file"
 
@@ -108,10 +102,8 @@ jobs:
             done
           fi
 
-          echo "Checking for remaining withValues()..."
-
           if grep -RIn --include="*.dart" "\.withValues(" lib; then
-            echo "ERROR: withValues() still exists in the Dart source."
+            echo "ERROR: withValues() still exists."
             exit 1
           fi
 
@@ -122,55 +114,59 @@ jobs:
         run: |
           set -e
 
-          echo "Configuring application compileSdk and targetSdk..."
+          echo "Configuring application SDK..."
 
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' \
-              android/app/build.gradle.kts
+          sed -i -E 's/compileSdk[[:space:]]*=[[:space:]]*[0-9]+/compileSdk = 36/g' \
+            android/app/build.gradle.kts
 
-            sed -i 's/targetSdk = [0-9]*/targetSdk = 36/g' \
-              android/app/build.gradle.kts
-          fi
+          sed -i -E 's/targetSdk[[:space:]]*=[[:space:]]*[0-9]+/targetSdk = 36/g' \
+            android/app/build.gradle.kts
 
-          echo "Application Android SDK configuration:"
+          echo "Application SDK:"
           grep -nE "compileSdk|targetSdk|minSdk" \
             android/app/build.gradle.kts || true
 
-      - name: Fix AppLovin MAX Compile SDK
+      - name: Force AppLovin MAX Compile SDK 36
         shell: bash
         run: |
           set -e
 
-          echo "Locating applovin_max Android module..."
+          echo "Searching ALL AppLovin MAX Android modules..."
 
-          APPLOVIN_DIR=$(find "$HOME/.pub-cache" \
+          APPLOVIN_DIRS=$(find "$HOME/.pub-cache/hosted/pub.dev" \
             -type d \
-            -path "*/hosted/pub.dev/applovin_max-*/android" \
-            | head -n 1)
+            -path "*/applovin_max-*/android" \
+            2>/dev/null || true)
 
-          if [ -z "$APPLOVIN_DIR" ]; then
-            echo "ERROR: applovin_max Android module was not found."
+          if [ -z "$APPLOVIN_DIRS" ]; then
+            echo "ERROR: AppLovin MAX Android module was not found."
             exit 1
           fi
 
-          echo "Found AppLovin Android module:"
-          echo "$APPLOVIN_DIR"
+          echo "Found AppLovin directories:"
+          echo "$APPLOVIN_DIRS"
 
-          BUILD_FILE="$APPLOVIN_DIR/build.gradle"
+          for DIR in $APPLOVIN_DIRS; do
+            echo ""
+            echo "========================================"
+            echo "Patching AppLovin:"
+            echo "$DIR"
+            echo "========================================"
 
-          if [ ! -f "$BUILD_FILE" ]; then
-            BUILD_FILE="$APPLOVIN_DIR/build.gradle.kts"
-          fi
+            find "$DIR" \
+              -type f \
+              \( -name "build.gradle" -o -name "build.gradle.kts" \) \
+              -print
 
-          if [ ! -f "$BUILD_FILE" ]; then
-            echo "ERROR: AppLovin build.gradle/build.gradle.kts not found."
-            exit 1
-          fi
+            GRADLE_FILES=$(find "$DIR" \
+              -type f \
+              \( -name "build.gradle" -o -name "build.gradle.kts" \) \
+              -print)
 
-          echo "Using build file:"
-          echo "$BUILD_FILE"
+            for FILE in $GRADLE_FILES; do
+              echo "Patching: $FILE"
 
-          python3 - "$BUILD_FILE" <<'PY'
+              python3 - "$FILE" <<'PY'
           import sys
           import re
 
@@ -183,7 +179,13 @@ jobs:
 
           # Groovy:
           # compileSdkVersion 31
-          # compileSdkVersion 34
+          # compileSdkVersion flutter.compileSdkVersion
+          text = re.sub(
+              r'compileSdkVersion\s+flutter\.compileSdkVersion',
+              'compileSdkVersion 36',
+              text
+          )
+
           text = re.sub(
               r'compileSdkVersion\s+\d+',
               'compileSdkVersion 36',
@@ -198,27 +200,74 @@ jobs:
               text
           )
 
-          # Some Android library projects use:
-          # compileSdkVersion flutter.compileSdkVersion
+          # Kotlin DSL alternative:
+          # compileSdkVersion(31)
           text = re.sub(
-              r'compileSdkVersion\s+flutter\.compileSdkVersion',
-              'compileSdkVersion 36',
+              r'compileSdkVersion\s*\(\s*\d+\s*\)',
+              'compileSdkVersion(36)',
               text
           )
 
-          if text == original:
-              print("WARNING: No existing compileSdk declaration was replaced.")
-              print("Showing Android build file:")
-              print(text)
-          else:
+          # Groovy alternative:
+          # compileSdkVersion(31)
+          text = re.sub(
+              r'compileSdkVersion\s*\(\s*\d+\s*\)',
+              'compileSdkVersion(36)',
+              text
+          )
+
+          if text != original:
               with open(path, "w", encoding="utf-8") as f:
                   f.write(text)
 
-              print("SUCCESS: AppLovin MAX compileSdk patched to 36.")
+              print("PATCHED:", path)
+          else:
+              print("No compileSdk declaration changed in:", path)
           PY
+            done
+          done
 
-          echo "Final AppLovin compileSdk configuration:"
-          grep -nE "compileSdk|compileSdkVersion" "$BUILD_FILE" || true
+          echo ""
+          echo "Verifying EVERY AppLovin Gradle file..."
+
+          for DIR in $APPLOVIN_DIRS; do
+            echo ""
+            echo "Checking:"
+            echo "$DIR"
+
+            grep -RInE \
+              "compileSdkVersion|compileSdk[[:space:]]*=" \
+              "$DIR" \
+              --include="build.gradle" \
+              --include="build.gradle.kts" \
+              || true
+          done
+
+          echo ""
+          echo "Searching for AppLovin Android compileSdk 31..."
+
+          if grep -RInE \
+            "compileSdkVersion[[:space:]]+31|compileSdk[[:space:]]*=[[:space:]]*31" \
+            $APPLOVIN_DIRS \
+            --include="build.gradle" \
+            --include="build.gradle.kts"; then
+
+            echo "ERROR: AppLovin MAX still contains compileSdk 31."
+            exit 1
+          fi
+
+          echo "SUCCESS: AppLovin MAX compileSdk 31 declarations were removed."
+
+      - name: Clean Android Build
+        working-directory: android
+        shell: bash
+        run: |
+          set -e
+
+          chmod +x gradlew
+
+          ./gradlew clean \
+            --no-daemon
 
       - name: Analyze Flutter Project
         run: flutter analyze
