@@ -89,15 +89,12 @@ class WalletScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'AFAM Balance',
                     style: TextStyle(
-                      color: Colors.white.withValues(
-                        alpha: 0.78,
-                      ),
+                      color: Colors.white.withOpacity(0.78),
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -115,9 +112,7 @@ class WalletScreen extends StatelessWidget {
                   Text(
                     'Original coin balance',
                     style: TextStyle(
-                      color: Colors.white.withValues(
-                        alpha: 0.70,
-                      ),
+                      color: Colors.white.withOpacity(0.70),
                       fontSize: 12,
                     ),
                   ),
@@ -134,17 +129,14 @@ class WalletScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(
-                      alpha: 0.035,
-                    ),
+                    color: Colors.black.withOpacity(0.035),
                     blurRadius: 14,
                     offset: const Offset(0, 5),
                   ),
                 ],
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'FAN Balance',
@@ -183,17 +175,14 @@ class WalletScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(
-                      alpha: 0.035,
-                    ),
+                    color: Colors.black.withOpacity(0.035),
                     blurRadius: 14,
                     offset: const Offset(0, 5),
                   ),
                 ],
               ),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
@@ -201,11 +190,8 @@ class WalletScreen extends StatelessWidget {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: _green.withValues(
-                            alpha: 0.10,
-                          ),
-                          borderRadius:
-                              BorderRadius.circular(14),
+                          color: _green.withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Icon(
                           Icons.swap_horiz_rounded,
@@ -216,15 +202,13 @@ class WalletScreen extends StatelessWidget {
                       const SizedBox(width: 13),
                       const Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'FAN → AFAM Migration',
                               style: TextStyle(
                                 fontSize: 16,
-                                fontWeight:
-                                    FontWeight.w800,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                             SizedBox(height: 3),
@@ -247,11 +231,8 @@ class WalletScreen extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(15),
                     decoration: BoxDecoration(
-                      color: _purple.withValues(
-                        alpha: 0.06,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(15),
+                      color: _purple.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(15),
                     ),
                     child: const Row(
                       children: [
@@ -284,8 +265,7 @@ class WalletScreen extends StatelessWidget {
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(15),
+                          borderRadius: BorderRadius.circular(15),
                         ),
                       ),
                       onPressed: () {
@@ -317,8 +297,7 @@ class WalletScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     Icons.info_outline_rounded,
