@@ -3,13 +3,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthService {
   AuthService._();
 
-  static final AuthService instance = AuthService._();
+  static final AuthService instance =
+      AuthService._();
 
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase =
+      Supabase.instance.client;
 
-  User? get currentUser => _supabase.auth.currentUser;
+  User? get currentUser =>
+      _supabase.auth.currentUser;
 
-  Session? get currentSession => _supabase.auth.currentSession;
+  Session? get currentSession =>
+      _supabase.auth.currentSession;
 
   Stream<AuthState> get authStateChanges =>
       _supabase.auth.onAuthStateChange;
@@ -20,16 +24,25 @@ class AuthService {
     required String password,
     String? referralCode,
   }) async {
-    final cleanUsername = username.trim();
-    final cleanEmail = email.trim().toLowerCase();
-    final cleanReferral = referralCode?.trim();
+    final cleanUsername =
+        username.trim();
+
+    final cleanEmail =
+        email.trim().toLowerCase();
+
+    final cleanReferral =
+        referralCode?.trim();
 
     if (cleanUsername.isEmpty) {
-      throw const AuthException('Username is required.');
+      throw const AuthException(
+        'Username is required.',
+      );
     }
 
     if (cleanEmail.isEmpty) {
-      throw const AuthException('Email is required.');
+      throw const AuthException(
+        'Email is required.',
+      );
     }
 
     if (password.length < 6) {
@@ -38,12 +51,14 @@ class AuthService {
       );
     }
 
-    final response = await _supabase.auth.signUp(
+    final response =
+        await _supabase.auth.signUp(
       email: cleanEmail,
       password: password,
-      data: {
+      data: <String, dynamic>{
         'username': cleanUsername,
-        'referral_code': cleanReferral ?? '',
+        'referral_code':
+            cleanReferral ?? '',
       },
     );
 
@@ -53,8 +68,6 @@ class AuthService {
       );
     }
 
-    // Idan Supabase Confirm Email yana ON,
-    // session zai kasance null.
     if (response.session == null) {
       throw const AuthException(
         'Email confirmation is enabled. Please disable Confirm email in Supabase Authentication settings.',
@@ -68,22 +81,29 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final cleanEmail = email.trim().toLowerCase();
+    final cleanEmail =
+        email.trim().toLowerCase();
 
     if (cleanEmail.isEmpty) {
-      throw const AuthException('Email is required.');
+      throw const AuthException(
+        'Email is required.',
+      );
     }
 
     if (password.isEmpty) {
-      throw const AuthException('Password is required.');
+      throw const AuthException(
+        'Password is required.',
+      );
     }
 
-    final response = await _supabase.auth.signInWithPassword(
+    final response =
+        await _supabase.auth.signInWithPassword(
       email: cleanEmail,
       password: password,
     );
 
-    if (response.user == null || response.session == null) {
+    if (response.user == null ||
+        response.session == null) {
       throw const AuthException(
         'Login failed. Please check your email and password.',
       );
@@ -96,13 +116,21 @@ class AuthService {
     await _supabase.auth.signOut();
   }
 
-  Future<void> resetPassword(String email) async {
-    final cleanEmail = email.trim().toLowerCase();
+  Future<void> resetPassword(
+    String email,
+  ) async {
+    final cleanEmail =
+        email.trim().toLowerCase();
 
     if (cleanEmail.isEmpty) {
-      throw const AuthException('Email is required.');
+      throw const AuthException(
+        'Email is required.',
+      );
     }
 
-    await _supabase.auth.resetPasswordForEmail(cleanEmail);
+    await _supabase.auth
+        .resetPasswordForEmail(
+      cleanEmail,
+    );
   }
 }
