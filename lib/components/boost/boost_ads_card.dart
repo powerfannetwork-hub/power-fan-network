@@ -30,7 +30,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
   Future<void> _loadAds() async {
     final active = await _miningService.getActiveMining();
-    final startedAt = _miningService._parseDateTime(active['started_at']);
+    final startedAt = _parseDateTime(active['started_at']); // YANZU ZAI GANE SHI
     if (startedAt != null) {
       final ads = await _miningService.getAdsWatchedForSession(startedAt: startedAt);
       if (mounted) setState(() { _adsWatched = ads; });
@@ -83,7 +83,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: !widget.isMining || isFull || _loading ? null : _watchAd, // ZAI KASHE IDAN YA CIKA 7
+              onPressed: !widget.isMining || isFull || _loading ? null : _watchAd,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B159B),
                 disabledBackgroundColor: Colors.grey.shade300,
@@ -103,5 +103,12 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)..hideCurrentSnackBar()..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // WANNAN SHINE ABIN DA YA BACE
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value.toLocal();
+    return DateTime.tryParse(value.toString())?.toLocal();
   }
 }
