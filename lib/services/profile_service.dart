@@ -120,27 +120,19 @@ class ProfileData {
       fanBalance: fanBalance ?? this.fanBalance,
       afamBalance: afamBalance ?? this.afamBalance,
       miningRate: miningRate ?? this.miningRate,
-      activeReferrals:
-          activeReferrals ?? this.activeReferrals,
-      dailyAdsWatched:
-          dailyAdsWatched ?? this.dailyAdsWatched,
+      activeReferrals: activeReferrals ?? this.activeReferrals,
+      dailyAdsWatched: dailyAdsWatched ?? this.dailyAdsWatched,
       adBoost: adBoost ?? this.adBoost,
       miningActive: miningActive ?? this.miningActive,
-      miningStartedAt:
-          miningStartedAt ?? this.miningStartedAt,
+      miningStartedAt: miningStartedAt ?? this.miningStartedAt,
       miningEndsAt: miningEndsAt ?? this.miningEndsAt,
       consecutiveCheckIns:
           consecutiveCheckIns ?? this.consecutiveCheckIns,
-      kyc1Eligible:
-          kyc1Eligible ?? this.kyc1Eligible,
-      kyc1Verified:
-          kyc1Verified ?? this.kyc1Verified,
-      kyc2Eligible:
-          kyc2Eligible ?? this.kyc2Eligible,
-      kyc2Verified:
-          kyc2Verified ?? this.kyc2Verified,
-      kyc3Verified:
-          kyc3Verified ?? this.kyc3Verified,
+      kyc1Eligible: kyc1Eligible ?? this.kyc1Eligible,
+      kyc1Verified: kyc1Verified ?? this.kyc1Verified,
+      kyc2Eligible: kyc2Eligible ?? this.kyc2Eligible,
+      kyc2Verified: kyc2Verified ?? this.kyc2Verified,
+      kyc3Verified: kyc3Verified ?? this.kyc3Verified,
       lastSocialClaimDate:
           lastSocialClaimDate ?? this.lastSocialClaimDate,
       createdAt: createdAt ?? this.createdAt,
@@ -199,7 +191,7 @@ class ProfileData {
       return false;
     }
 
-    return value.toString().toLowerCase() == 'true';
+    return value.toString().trim().toLowerCase() == 'true';
   }
 
   static DateTime? _dateTimeValue(dynamic value) {
@@ -208,18 +200,22 @@ class ProfileData {
     }
 
     if (value is DateTime) {
-      return value;
+      return value.toLocal();
     }
 
-    return DateTime.tryParse(value.toString());
+    return DateTime.tryParse(
+      value.toString(),
+    )?.toLocal();
   }
 }
 
 class ProfileService {
-  ProfileService._();
+  ProfileService();
+
+  ProfileService._internal();
 
   static final ProfileService instance =
-      ProfileService._();
+      ProfileService._internal();
 
   final SupabaseClient _supabase =
       Supabase.instance.client;
