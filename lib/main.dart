@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'screens/main_navigation_screen.dart'; // idan wannan baya aiki sai ka canza shi zuwa sunan login screen naka
+import 'screens/main_navigation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,9 +21,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Supabase.instance.client.auth.currentUser == null
-          ? const MainNavigationScreen() // idan baka da login, sai ka fara da wannan kai tsaye
-          : const MainNavigationScreen(),
+      home: const MainNavigationScreen(), // kai tsaye muna shiga app
     );
   }
 }
