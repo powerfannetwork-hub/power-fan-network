@@ -27,7 +27,7 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
@@ -37,6 +37,38 @@ jobs:
 
       - name: Get Dependencies
         run: flutter pub get
+
+      - name: Force Gradle Wrapper 8.13
+        shell: bash
+        run: |
+          set -e
+
+          WRAPPER_FILE="android/gradle/wrapper/gradle-wrapper.properties"
+
+          echo "Updating Gradle Wrapper:"
+          echo "$WRAPPER_FILE"
+
+          cat > "$WRAPPER_FILE" <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip
+          EOF
+
+          echo "Final gradle-wrapper.properties:"
+          cat "$WRAPPER_FILE"
+
+      - name: Verify Gradle Wrapper
+        working-directory: android
+        shell: bash
+        run: |
+          set -e
+
+          chmod +x gradlew
+
+          echo "Gradle Wrapper version:"
+          ./gradlew --version
 
       - name: Force AppLovin MAX compileSdk to 36
         shell: bash
