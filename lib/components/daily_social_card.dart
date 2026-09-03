@@ -50,7 +50,8 @@ class DailySocialCard extends StatelessWidget {
   static const Map<String, String> officialLinks = {
     'facebook': 'https://www.facebook.com/share/18ipQKYcCV/',
     'youtube': 'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
-    'tiktok': 'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
+    'tiktok':
+        'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
     'x': 'https://x.com/Powerfannetwork',
     'telegram': 'https://t.me/PowerFannetwork',
     'instagram': 'https://www.instagram.com/powerfannetwok/',
@@ -60,32 +61,38 @@ class DailySocialCard extends StatelessWidget {
     {
       'id': 'facebook',
       'platform': 'Facebook',
-      'description': 'Follow POWER FAN NETWORK on Facebook.',
+      'description':
+          'Follow POWER FAN NETWORK on Facebook.',
     },
     {
       'id': 'youtube',
       'platform': 'YouTube',
-      'description': 'Subscribe to POWER FAN NETWORK on YouTube.',
+      'description':
+          'Subscribe to POWER FAN NETWORK on YouTube.',
     },
     {
       'id': 'tiktok',
       'platform': 'TikTok',
-      'description': 'Follow POWER FAN NETWORK on TikTok.',
+      'description':
+          'Follow POWER FAN NETWORK on TikTok.',
     },
     {
       'id': 'x',
       'platform': 'X',
-      'description': 'Follow POWER FAN NETWORK on X.',
+      'description':
+          'Follow POWER FAN NETWORK on X.',
     },
     {
       'id': 'telegram',
       'platform': 'Telegram',
-      'description': 'Join the official POWER FAN NETWORK Telegram.',
+      'description':
+          'Join the official POWER FAN NETWORK Telegram.',
     },
     {
       'id': 'instagram',
       'platform': 'Instagram',
-      'description': 'Follow POWER FAN NETWORK on Instagram.',
+      'description':
+          'Follow POWER FAN NETWORK on Instagram.',
     },
   ];
 
@@ -148,7 +155,8 @@ class DailySocialCard extends StatelessWidget {
   }
 
   String _getPlatformKey(DailySocialTask task) {
-    final platform = _normalizePlatform(task.platform);
+    final platform =
+        _normalizePlatform(task.platform);
 
     if (platform.contains('facebook')) {
       return 'facebook';
@@ -275,7 +283,9 @@ class DailySocialCard extends StatelessWidget {
             : task.title,
         description: task.description,
         url: officialUrl ?? task.url,
-        reward: task.reward <= 0 ? 10.0 : task.reward,
+        reward: task.reward <= 0
+            ? 10.0
+            : task.reward,
         completed: task.completed,
       );
     }).toList();
@@ -283,13 +293,15 @@ class DailySocialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayTasks = _buildDisplayTasks();
+    final displayTasks =
+        _buildDisplayTasks();
 
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(20),
         side: BorderSide(
           color: Colors.grey.shade200,
         ),
@@ -297,21 +309,28 @@ class DailySocialCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
                   width: 44,
                   height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3B159B)
-                        .withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(14),
+                  decoration:
+                      BoxDecoration(
+                    color: const Color(
+                      0xFF3B159B,
+                    ).withOpacity(0.10),
+                    borderRadius:
+                        BorderRadius.circular(
+                      14,
+                    ),
                   ),
                   child: const Icon(
                     Icons.public,
-                    color: Color(0xFF3B159B),
+                    color:
+                        Color(0xFF3B159B),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -324,7 +343,8 @@ class DailySocialCard extends StatelessWidget {
                         'Daily Social Tasks',
                         style: TextStyle(
                           fontSize: 17,
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                         ),
                       ),
                       SizedBox(height: 3),
@@ -340,23 +360,26 @@ class DailySocialCard extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 16),
-
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF3B159B)
-                    .withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(14),
+              padding:
+                  const EdgeInsets.all(12),
+              decoration:
+                  BoxDecoration(
+                color: const Color(
+                  0xFF3B159B,
+                ).withOpacity(0.06),
+                borderRadius:
+                    BorderRadius.circular(14),
               ),
               child: const Row(
                 children: [
                   Icon(
                     Icons.card_giftcard,
                     size: 20,
-                    color: Color(0xFF3B159B),
+                    color:
+                        Color(0xFF3B159B),
                   ),
                   SizedBox(width: 8),
                   Expanded(
@@ -364,16 +387,15 @@ class DailySocialCard extends StatelessWidget {
                       'Complete your daily social tasks and earn FAN rewards.',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-
             const SizedBox(height: 14),
-
             ...displayTasks.map(
               (task) => _buildTask(
                 context,
@@ -394,11 +416,17 @@ class DailySocialCard extends StatelessWidget {
         _platformColor(task.platform);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+      margin:
+          const EdgeInsets.only(
+        bottom: 10,
+      ),
+      padding:
+          const EdgeInsets.all(12),
+      decoration:
+          BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius:
+            BorderRadius.circular(15),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -408,21 +436,22 @@ class DailySocialCard extends StatelessWidget {
           Container(
             width: 42,
             height: 42,
-            decoration: BoxDecoration(
-              color: platformColor.withValues(
-                alpha: 0.10,
-              ),
-              borderRadius: BorderRadius.circular(12),
+            decoration:
+                BoxDecoration(
+              color: platformColor
+                  .withOpacity(0.10),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: Icon(
-              _platformIcon(task.platform),
+              _platformIcon(
+                task.platform,
+              ),
               color: platformColor,
               size: 22,
             ),
           ),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -430,17 +459,21 @@ class DailySocialCard extends StatelessWidget {
               children: [
                 Text(
                   task.platform,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   task.description,
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(
                     fontSize: 11,
                     color: Colors.grey,
                   ),
@@ -448,74 +481,98 @@ class DailySocialCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '+${task.reward.toStringAsFixed(0)} FAN',
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF159B61),
+                    fontWeight:
+                        FontWeight.bold,
+                    color:
+                        Color(0xFF159B61),
                   ),
                 ),
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
           Column(
             children: [
               SizedBox(
                 height: 34,
-                child: OutlinedButton(
+                child:
+                    OutlinedButton(
                   onPressed: loading
                       ? null
-                      : () => _openSocialLink(
+                      : () =>
+                          _openSocialLink(
                             context,
                             task,
                           ),
-                  style: OutlinedButton.styleFrom(
+                  style:
+                      OutlinedButton.styleFrom(
                     padding:
-                        const EdgeInsets.symmetric(
+                        const EdgeInsets
+                            .symmetric(
                       horizontal: 10,
                     ),
-                    shape: RoundedRectangleBorder(
+                    shape:
+                        RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius.circular(10),
+                          BorderRadius
+                              .circular(
+                        10,
+                      ),
                     ),
                   ),
-                  child: const Text(
+                  child:
+                      const Text(
                     'OPEN',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       fontSize: 10,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
               ),
-
               const SizedBox(height: 5),
-
               SizedBox(
                 height: 34,
-                child: ElevatedButton(
-                  onPressed: loading || task.completed
+                child:
+                    ElevatedButton(
+                  onPressed: loading ||
+                          task.completed
                       ? null
                       : onClaim == null
                           ? null
-                          : () => onClaim!(task),
-                  style: ElevatedButton.styleFrom(
+                          : () =>
+                              onClaim!(
+                                task,
+                              ),
+                  style:
+                      ElevatedButton.styleFrom(
                     backgroundColor:
-                        const Color(0xFF3B159B),
-                    foregroundColor: Colors.white,
+                        const Color(
+                      0xFF3B159B,
+                    ),
+                    foregroundColor:
+                        Colors.white,
                     disabledBackgroundColor:
                         Colors.grey.shade300,
                     disabledForegroundColor:
                         Colors.grey.shade600,
                     padding:
-                        const EdgeInsets.symmetric(
+                        const EdgeInsets
+                            .symmetric(
                       horizontal: 10,
                     ),
-                    shape: RoundedRectangleBorder(
+                    shape:
+                        RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius.circular(10),
+                          BorderRadius
+                              .circular(
+                        10,
+                      ),
                     ),
                     elevation: 0,
                   ),
@@ -526,9 +583,11 @@ class DailySocialCard extends StatelessWidget {
                         )
                       : const Text(
                           'CLAIM',
-                          style: TextStyle(
+                          style:
+                              TextStyle(
                             fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontWeight:
+                                FontWeight.bold,
                           ),
                         ),
                 ),
