@@ -38,22 +38,28 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Check Gradle Wrapper
+      - name: Fix Gradle Wrapper Location
         shell: bash
         run: |
           set -e
 
-          echo "Current directory:"
-          pwd
+          cd android
 
-          echo "Project files:"
+          mkdir -p gradle/wrapper
+
+          gradle wrapper \
+            --gradle-version 8.13 \
+            --distribution-type bin \
+            --no-validate-url
+
+          chmod +x gradlew
+
+          echo "Generated Gradle Wrapper:"
           ls -la
+          ls -la gradle/wrapper
 
-          echo "Android directory:"
-          ls -la android
-
-          echo "Gradle wrapper properties:"
-          cat android/gradle/wrapper/gradle-wrapper.properties
+          echo "Wrapper properties:"
+          cat gradle/wrapper/gradle-wrapper.properties
 
       - name: Verify Gradle Wrapper
         working-directory: android
@@ -63,7 +69,6 @@ jobs:
 
           chmod +x gradlew
 
-          echo "Gradle Wrapper version:"
           ./gradlew --version
 
       - name: Force AppLovin MAX compileSdk to 36
@@ -79,15 +84,9 @@ jobs:
             exit 1
           fi
 
-          echo "AppLovin MAX directory found:"
-          echo "$APPLOVIN_DIR"
-
           BUILD_FILE="$APPLOVIN_DIR/build.gradle"
 
           if [ -f "$BUILD_FILE" ]; then
-            echo "Original AppLovin build.gradle:"
-            cat "$BUILD_FILE"
-
             sed -i \
               -E 's/compileSdkVersion[[:space:]]+[0-9]+/compileSdkVersion 36/g' \
               "$BUILD_FILE"
