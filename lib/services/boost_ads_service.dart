@@ -8,9 +8,11 @@ import 'mining_service.dart';
 class BoostAdsService {
   BoostAdsService({
     MiningService? miningService,
-  }) : _miningService = miningService ?? MiningService.instance;
+  }) : _miningService =
+            miningService ?? MiningService.instance;
 
-  static final BoostAdsService instance = BoostAdsService();
+  static final BoostAdsService instance =
+      BoostAdsService();
 
   final MiningService _miningService;
 
@@ -19,19 +21,23 @@ class BoostAdsService {
 
   Completer<bool>? _rewardCompleter;
 
+  bool _rewardReceived = false;
+
   int _adsWatched = 0;
 
   // ============================================================
   // CONFIGURATION
   // ============================================================
 
-  String get sdkKey => AppConfig.appLovinSdkKey.trim();
+  String get sdkKey =>
+      AppConfig.appLovinSdkKey.trim();
 
   String get rewardedAdUnitId =>
       AppConfig.appLovinRewardedAdUnitId.trim();
 
   bool get isConfigured =>
-      sdkKey.isNotEmpty && rewardedAdUnitId.isNotEmpty;
+      sdkKey.isNotEmpty &&
+      rewardedAdUnitId.isNotEmpty;
 
   bool get isInitialized => _initialized;
 
@@ -43,19 +49,70 @@ class BoostAdsService {
 
   int get remainingAds {
     final remaining =
-        AppConfig.maxAdsPerSession - _adsWatched;
+        AppConfig.maxAdsPerSession -
+        _adsWatched;
 
-    return remaining < 0 ? 0 : remaining;
+    return remaining < 0
+        ? 0
+        : remaining;
   }
 
   double get currentAdBoost {
-    return _miningService.calculateMaximumAdBoost(
-      _adsWatched,
-    );
+    return calculateBoost(_adsWatched);
   }
 
   // ============================================================
-  // INITIALIZE APPLOVIN
+  // BOOST CALCULATION
+  // ============================================================
+
+  double calculateBoost(int ads) {
+    final safeAds = ads.clamp(
+      0,
+      AppConfig.maxAdsPerSession,
+    );
+
+    final boost =
+        safeAds *
+        AppConfig.adBoostPerAd;
+
+    if (boost > AppConfig.maxAdBoost) {
+      return AppConfig.maxAdBoost;
+    }
+
+    return boost.toDouble();
+  }
+
+  // ============================================================
+  // CAN WATCH AD
+  // ============================================================
+
+  bool canWatchAd({
+    required int adsWatched,
+    required bool isMining,
+    required bool sessionFinished,
+  }) {
+    if (!isMining) {
+      return false;
+    }
+
+    if (sessionFinished) {
+      return false;
+    }
+
+    if (adsWatched >=
+        AppConfig.maxAdsPerSession) {
+      return false;
+    }
+
+    if (!isConfigured) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================
+  // INITIALIZE APPLOVIN MAX
   // ============================================================
 
   Future<bool> initialize() async {
@@ -79,45 +136,61 @@ class BoostAdsService {
           onAdLoadedCallback: (ad) {
             // Rewarded ad is ready.
           },
+
           onAdLoadFailedCallback: (
             adUnitId,
             error,
           ) {
             _completeReward(false);
           },
+
           onAdDisplayedCallback: (ad) {
             // Ad displayed.
           },
+
           onAdDisplayFailedCallback: (
             ad,
             error,
           ) {
             _completeReward(false);
           },
+
           onAdClickedCallback: (ad) {
-            // Clicking does NOT grant FAN.
+            // Clicking does not grant FAN.
           },
+
           onAdHiddenCallback: (ad) {
             /*
-             * Do not grant anything here.
+             * IMPORTANT:
              *
-             * The reward is granted only when
-             * onAdReceivedRewardCallback fires.
+             * Hiding the ad does NOT automatically
+             * mean that the reward was earned.
+             *
+             * If the reward callback already arrived,
+             * keep the successful result.
+             *
+             * Otherwise complete as false.
              */
-            _completeReward(false);
+            if (!_rewardReceived) {
+              _completeReward(false);
+            }
 
             _loadRewardedAd();
           },
+
           onAdReceivedRewardCallback: (
             ad,
             reward,
           ) {
             /*
-             * AppLovin has confirmed that the user
-             * earned the rewarded-ad reward.
+             * AppLovin confirmed that the rewarded
+             * event was received.
              */
+            _rewardReceived = true;
+
             _completeReward(true);
           },
+
           onAdRevenuePaidCallback: (ad) {
             // Revenue information only.
           },
@@ -125,7 +198,9 @@ class BoostAdsService {
       );
 
       final configuration =
-          await AppLovinMAX.initialize(sdkKey);
+          await AppLovinMAX.initialize(
+        sdkKey,
+      );
 
       if (configuration == null) {
         _initialized = false;
@@ -150,7 +225,8 @@ class BoostAdsService {
   // ============================================================
 
   Future<void> _loadRewardedAd() async {
-    if (!_initialized || rewardedAdUnitId.isEmpty) {
+    if (!_initialized ||
+        rewardedAdUnitId.isEmpty) {
       return;
     }
 
@@ -159,17 +235,18 @@ class BoostAdsService {
         rewardedAdUnitId,
       );
     } catch (_) {
-      // Ignore load error.
-      // The next request can try again.
+      // Ignore load errors.
+      // A later request can try again.
     }
   }
 
   // ============================================================
-  // CHECK READY
+  // CHECK REWARDED AD READY
   // ============================================================
 
   Future<bool> isRewardedAdReady() async {
-    if (!_initialized || rewardedAdUnitId.isEmpty) {
+    if (!_initialized ||
+        rewardedAdUnitId.isEmpty) {
       return false;
     }
 
@@ -195,15 +272,13 @@ class BoostAdsService {
   }) async {
     try {
       final count =
-          await _miningService.getAdsWatchedForSession(
+          await _miningService
+              .getAdsWatchedForSession(
         startedAt: startedAt,
         endsAt: endsAt,
       );
 
-      _adsWatched = count.clamp(
-        0,
-        AppConfig.maxAdsPerSession,
-      );
+      _adsWatched = _clampAds(count);
 
       return _adsWatched;
     } catch (_) {
@@ -215,76 +290,76 @@ class BoostAdsService {
   // WATCH + RECORD
   // ============================================================
 
-  Future<Map<String, dynamic>> watchAdAndRecord({
+  Future<Map<String, dynamic>>
+      watchAdAndRecord({
     required DateTime startedAt,
     DateTime? endsAt,
   }) async {
-    if (remainingAds <= 0) {
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'You have reached the maximum of '
-            '${AppConfig.maxAdsPerSession} ads '
-            'for this mining session.',
-        'ads_watched': _adsWatched,
-        'remaining_ads': 0,
-        'ad_boost': currentAdBoost,
-      };
+    /*
+     * Always refresh the server-side session count
+     * before attempting another rewarded ad.
+     *
+     * This prevents stale local state from allowing
+     * an extra ad.
+     */
+    try {
+      await getAdsWatchedForSession(
+        startedAt: startedAt,
+        endsAt: endsAt,
+      );
+    } catch (_) {
+      // Local count remains available.
+    }
+
+    if (_adsWatched >=
+        AppConfig.maxAdsPerSession) {
+      return _failure(
+        'You have reached the maximum of '
+        '${AppConfig.maxAdsPerSession} ads '
+        'for this mining session.',
+      );
     }
 
     if (!isConfigured) {
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'Rewarded ads are not configured yet.',
-        'ads_watched': _adsWatched,
-        'remaining_ads': remainingAds,
-        'ad_boost': currentAdBoost,
-      };
+      return _failure(
+        'Rewarded ads are not configured yet.',
+      );
     }
 
-    final initialized = await initialize();
+    final initialized =
+        await initialize();
 
     if (!initialized) {
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'Rewarded ads are temporarily unavailable.',
-        'ads_watched': _adsWatched,
-        'remaining_ads': remainingAds,
-        'ad_boost': currentAdBoost,
-      };
+      return _failure(
+        'Rewarded ads are temporarily unavailable.',
+      );
     }
 
-    final ready = await isRewardedAdReady();
+    final ready =
+        await isRewardedAdReady();
 
     if (!ready) {
       await _loadRewardedAd();
 
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'Rewarded ad is not ready. Please try again.',
-        'ads_watched': _adsWatched,
-        'remaining_ads': remainingAds,
-        'ad_boost': currentAdBoost,
-      };
+      return _failure(
+        'Rewarded ad is not ready. Please try again.',
+      );
     }
 
-    final rewarded = await _showRewardedAd();
+    /*
+     * Show the ad and wait for the actual
+     * AppLovin reward callback.
+     */
+    final rewarded =
+        await _showRewardedAd();
 
     if (!rewarded) {
       await _loadRewardedAd();
 
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'The ad was not completed, so no FAN '
-            'mining boost was added.',
-        'ads_watched': _adsWatched,
-        'remaining_ads': remainingAds,
-        'ad_boost': currentAdBoost,
-      };
+      return _failure(
+        'The ad was not completed, so no FAN '
+        'mining boost was added.',
+      );
     }
 
     // ========================================================
@@ -293,7 +368,8 @@ class BoostAdsService {
 
     try {
       final result =
-          await _miningService.recordRewardedAd();
+          await _miningService
+              .recordRewardedAd();
 
       final success =
           result['success'] == true ||
@@ -301,6 +377,8 @@ class BoostAdsService {
           result['ok'] == true;
 
       if (!success) {
+        await _loadRewardedAd();
+
         return <String, dynamic>{
           'success': false,
           'message':
@@ -316,16 +394,11 @@ class BoostAdsService {
           result['ads_watched'];
 
       if (serverCount is num) {
-        _adsWatched = serverCount.toInt().clamp(
-              0,
-              AppConfig.maxAdsPerSession,
-            );
+        _adsWatched =
+            _clampAds(serverCount.toInt());
       } else {
         _adsWatched =
-            (_adsWatched + 1).clamp(
-          0,
-          AppConfig.maxAdsPerSession,
-        );
+            _clampAds(_adsWatched + 1);
       }
 
       await _loadRewardedAd();
@@ -338,7 +411,8 @@ class BoostAdsService {
         'ads_watched': _adsWatched,
         'remaining_ads': remainingAds,
         'ad_boost': currentAdBoost,
-        'reward_rate': AppConfig.adBoostPerAd,
+        'reward_rate':
+            AppConfig.adBoostPerAd,
       };
     } catch (error) {
       await _loadRewardedAd();
@@ -361,28 +435,41 @@ class BoostAdsService {
   // ============================================================
 
   Future<bool> _showRewardedAd() async {
+    /*
+     * Prevent two rewarded ads from being shown
+     * at the same time.
+     */
     if (_rewardCompleter != null) {
       return false;
     }
 
-    final completer = Completer<bool>();
+    final completer =
+        Completer<bool>();
 
     _rewardCompleter = completer;
+    _rewardReceived = false;
 
     try {
       AppLovinMAX.showRewardedAd(
         rewardedAdUnitId,
       );
 
-      return await completer.future.timeout(
+      final result =
+          await completer.future.timeout(
         const Duration(minutes: 3),
-        onTimeout: () => false,
+        onTimeout: () {
+          _completeReward(false);
+          return false;
+        },
       );
+
+      return result;
     } catch (_) {
       _completeReward(false);
       return false;
     } finally {
       _rewardCompleter = null;
+      _rewardReceived = false;
     }
   }
 
@@ -390,8 +477,11 @@ class BoostAdsService {
   // COMPLETE REWARD
   // ============================================================
 
-  void _completeReward(bool rewarded) {
-    final completer = _rewardCompleter;
+  void _completeReward(
+    bool rewarded,
+  ) {
+    final completer =
+        _rewardCompleter;
 
     if (completer == null ||
         completer.isCompleted) {
@@ -402,7 +492,56 @@ class BoostAdsService {
   }
 
   // ============================================================
-  // REFRESH
+  // FAILURE RESULT
+  // ============================================================
+
+  Map<String, dynamic> _failure(
+    String message,
+  ) {
+    return <String, dynamic>{
+      'success': false,
+      'message': message,
+      'ads_watched': _adsWatched,
+      'remaining_ads': remainingAds,
+      'ad_boost': currentAdBoost,
+    };
+  }
+
+  // ============================================================
+  // CLAMP ADS
+  // ============================================================
+
+  int _clampAds(
+    dynamic value,
+  ) {
+    int count;
+
+    if (value is int) {
+      count = value;
+    } else if (value is num) {
+      count = value.toInt();
+    } else {
+      count =
+          int.tryParse(
+            value?.toString() ?? '',
+          ) ??
+          0;
+    }
+
+    if (count < 0) {
+      return 0;
+    }
+
+    if (count >
+        AppConfig.maxAdsPerSession) {
+      return AppConfig.maxAdsPerSession;
+    }
+
+    return count;
+  }
+
+  // ============================================================
+  // REFRESH SESSION COUNT
   // ============================================================
 
   Future<void> refreshSessionCount({
@@ -421,5 +560,6 @@ class BoostAdsService {
 
   void resetLocalState() {
     _adsWatched = 0;
+    _rewardReceived = false;
   }
 }
