@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../globals/app_constants.dart';
 import '../../services/boost_ads_service.dart';
 
 class BoostAdsCard extends StatefulWidget {
@@ -14,60 +15,40 @@ class BoostAdsCard extends StatefulWidget {
   });
 
   final bool isMining;
-
   final bool sessionFinished;
-
   final DateTime? startedAt;
-
   final DateTime? endsAt;
-
   final void Function(String message)? onMessage;
-
   final Future<void> Function()? onBoostUpdated;
 
   @override
-  State<BoostAdsCard> createState() =>
-      _BoostAdsCardState();
+  State<BoostAdsCard> createState() => _BoostAdsCardState();
 }
 
-class _BoostAdsCardState
-    extends State<BoostAdsCard> {
-  final BoostAdsService _boostAdsService =
-      BoostAdsService.instance;
+class _BoostAdsCardState extends State<BoostAdsCard> {
+  final BoostAdsService _boostAdsService = BoostAdsService.instance;
 
   int _adsWatched = 0;
-
   bool _loading = true;
-
   bool _busy = false;
+
+  int get _maxAds => AppConfig.maxAdsPerSession;
 
   @override
   void initState() {
     super.initState();
-
     _initialize();
   }
 
   @override
-  void didUpdateWidget(
-    covariant BoostAdsCard oldWidget,
-  ) {
+  void didUpdateWidget(covariant BoostAdsCard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    /*
-     * When a new mining session starts,
-     * startedAt changes.
-     *
-     * We reload the session ad count so
-     * the new session immediately starts
-     * from 0 / 7.
-     */
     final sessionChanged =
-        oldWidget.startedAt !=
-            widget.startedAt ||
+        oldWidget.startedAt != widget.startedAt ||
         oldWidget.endsAt != widget.endsAt ||
-        oldWidget.isMining !=
-            widget.isMining;
+        oldWidget.isMining != widget.isMining ||
+        oldWidget.sessionFinished != widget.sessionFinished;
 
     if (sessionChanged) {
       _initialize();
@@ -81,8 +62,7 @@ class _BoostAdsCardState
       _loading = true;
     });
 
-    if (!widget.isMining ||
-        widget.startedAt == null) {
+    if (!widget.isMining || widget.startedAt == null) {
       if (!mounted) return;
 
       setState(() {
@@ -94,9 +74,7 @@ class _BoostAdsCardState
     }
 
     try {
-      final count =
-          await _boostAdsService
-              .getAdsWatchedForSession(
+      final count = await _boostAdsService.getAdsWatchedForSession(
         startedAt: widget.startedAt!,
         endsAt: widget.endsAt,
       );
@@ -104,7 +82,7 @@ class _BoostAdsCardState
       if (!mounted) return;
 
       setState(() {
-        _adsWatched = count.clamp(0, 7);
+        _adsWatched = _clampAds(count);
         _loading = false;
       });
     } catch (error) {
@@ -115,30 +93,42 @@ class _BoostAdsCardState
         _loading = false;
       });
 
-      _showMessage(
-        _cleanError(error),
-      );
+      _showMessage(_cleanError(error));
     }
+  }
+
+  int _clampAds(dynamic value) {
+    final count = _toInt(value);
+
+    if (count < 0) {
+      return 0;
+    }
+
+    if (count > _maxAds) {
+      return _maxAds;
+    }
+
+    return count;
   }
 
   bool get _canWatchAd {
     return _boostAdsService.canWatchAd(
       adsWatched: _adsWatched,
       isMining: widget.isMining,
-      sessionFinished:
-          widget.sessionFinished,
+      sessionFinished: widget.sessionFinished,
     );
   }
 
   double get _boost {
-    return _boostAdsService.calculateBoost(
-      _adsWatched,
-    );
+    return _boostAdsService.calculateBoost(_adsWatched);
   }
 
   double get _progress {
-    return (_adsWatched / 7)
-        .clamp(0.0, 1.0);
+    if (_maxAds <= 0) {
+      return 0.0;
+    }
+
+    return (_adsWatched / _maxAds).clamp(0.0, 1.0).toDouble();
   }
 
   Future<void> _watchAd() async {
@@ -165,48 +155,33 @@ class _BoostAdsCardState
       return;
     }
 
-    if (_adsWatched >= 7) {
+    if (_adsWatched >= _maxAds) {
       _showMessage(
-        'You have reached the 7 ads limit for this mining session.',
+        'You have reached the $_maxAds ads limit for this mining session.',
       );
       return;
     }
+
+    if (!mounted) return;
 
     setState(() {
       _busy = true;
     });
 
     try {
-      /*
-       * Complete Boost Ads flow:
-       *
-       * 1. Verify current mining session.
-       * 2. Verify 7-ad session limit.
-       * 3. Show AppLovin rewarded ad.
-       * 4. Wait for AppLovin reward callback.
-       * 5. Record the completed ad.
-       *
-       * The database is NOT called before
-       * the rewarded ad is successfully completed.
-       */
-      final result =
-          await _boostAdsService
-              .watchAdAndRecord(
+      final result = await _boostAdsService.watchAdAndRecord(
         startedAt: widget.startedAt!,
         endsAt: widget.endsAt,
       );
 
       if (!mounted) return;
 
-      final success =
-          result['success'] == true;
+      final success = result['success'] == true;
 
       if (!success) {
-        final message =
-            result['message']?.toString();
+        final message = result['message']?.toString();
 
-        if (message != null &&
-            message.trim().isNotEmpty) {
+        if (message != null && message.trim().isNotEmpty) {
           _showMessage(message);
         } else {
           _showMessage(
@@ -217,20 +192,12 @@ class _BoostAdsCardState
         return;
       }
 
-      final count =
-          _toInt(
-        result['ads_watched'],
-      );
+      final count = _clampAds(result['ads_watched']);
 
       setState(() {
-        _adsWatched =
-            count.clamp(0, 7);
+        _adsWatched = count;
       });
 
-      /*
-       * Tell the parent screen that the mining
-       * rate/profile data may need refreshing.
-       */
       if (widget.onBoostUpdated != null) {
         await widget.onBoostUpdated!();
       }
@@ -238,14 +205,12 @@ class _BoostAdsCardState
       if (!mounted) return;
 
       _showMessage(
-        'Ad completed successfully. +0.1 FAN/H boost added.',
+        'Ad completed successfully. +${AppConfig.adBoostPerAd.toStringAsFixed(1)} FAN/H boost added.',
       );
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage(
-        _cleanError(error),
-      );
+      _showMessage(_cleanError(error));
     } finally {
       if (mounted) {
         setState(() {
@@ -268,23 +233,18 @@ class _BoostAdsCardState
       return value.toInt();
     }
 
-    return int.tryParse(
-          value.toString(),
-        ) ??
-        0;
+    return int.tryParse(value.toString()) ?? 0;
   }
 
   String _cleanError(Object error) {
     var text = error.toString();
 
     if (text.startsWith('Exception: ')) {
-      text = text.substring(11);
+      text = text.substring('Exception: '.length);
     }
 
-    if (text.startsWith(
-      'PostgrestException: ',
-    )) {
-      text = text.substring(19);
+    if (text.startsWith('PostgrestException: ')) {
+      text = text.substring('PostgrestException: '.length);
     }
 
     return text.trim().isEmpty
@@ -305,12 +265,9 @@ class _BoostAdsCardState
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(14),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
       );
@@ -323,57 +280,41 @@ class _BoostAdsCardState
 
   Widget _buildCard() {
     final buttonDisabled =
-        _loading ||
-        _busy ||
-        !_canWatchAd;
+        _loading || _busy || !_canWatchAd;
 
-    final buttonText =
-        _busy
-            ? 'WATCHING'
-            : 'WATCH AD';
+    final buttonText = _busy ? 'WATCHING' : 'WATCH AD';
 
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withOpacity(
-              0.045,
-            ),
+            color: Colors.black.withOpacity(0.045),
             blurRadius: 12,
-            offset:
-                const Offset(0, 4),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _circleIcon(),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
                       'BOOST BY WATCHING ADS',
                       style: TextStyle(
                         fontSize: 16,
-                        fontWeight:
-                            FontWeight.w900,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     SizedBox(height: 4),
@@ -381,8 +322,7 @@ class _BoostAdsCardState
                       'Each ad adds +0.1 FAN/H',
                       style: TextStyle(
                         fontSize: 13,
-                        color:
-                            Colors.black54,
+                        color: Colors.black54,
                       ),
                     ),
                   ],
@@ -391,56 +331,36 @@ class _BoostAdsCardState
               const SizedBox(width: 8),
               SizedBox(
                 height: 49,
-                child:
-                    ElevatedButton.icon(
+                child: ElevatedButton.icon(
                   onPressed:
-                      buttonDisabled
-                          ? null
-                          : _watchAd,
+                      buttonDisabled ? null : _watchAd,
                   icon: Icon(
                     _busy
-                        ? Icons
-                            .hourglass_top_rounded
-                        : Icons
-                            .video_collection_rounded,
+                        ? Icons.hourglass_top_rounded
+                        : Icons.video_collection_rounded,
                     size: 20,
                   ),
                   label: Text(
                     buttonText,
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.w800,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  style:
-                      ElevatedButton
-                          .styleFrom(
+                  style: ElevatedButton.styleFrom(
                     backgroundColor:
-                        const Color(
-                      0xFF4A20B9,
-                    ),
-                    foregroundColor:
-                        Colors.white,
+                        const Color(0xFF4A20B9),
+                    foregroundColor: Colors.white,
                     disabledBackgroundColor:
-                        const Color(
-                      0xFF8D76CF,
-                    ),
+                        const Color(0xFF8D76CF),
                     disabledForegroundColor:
                         Colors.white,
                     elevation: 0,
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                     ),
-                    shape:
-                        RoundedRectangleBorder(
+                    shape: RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius
-                              .circular(
-                        15,
-                      ),
+                          BorderRadius.circular(15),
                     ),
                   ),
                 ),
@@ -449,52 +369,36 @@ class _BoostAdsCardState
           ),
           const SizedBox(height: 17),
           Text(
-            'Ads watched this session: $_adsWatched / 7',
-            style:
-                const TextStyle(
-              color:
-                  Color(0xFF35148F),
+            'Ads watched this session: $_adsWatched / $_maxAds',
+            style: const TextStyle(
+              color: Color(0xFF35148F),
               fontSize: 14,
-              fontWeight:
-                  FontWeight.w700,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 9),
           ClipRRect(
-            borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
-            child:
-                LinearProgressIndicator(
-              value:
-                  _loading
-                      ? 0.0
-                      : _progress,
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: _loading ? 0.0 : _progress,
               minHeight: 9,
               backgroundColor:
-                  const Color(
-                0xFFE9E4FA,
-              ),
+                  const Color(0xFFE9E4FA),
               valueColor:
-                  const AlwaysStoppedAnimation(
+                  const AlwaysStoppedAnimation<Color>(
                 Color(0xFF5A2AD0),
               ),
             ),
           ),
           const SizedBox(height: 8),
           Align(
-            alignment:
-                Alignment.centerRight,
+            alignment: Alignment.centerRight,
             child: Text(
               '+${_boost.toStringAsFixed(1)} FAN/H',
-              style:
-                  const TextStyle(
-                color:
-                    Color(0xFF35148F),
+              style: const TextStyle(
+                color: Color(0xFF35148F),
                 fontSize: 14,
-                fontWeight:
-                    FontWeight.w800,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
@@ -507,10 +411,8 @@ class _BoostAdsCardState
     return Container(
       width: 58,
       height: 58,
-      decoration:
-          BoxDecoration(
-        color:
-            const Color(0xFFF0EBFF),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF0EBFF),
         shape: BoxShape.circle,
       ),
       child: const Icon(
