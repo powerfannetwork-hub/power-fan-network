@@ -38,14 +38,36 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Fix Gradle Wrapper Location
+      - name: Prepare Gradle Wrapper
         shell: bash
         run: |
           set -e
 
+          echo "Project directory:"
+          pwd
+
+          echo "Checking Android project:"
+          ls -la android
+
+          echo "Checking existing wrapper files:"
+
+          if [ -f "android/gradlew" ]; then
+            echo "android/gradlew already exists."
+          else
+            echo "android/gradlew does not exist."
+          fi
+
+          if [ -f "android/gradle/wrapper/gradle-wrapper.properties" ]; then
+            echo "Correct wrapper properties already exist."
+          else
+            echo "Wrapper properties do not exist at expected location."
+          fi
+
           cd android
 
           mkdir -p gradle/wrapper
+
+          echo "Generating Gradle Wrapper 8.13..."
 
           gradle wrapper \
             --gradle-version 8.13 \
@@ -54,11 +76,11 @@ jobs:
 
           chmod +x gradlew
 
-          echo "Generated Gradle Wrapper:"
+          echo "Generated wrapper files:"
           ls -la
           ls -la gradle/wrapper
 
-          echo "Wrapper properties:"
+          echo "Gradle wrapper properties:"
           cat gradle/wrapper/gradle-wrapper.properties
 
       - name: Verify Gradle Wrapper
@@ -69,7 +91,51 @@ jobs:
 
           chmod +x gradlew
 
+          echo "Gradle Wrapper version:"
           ./gradlew --version
+
+      - name: Fix Flutter 3.24 Color API Compatibility
+        shell: bash
+        run: |
+          set -e
+
+          echo "Searching all Dart files for withValues()..."
+
+          FILES=$(grep -RIl \
+            --include="*.dart" \
+            "\.withValues(" \
+            lib || true)
+
+          if [ -z "$FILES" ]; then
+            echo "No withValues() usage found."
+          else
+            echo "Files containing withValues():"
+            echo "$FILES"
+
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+
+              echo "Fixing: $file"
+
+              sed -i \
+                -E 's/\.withValues\([[:space:]]*alpha:[[:space:]]*/.withOpacity(/g' \
+                "$file"
+
+            done <<< "$FILES"
+          fi
+
+          echo "Checking for remaining withValues()..."
+
+          if grep -RIn \
+            --include="*.dart" \
+            "\.withValues(" \
+            lib; then
+
+            echo "ERROR: withValues() still exists in the Dart source."
+            exit 1
+          fi
+
+          echo "SUCCESS: No withValues() usages remain."
 
       - name: Force AppLovin MAX compileSdk to 36
         shell: bash
@@ -84,9 +150,16 @@ jobs:
             exit 1
           fi
 
+          echo "AppLovin MAX directory found:"
+          echo "$APPLOVIN_DIR"
+
           BUILD_FILE="$APPLOVIN_DIR/build.gradle"
 
           if [ -f "$BUILD_FILE" ]; then
+
+            echo "Original AppLovin build.gradle:"
+            cat "$BUILD_FILE"
+
             sed -i \
               -E 's/compileSdkVersion[[:space:]]+[0-9]+/compileSdkVersion 36/g' \
               "$BUILD_FILE"
@@ -97,6 +170,7 @@ jobs:
 
             echo "Updated AppLovin build.gradle:"
             cat "$BUILD_FILE"
+
           else
             echo "AppLovin build.gradle not found."
             exit 1
@@ -108,8 +182,24 @@ jobs:
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
 
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -e
+
+          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK was not generated."
+            exit 1
+          fi
+
+          echo "APK generated successfully:"
+          ls -lh "$APK_PATH"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: power-fan-network-release
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
