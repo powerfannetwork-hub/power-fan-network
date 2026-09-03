@@ -236,7 +236,9 @@ class MiningService {
   ) async {
     _requireAuthenticated();
 
-    if (adId.trim().isEmpty) {
+    final trimmedId = adId.trim();
+
+    if (trimmedId.isEmpty) {
       throw ArgumentError.value(
         adId,
         'adId',
@@ -247,7 +249,7 @@ class MiningService {
     final data = await _client.rpc(
       AppConfig.rpcVerifyRewardedAd,
       params: <String, dynamic>{
-        'p_ad_id': adId.trim(),
+        'p_ad_id': trimmedId,
       },
     );
 
@@ -282,7 +284,17 @@ class MiningService {
 
     final data = await query;
 
-    return data.length;
+    final count = data.length;
+
+    if (count < 0) {
+      return 0;
+    }
+
+    if (count > AppConfig.maxAdsPerSession) {
+      return AppConfig.maxAdsPerSession;
+    }
+
+    return count;
   }
 
   Future<int> getSessionAdCount({
@@ -318,7 +330,9 @@ class MiningService {
   ) async {
     _requireAuthenticated();
 
-    if (taskId.trim().isEmpty) {
+    final trimmedTaskId = taskId.trim();
+
+    if (trimmedTaskId.isEmpty) {
       throw ArgumentError.value(
         taskId,
         'taskId',
@@ -326,19 +340,10 @@ class MiningService {
       );
     }
 
-    /*
-     * The current social-task backend uses:
-     *
-     *   claim_daily_social_reward
-     *
-     * The previous MiningService referenced a constant that did not exist
-     * in AppConfig. We keep this legacy method working without requiring
-     * another AppConfig constant.
-     */
     final data = await _client.rpc(
       'claim_daily_social_reward',
       params: <String, dynamic>{
-        'p_task_id': taskId.trim(),
+        'p_task_id': trimmedTaskId,
       },
     );
 
@@ -371,7 +376,6 @@ class MiningService {
       activeMining?['active'] ??
           activeMining?['mining_active'] ??
           profile['mining_active'],
-      fallback: false,
     );
 
     final startedAt = _asDateTime(
@@ -418,16 +422,18 @@ class MiningService {
     );
 
     if (data is num) {
-      return data.toInt();
+      return data.toInt().clamp(0, 1000000);
     }
 
     final map = _asMap(data);
 
-    return _asInt(
+    final count = _asInt(
       map['active_referrals'] ??
           map['count'] ??
           map['result'],
     );
+
+    return count < 0 ? 0 : count;
   }
 
   // ---------------------------------------------------------------------------
@@ -439,7 +445,7 @@ class MiningService {
   }) async {
     final user = _requireAuthenticated();
 
-    final safeLimit = limit.clamp(1, 100);
+    final safeLimit = limit.clamp(1, 100).toInt();
 
     final data = await _client
         .from('mining_sessions')
@@ -474,14 +480,16 @@ class MiningService {
   ) async {
     final user = _requireAuthenticated();
 
-    if (sessionId.trim().isEmpty) {
+    final trimmedId = sessionId.trim();
+
+    if (trimmedId.isEmpty) {
       return null;
     }
 
     final data = await _client
         .from('mining_sessions')
         .select()
-        .eq('id', sessionId.trim())
+        .eq('id', trimmedId)
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -510,14 +518,16 @@ class MiningService {
   }
 
   double calculateMaximumAdBoost(int adsWatched) {
-    final safeAds = adsWatched.clamp(0, AppConfig.maxAdsPerSession);
+    final safeAds = adsWatched
+        .clamp(0, AppConfig.maxAdsPerSession)
+        .toInt();
 
     final boost = safeAds * AppConfig.adBoostPerAd;
 
     return boost.clamp(
       0.0,
       AppConfig.maxAdBoost,
-    );
+    ).toDouble();
   }
 
   double calculateReferralMiningBonus(int activeReferrals) {
@@ -584,7 +594,6 @@ class MiningService {
     return _asBool(
       activeMining['active'] ??
           activeMining['mining_active'],
-      fallback: false,
     );
   }
 
@@ -623,7 +632,9 @@ class MiningService {
   }) async {
     _requireAuthenticated();
 
-    if (functionName.trim().isEmpty) {
+    final trimmedName = functionName.trim();
+
+    if (trimmedName.isEmpty) {
       throw ArgumentError.value(
         functionName,
         'functionName',
@@ -632,7 +643,7 @@ class MiningService {
     }
 
     return _client.rpc(
-      functionName.trim(),
+      trimmedName,
       params: params,
     );
   }
