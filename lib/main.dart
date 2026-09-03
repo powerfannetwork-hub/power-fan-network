@@ -2,21 +2,20 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/main_navigation_screen.dart';
-import 'screens/auth_screen.dart'; // Idan kana da login screen
+import 'screens/auth_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. INITIALIZE SUPABASE - Saka URL da Key naka
   await Supabase.initialize(
     url: 'https://fihtqejqpycuvebufjhc.supabase.co',
-    anonKey: 'SAKA_ANON_KEY_NAKA_ANAN', // Ka saka key naka na gaske
+    anonKey: 'sb_publishable_KVf397QgYsgFi_D33mCcjw_5lV1ycCr', // WANNAN SHI ZAMU YI AMFANI DA SHI
     authOptions: const FlutterAuthClientOptions(
-      authFlowType: AuthFlowType.pkce, // Wannan shine mafi tsaro
+      authFlowType: AuthFlowType.pkce,
     ),
   );
 
-  // 2. KEEP ALIVE - Don kada Supabase free ya bacci
+  // Wannan yana hana Supabase bacci kowace minti 10
   keepSupabaseAlive();
 
   runApp(const MyApp());
@@ -26,9 +25,7 @@ void keepSupabaseAlive() {
   Timer.periodic(const Duration(minutes: 10), (timer) async {
     try {
       await Supabase.instance.client.from('profiles').select('id').limit(1);
-    } catch (_) {
-      // Idan ya gaza mu yi shiru
-    }
+    } catch (_) {}
   });
 }
 
@@ -43,11 +40,17 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primaryColor: const Color(0xFF3B159B),
         scaffoldBackgroundColor: const Color(0xFFF8F8FC),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF3B159B),
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+          )
+        )
       ),
-      // 3. WANNAN ZAI KULA DA SESSION HAR ABADA
       home: Supabase.instance.client.auth.currentUser == null
-          ? const AuthScreen() // Idan ba a login ba je login
-          : const MainNavigationScreen(), // Idan an login shiga kai tsaye
+         ? const AuthScreen()
+         : const MainNavigationScreen(),
     );
   }
 }
