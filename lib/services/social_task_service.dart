@@ -10,12 +10,12 @@ class DailySocialTask {
   final String url;
   final String platform;
 
-  DailySocialTask({
+  const DailySocialTask({
     required this.id,
     required this.title,
     required this.description,
     required this.claimed,
-    this.rewardFan = 10,
+    required this.rewardFan,
     required this.url,
     required this.platform,
   });
@@ -23,117 +23,187 @@ class DailySocialTask {
 
 class SocialTaskService {
   SocialTaskService._();
+
   static final SocialTaskService instance = SocialTaskService._();
+
   final SupabaseClient _client = SupabaseService.client;
 
-  // 1. WANNAN ZAI DAWO DA TASKS 6 DIN KA
+  String get _userId {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('User is not logged in.');
+    }
+
+    return user.id;
+  }
+
   Future<List<DailySocialTask>> getDailyTasksForCard() async {
     return SupabaseService.safeCall(() async {
-      final userId = _client.auth.currentUser!.id;
-      final today = DateTime.now().toIso8601String().split('T')[0];
+      final result = await _client.rpc(
+        'get_daily_social_tasks',
+        params: {
+          'p_user_id': _userId,
+        },
+      );
 
-      // Idan babu tasks na yau, mu kirkira su
-      await _createTasksIfNotExist(today);
-
-      final res = await _client.from('daily_social_tasks').select().eq('date', today);
-      final userTasks = await _client.from('user_social_tasks').select().eq('user_id', userId).eq('date', today);
-
-      return (res as List).map((task) {
-        final claimed = (userTasks as List).any((ut) => ut['task_id'] == task['id'] && ut['claimed'] == true);
-        return DailySocialTask(
-          id: task['id'],
-          title: task['title'],
-          description: task['description'],
-          claimed: claimed,
-          url: task['url']?? '',
-          platform: task['platform']?? 'link',
-        );
-      }).toList();
-    });
-  }
-
-  // 2. WANNAN ZAI KIRKIRO TASKS 6 DIN KA KOWANE RANA
-  Future<void> _createTasksIfNotExist(String today) async {
-    final existing = await _client.from('daily_social_tasks').select().eq('date', today);
-    if((existing as List).isNotEmpty) return;
-
-    final tasks = [
-      {
-        'title': 'Follow Facebook',
-        'description': 'Bi shafinmu na Facebook',
-        'reward_fan': 10,
-        'url': 'https://www.facebook.com/share/18ipQKYcCV/',
-        'platform': 'facebook',
-        'date': today
-      },
-      {
-        'title': 'Subscribe YouTube',
-        'description': 'Yi subscribing channel namu',
-        'reward_fan': 10,
-        'url': 'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
-        'platform': 'youtube',
-        'date': today
-      },
-      {
-        'title': 'Follow TikTok',
-        'description': 'Bi mu a TikTok',
-        'reward_fan': 10,
-        'url': 'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
-        'platform': 'tiktok',
-        'date': today
-      },
-      {
-        'title': 'Follow X Twitter',
-        'description': 'Bi mu a X',
-        'reward_fan': 10,
-        'url': 'https://x.com/Powerfannetwork',
-        'platform': 'twitter',
-        'date': today
-      },
-      {
-        'title': 'Join Telegram',
-        'description': 'Shiga group namu',
-        'reward_fan': 10,
-        'url': 'https://t.me/PowerFannetwork',
-        'platform': 'telegram',
-        'date': today
-      },
-      {
-        'title': 'Follow Instagram',
-        'description': 'Bi mu a Instagram',
-        'reward_fan': 10,
-        'url': 'https://www.instagram.com/powerfannetwok/',
-        'platform': 'instagram',
-        'date': today
-      },
-    ];
-    await _client.from('daily_social_tasks').insert(tasks);
-  }
-
-  // 3. WANNAN YANA HANA NINKAWA SAU 2
-  Future<Map<String, dynamic>> verifyAndClaim({required String taskId}) async {
-    final userId = _client.auth.currentUser!.id;
-    final today = DateTime.now().toIso8601String().split('T')[0];
-
-    return SupabaseService.safeCall(() async {
-      final existing = await _client.from('user_social_tasks')
-        .select()
-        .eq('user_id', userId)
-        .eq('task_id', taskId)
-        .eq('date', today)
-        .maybeSingle();
-
-      if (existing!= null && existing['claimed'] == true) {
-        throw Exception('An riga an karbi wannan reward na yau');
+      if (result == null) {
+        return <DailySocialTask>[];
       }
 
-      final result = await _client.rpc('claim_social_task', params: {
-        'p_user_id': userId,
-        'p_task_id': taskId,
-        'p_reward': 10
-      });
+      final rows = result is List
+          ? result
+          : <dynamic>[result];
 
-      return result;
+      return rows
+          .whereType<Map>()
+          .map(
+            (task) => DailySocialTask(
+              id: task['id']?.toString() ?? '',
+              title: task['title']?.toString() ?? '',
+              description:
+                  task['description']?.toString() ?? '',
+              claimed:
+                  task['claimed'] == true ||
+                  task['is_claimed'] == true ||
+                  task['completed'] == true,
+              rewardFan: _toInt(
+                task['reward_fan'] ??
+                    task['reward'] ??
+                    10,
+              ),
+              url: task['url']?.toString() ?? '',
+              platform:
+                  task['platform']?.toString() ?? 'link',
+            ),
+          )
+          .where((task) => task.id.isNotEmpty)
+          .toList();
     });
+  }
+
+  Future<void> startTask({
+    required String taskId,
+  }) async {
+    if (taskId.trim().isEmpty) {
+      throw Exception('Invalid task.');
+    }
+
+    await SupabaseService.safeCall(() async {
+      await _client.rpc(
+        'start_social_task',
+        params: {
+          'p_user_id': _userId,
+          'p_task_id': taskId,
+        },
+      );
+    });
+  }
+
+  Future<bool> verifyTask({
+    required String taskId,
+  }) async {
+    if (taskId.trim().isEmpty) {
+      throw Exception('Invalid task.');
+    }
+
+    return SupabaseService.safeCall(() async {
+      final result = await _client.rpc(
+        'verify_social_task_actions',
+        params: {
+          'p_user_id': _userId,
+          'p_task_id': taskId,
+        },
+      );
+
+      if (result is bool) {
+        return result;
+      }
+
+      if (result is Map) {
+        return result['verified'] == true ||
+            result['success'] == true ||
+            result['is_verified'] == true;
+      }
+
+      if (result is List && result.isNotEmpty) {
+        final first = result.first;
+
+        if (first is bool) {
+          return first;
+        }
+
+        if (first is Map) {
+          return first['verified'] == true ||
+              first['success'] == true ||
+              first['is_verified'] == true;
+        }
+      }
+
+      return false;
+    });
+  }
+
+  Future<Map<String, dynamic>> verifyAndClaim({
+    required String taskId,
+  }) async {
+    if (taskId.trim().isEmpty) {
+      throw Exception('Invalid task.');
+    }
+
+    return SupabaseService.safeCall(() async {
+      final result = await _client.rpc(
+        'claim_daily_social_reward',
+        params: {
+          'p_user_id': _userId,
+          'p_task_id': taskId,
+        },
+      );
+
+      if (result == null) {
+        return <String, dynamic>{
+          'success': true,
+          'reward': 10,
+        };
+      }
+
+      if (result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+
+      if (result is List &&
+          result.isNotEmpty &&
+          result.first is Map) {
+        return Map<String, dynamic>.from(result.first);
+      }
+
+      return <String, dynamic>{
+        'success': true,
+        'reward': _toInt(result),
+      };
+    });
+  }
+
+  Future<void> refreshClaimStatus() async {
+    await SupabaseService.safeCall(() async {
+      await _client.rpc(
+        'refresh_social_task_claim_status',
+        params: {
+          'p_user_id': _userId,
+        },
+      );
+    });
+  }
+
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is int) return value;
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(value.toString()) ?? 0;
   }
 }
