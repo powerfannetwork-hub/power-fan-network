@@ -1,3 +1,5 @@
+// lib/services/auth_service.dart
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
@@ -5,73 +7,53 @@ class AuthService {
 
   static final AuthService instance = AuthService._();
 
-  final SupabaseClient _supabase =
-      Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
-  User? get currentUser =>
-      _supabase.auth.currentUser;
+  User? get currentUser => _supabase.auth.currentUser;
 
-  Session? get currentSession =>
-      _supabase.auth.currentSession;
+  Session? get currentSession => _supabase.auth.currentSession;
 
-  bool get isLoggedIn =>
-      _supabase.auth.currentSession != null;
-
-  Stream<AuthState> get authStateChanges =>
-      _supabase.auth.onAuthStateChange;
+  bool get isLoggedIn => currentUser != null;
 
   Future<AuthResponse> register({
-    required String username,
     required String email,
     required String password,
+    required String username,
     String? referralCode,
   }) async {
-    final cleanUsername = username.trim();
-    final cleanEmail = email.trim().toLowerCase();
-    final cleanReferral =
-        referralCode?.trim().toUpperCase();
-
-    if (cleanUsername.isEmpty) {
-      throw const AuthException(
-        'Username is required.',
-      );
-    }
-
-    if (cleanEmail.isEmpty) {
-      throw const AuthException(
-        'Email is required.',
-      );
-    }
-
-    if (password.length < 6) {
-      throw const AuthException(
-        'Password must be at least 6 characters.',
-      );
-    }
-
     try {
+      final cleanEmail = email.trim().toLowerCase();
+      final cleanUsername = username.trim();
+      final cleanReferral = referralCode?.trim();
+
+      if (cleanEmail.isEmpty) {
+        throw Exception('Email is required.');
+      }
+
+      if (password.length < 6) {
+        throw Exception('Password must be at least 6 characters.');
+      }
+
+      if (cleanUsername.isEmpty) {
+        throw Exception('Username is required.');
+      }
+
       final response = await _supabase.auth.signUp(
         email: cleanEmail,
         password: password,
         data: {
           'username': cleanUsername,
-          'referral_code': cleanReferral ?? '',
+          if (cleanReferral != null && cleanReferral.isNotEmpty)
+            'referral_code': cleanReferral,
         },
       );
 
-      if (response.user == null) {
-        throw const AuthException(
-          'Registration failed. Please try again.',
-        );
-      }
-
       return response;
-    } on AuthException {
-      rethrow;
+    } on AuthException catch (e) {
+      throw Exception(e.message);
     } catch (e) {
-      throw AuthException(
-        _cleanError(e),
-      );
+      if (e is Exception) rethrow;
+      throw Exception(e.toString());
     }
   }
 
@@ -79,87 +61,64 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final cleanEmail =
-        email.trim().toLowerCase();
-
-    if (cleanEmail.isEmpty) {
-      throw const AuthException(
-        'Email is required.',
-      );
-    }
-
-    if (password.isEmpty) {
-      throw const AuthException(
-        'Password is required.',
-      );
-    }
-
     try {
-      final response =
-          await _supabase.auth.signInWithPassword(
-        email: cleanEmail,
+      final response = await _supabase.auth.signInWithPassword(
+        email: email.trim().toLowerCase(),
         password: password,
       );
 
-      if (response.user == null ||
-          response.session == null) {
-        throw const AuthException(
-          'Login failed. Please check your email and password.',
-        );
-      }
-
       return response;
-    } on AuthException {
-      rethrow;
+    } on AuthException catch (e) {
+      throw Exception(e.message);
     } catch (e) {
-      throw AuthException(
-        _cleanError(e),
-      );
+      if (e is Exception) rethrow;
+      throw Exception(e.toString());
     }
   }
 
   Future<void> logout() async {
-    await _supabase.auth.signOut();
+    try {
+      await _supabase.auth.signOut();
+    } on AuthException catch (e) {
+      throw Exception(e.message);
+    }
   }
 
-  Future<void> resetPassword(
-    String email,
-  ) async {
-    final cleanEmail =
-        email.trim().toLowerCase();
-
-    if (cleanEmail.isEmpty) {
-      throw const AuthException(
-        'Email is required.',
+  Future<void> resetPassword(String email) async {
+    try {
+      await _supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
       );
+    } on AuthException catch (e) {
+      throw Exception(e.message);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception(e.toString());
     }
-
-    await _supabase.auth.resetPasswordForEmail(
-      cleanEmail,
-    );
   }
 
   Future<void> refreshSession() async {
-    if (_supabase.auth.currentSession == null) {
-      return;
+    try {
+      await _supabase.auth.refreshSession();
+    } on AuthException catch (e) {
+      throw Exception(e.message);
     }
-
-    await _supabase.auth.refreshSession();
   }
 
-  String _cleanError(Object error) {
-    var message = error.toString();
+  Future<void> updatePassword(String newPassword) async {
+    try {
+      if (newPassword.length < 6) {
+        throw Exception('Password must be at least 6 characters.');
+      }
 
-    if (message.startsWith('Exception: ')) {
-      message = message.substring(11);
+      await _supabase.auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+    } on AuthException catch (e) {
+      throw Exception(e.message);
     }
-
-    if (message.startsWith('AuthException: ')) {
-      message = message.substring(14);
-    }
-
-    return message.trim().isEmpty
-        ? 'Something went wrong. Please try again.'
-        : message.trim();
   }
+
+  Stream<AuthState> get authStateChanges =>
+      _supabase.auth.onAuthStateChange;
 }
