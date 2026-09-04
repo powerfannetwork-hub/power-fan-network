@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'profile_screen.dart';
 import '../services/auth_service.dart';
+import '../localization/language_controller.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,16 +15,16 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final SupabaseClient _client = Supabase.instance.client;
   final AuthService _authService = AuthService.instance;
+  final LanguageController _languageController =
+      LanguageController.instance;
 
   Map<String, dynamic>? _profile;
   bool _loading = true;
   bool _notificationsEnabled = true;
-  String _language = 'English';
 
   static const Color purple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color background = Color(0xFFF8F8FC);
-  static const Color green = Color(0xFF159B61);
 
   @override
   void initState() {
@@ -72,30 +73,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String get _name {
-    final value = _profile?['name']?.toString().trim() ?? '';
-
-    if (value.isNotEmpty) return value;
+    final name = _profile?['name']?.toString().trim() ?? '';
+    if (name.isNotEmpty) return name;
 
     final fullName =
         _profile?['full_name']?.toString().trim() ?? '';
-
     if (fullName.isNotEmpty) return fullName;
 
     final username =
         _profile?['username']?.toString().trim() ?? '';
-
     if (username.isNotEmpty) return username;
 
     return 'POWER FAN User';
   }
 
   String get _email {
-    final profileEmail =
+    final email =
         _profile?['email']?.toString().trim() ?? '';
 
-    if (profileEmail.isNotEmpty) {
-      return profileEmail;
-    }
+    if (email.isNotEmpty) return email;
 
     return _client.auth.currentUser?.email ??
         'No email available';
@@ -121,16 +117,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return int.tryParse(value.toString()) ?? 0;
   }
 
+  String get _languageName {
+    switch (_languageController.languageCode) {
+      case 'zh':
+        return '中文';
+      case 'es':
+        return 'Español';
+      case 'fr':
+        return 'Français';
+      case 'ar':
+        return 'العربية';
+      case 'hi':
+        return 'हिन्दी';
+      case 'bn':
+        return 'বাংলা';
+      case 'ru':
+        return 'Русский';
+      case 'tr':
+        return 'Türkçe';
+      case 'id':
+        return 'Bahasa Indonesia';
+      default:
+        return 'English';
+    }
+  }
+
   Future<void> _openProfile() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ProfileScreen(
           name: _name,
           email: _email,
-          fanBalance: _number(_profile?['fan_balance']),
-          afamBalance: _number(_profile?['afam_balance']),
-          activeReferrals:
-              _integer(_profile?['active_referrals']),
+          fanBalance: _number(
+            _profile?['fan_balance'],
+          ),
+          afamBalance: _number(
+            _profile?['afam_balance'],
+          ),
+          activeReferrals: _integer(
+            _profile?['active_referrals'],
+          ),
           kyc1Verified:
               _profile?['kyc1_verified'] == true,
           kyc2Eligible:
@@ -143,17 +169,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _selectLanguage() async {
-    const languages = [
-      'English',
-      'Hindi',
-      'Urdu',
-      'Chinese',
-      'Bahasa Indonesia',
-      'Vietnamese',
-      'Bengali',
-      'Russian',
-      'Spanish',
-      'Turkish',
+    const languages = <Map<String, String>>[
+      {
+        'code': 'en',
+        'name': 'English',
+      },
+      {
+        'code': 'zh',
+        'name': '中文',
+      },
+      {
+        'code': 'es',
+        'name': 'Español',
+      },
+      {
+        'code': 'fr',
+        'name': 'Français',
+      },
+      {
+        'code': 'ar',
+        'name': 'العربية',
+      },
+      {
+        'code': 'hi',
+        'name': 'हिन्दी',
+      },
+      {
+        'code': 'bn',
+        'name': 'বাংলা',
+      },
+      {
+        'code': 'ru',
+        'name': 'Русский',
+      },
+      {
+        'code': 'tr',
+        'name': 'Türkçe',
+      },
+      {
+        'code': 'id',
+        'name': 'Bahasa Indonesia',
+      },
     ];
 
     final selected = await showModalBottomSheet<String>(
@@ -175,32 +231,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Padding(
                 padding: EdgeInsets.fromLTRB(
                   20,
-                  12,
+                  14,
                   20,
-                  8,
+                  10,
                 ),
                 child: Text(
                   'Select Language',
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: 19,
                     fontWeight: FontWeight.w800,
+                    color: deepPurple,
                   ),
                 ),
               ),
               ...languages.map(
-                (language) => ListTile(
-                  title: Text(language),
-                  trailing: language == _language
-                      ? const Icon(
-                          Icons.check_circle,
+                (language) {
+                  final code = language['code']!;
+                  final name = language['name']!;
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      radius: 20,
+                      backgroundColor:
+                          purple.withOpacity(0.08),
+                      child: Text(
+                        code.toUpperCase(),
+                        style: const TextStyle(
                           color: purple,
-                        )
-                      : null,
-                  onTap: () {
-                    Navigator.of(sheetContext)
-                        .pop(language);
-                  },
-                ),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing:
+                        _languageController.languageCode ==
+                                code
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: purple,
+                              )
+                            : null,
+                    onTap: () {
+                      Navigator.of(sheetContext).pop(code);
+                    },
+                  );
+                },
               ),
             ],
           ),
@@ -210,9 +292,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (selected == null || !mounted) return;
 
-    setState(() {
-      _language = selected;
-    });
+    _languageController.setLanguage(selected);
+
+    setState(() {});
   }
 
   Future<void> _showSecurity() async {
@@ -310,9 +392,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage(
-        _cleanError(error),
-      );
+      _showMessage(_cleanError(error));
     }
   }
 
@@ -346,104 +426,109 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: background,
-        foregroundColor: deepPurple,
-        elevation: 0,
-        actions: [
-          IconButton(
-            onPressed: _loading ? null : _loadProfile,
-            icon: const Icon(
-              Icons.refresh_rounded,
-            ),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: purple,
+    return AnimatedBuilder(
+      animation: _languageController,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: background,
+          appBar: AppBar(
+            title: const Text(
+              'Settings',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
               ),
-            )
-          : RefreshIndicator(
-              onRefresh: _loadProfile,
-              child: ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  30,
+            ),
+            centerTitle: true,
+            backgroundColor: background,
+            foregroundColor: deepPurple,
+            elevation: 0,
+            actions: [
+              IconButton(
+                onPressed:
+                    _loading ? null : _loadProfile,
+                icon: const Icon(
+                  Icons.refresh_rounded,
                 ),
-                children: [
-                  _buildProfileCard(),
-                  const SizedBox(height: 16),
-                  _buildSection(
-                    title: 'Account',
-                    children: [
-                      _buildSettingTile(
-                        icon: Icons.person_outline_rounded,
-                        title: 'Profile',
-                        subtitle:
-                            'View your account information',
-                        onTap: _openProfile,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSection(
-                    title: 'Preferences',
-                    children: [
-                      _buildNotificationTile(),
-                      _buildSettingTile(
-                        icon: Icons.language_rounded,
-                        title: 'Language',
-                        subtitle: _language,
-                        onTap: _selectLanguage,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSection(
-                    title: 'Security',
-                    children: [
-                      _buildSettingTile(
-                        icon: Icons.security_rounded,
-                        title: 'Security',
-                        subtitle:
-                            'Account and data protection',
-                        onTap: _showSecurity,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSection(
-                    title: 'About',
-                    children: [
-                      _buildSettingTile(
-                        icon: Icons.info_outline_rounded,
-                        title: 'About POWER FAN',
-                        subtitle:
-                            'Version 1.0.0',
-                        onTap: _showAbout,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildLogoutButton(),
-                ],
               ),
-            ),
+            ],
+          ),
+          body: _loading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    color: purple,
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadProfile,
+                  child: ListView(
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      30,
+                    ),
+                    children: [
+                      _buildProfileCard(),
+                      const SizedBox(height: 16),
+                      _buildSection(
+                        title: 'Account',
+                        children: [
+                          _buildSettingTile(
+                            icon: Icons.person_outline_rounded,
+                            title: 'Profile',
+                            subtitle:
+                                'View your account information',
+                            onTap: _openProfile,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSection(
+                        title: 'Preferences',
+                        children: [
+                          _buildNotificationTile(),
+                          _buildSettingTile(
+                            icon: Icons.language_rounded,
+                            title: 'Language',
+                            subtitle: _languageName,
+                            onTap: _selectLanguage,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSection(
+                        title: 'Security',
+                        children: [
+                          _buildSettingTile(
+                            icon: Icons.security_rounded,
+                            title: 'Security',
+                            subtitle:
+                                'Account and data protection',
+                            onTap: _showSecurity,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSection(
+                        title: 'About',
+                        children: [
+                          _buildSettingTile(
+                            icon: Icons.info_outline_rounded,
+                            title: 'About POWER FAN',
+                            subtitle: 'Version 1.0.0',
+                            onTap: _showAbout,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildLogoutButton(),
+                    ],
+                  ),
+                ),
+        );
+      },
     );
   }
 
@@ -472,9 +557,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             height: 58,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.14,
-              ),
+              color: Colors.white.withOpacity(0.14),
               shape: BoxShape.circle,
             ),
             child: Text(
@@ -507,10 +590,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _email,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withValues(
-                      alpha: 0.72,
-                    ),
+                  style: const TextStyle(
+                    color: Colors.white70,
                     fontSize: 11,
                   ),
                 ),
@@ -540,9 +621,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (value.isEmpty) return 'PF';
 
-    final parts = value.split(
-      RegExp(r'\s+'),
-    );
+    final parts = value.split(RegExp(r'\s+'));
 
     if (parts.length == 1) {
       final text = parts.first;
@@ -613,9 +692,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: purple.withValues(
-            alpha: 0.08,
-          ),
+          color: purple.withOpacity(0.08),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
@@ -656,9 +733,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: purple.withValues(
-            alpha: 0.08,
-          ),
+          color: purple.withOpacity(0.08),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(
@@ -709,7 +784,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.red.shade700,
+          foregroundColor: Colors.red,
           side: BorderSide(
             color: Colors.red.shade200,
           ),
