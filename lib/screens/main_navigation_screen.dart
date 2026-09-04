@@ -152,6 +152,14 @@ class _MainNavigationScreenState
       ),
     );
   }
+
+  String _tr(
+    BuildContext context,
+    String key,
+  ) {
+    return AppLocalizations.of(context)
+        .translate(key);
+  }
 }
 
 class _HomeInterface extends StatefulWidget {
@@ -169,6 +177,24 @@ class _HomeInterfaceState
 
   static const Color deepPurple =
       Color(0xFF241064);
+
+  /*
+   * TEMPORARY TEST MODE
+   *
+   * AppLovin MAX account has not been connected yet.
+   *
+   * true:
+   *   Allows us to test the rewarded-ad flow.
+   *
+   * false:
+   *   Blocks the temporary test reward until the real
+   *   rewarded-ad system is connected.
+   *
+   * IMPORTANT:
+   * This must become false when real AppLovin verification
+   * is connected.
+   */
+  static const bool _testRewardedAds = true;
 
   final MiningService _miningService =
       MiningService.instance;
@@ -188,7 +214,12 @@ class _HomeInterfaceState
   bool _isMining = false;
 
   DateTime? _endsAt;
+  DateTime? _startedAt;
+
   Duration _remaining = Duration.zero;
+  Duration _elapsed = Duration.zero;
+
+  double _estimatedEarned = 0.0;
 
   int _adsWatched = 0;
 
@@ -270,8 +301,14 @@ class _HomeInterfaceState
           active['expires_at'],
     );
 
+    final startedAt = _parseDateTime(
+      active['started_at'] ??
+          active['start_time'],
+    );
+
     final mining =
-        active['is_mining'] ??
+        active['active'] ??
+            active['is_mining'] ??
             active['is_active'] ??
             false;
 
@@ -281,21 +318,37 @@ class _HomeInterfaceState
             active['ads_count'] ??
             0;
 
+    final activeRate =
+        _toDouble(
+      active['rate'] ??
+          active['mining_rate'] ??
+          rate,
+    );
+
     if (!mounted) return;
 
     setState(() {
       _isMining = mining == true;
 
+      _startedAt = startedAt;
       _endsAt = endsAt;
 
       _miningRate =
-          rate <= 0 ? 0.20 : rate;
+          activeRate <= 0
+              ? (rate <= 0 ? 0.20 : rate)
+              : activeRate;
 
       _adsWatched =
           _toInt(ads).clamp(0, 7).toInt();
 
       _remaining =
           _calculateRemaining();
+
+      _elapsed =
+          _calculateElapsed();
+
+      _estimatedEarned =
+          _calculateEstimatedEarned();
 
       if (_isMining &&
           _endsAt != null) {
@@ -336,6 +389,67 @@ class _HomeInterfaceState
     return difference;
   }
 
+  Duration _calculateElapsed() {
+    if (_startedAt == null) {
+      if (_endsAt == null) {
+        return Duration.zero;
+      }
+
+      const total =
+          Duration(hours: 24);
+
+      final remaining =
+          _calculateRemaining();
+
+      final elapsed =
+          total - remaining;
+
+      if (elapsed.isNegative) {
+        return Duration.zero;
+      }
+
+      return elapsed;
+    }
+
+    final elapsed =
+        DateTime.now()
+            .difference(_startedAt!);
+
+    if (elapsed.isNegative) {
+      return Duration.zero;
+    }
+
+    const total =
+        Duration(hours: 24);
+
+    if (elapsed > total) {
+      return total;
+    }
+
+    return elapsed;
+  }
+
+  double _calculateEstimatedEarned() {
+    if (_miningRate <= 0) {
+      return 0.0;
+    }
+
+    final elapsedSeconds =
+        _elapsed.inSeconds;
+
+    if (elapsedSeconds <= 0) {
+      return 0.0;
+    }
+
+    final earned =
+        _miningRate *
+            (elapsedSeconds / 3600.0);
+
+    return earned < 0
+        ? 0.0
+        : earned;
+  }
+
   void _startCountdown() {
     _timer?.cancel();
 
@@ -347,6 +461,9 @@ class _HomeInterfaceState
         final remaining =
             _calculateRemaining();
 
+        final elapsed =
+            _calculateElapsed();
+
         if (remaining <=
             Duration.zero) {
           _timer?.cancel();
@@ -355,15 +472,23 @@ class _HomeInterfaceState
             _remaining =
                 Duration.zero;
 
+            _elapsed =
+                const Duration(hours: 24);
+
+            _estimatedEarned =
+                _miningRate * 24;
+
             _isMining = false;
           });
 
-          _loadMining();
           return;
         }
 
         setState(() {
           _remaining = remaining;
+          _elapsed = elapsed;
+          _estimatedEarned =
+              _calculateEstimatedEarned();
         });
       },
     );
@@ -404,14 +529,174 @@ class _HomeInterfaceState
     }
   }
 
+  Future<bool> _showRewardedAdForClaim() async {
+    if (!_testRewardedAds) {
+      if (mounted) {
+        _showMessage(
+          'Rewarded Ad is not connected yet.',
+        );
+      }
+
+      return false;
+    }
+
+    if (!mounted) return false;
+
+    final result =
+        await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        int seconds = 3;
+
+        return StatefulBuilder(
+          builder: (
+            context,
+            setDialogState,
+          ) {
+            if (seconds > 0) {
+              Future.delayed(
+                const Duration(seconds: 1),
+                () {
+                  if (!context.mounted) {
+                    return;
+                  }
+
+                  setDialogState(() {
+                    seconds--;
+                  });
+                },
+              );
+            }
+
+            return AlertDialog(
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(
+                  20,
+                ),
+              ),
+              title: const Row(
+                children: [
+                  Icon(
+                    Icons
+                        .ondemand_video_rounded,
+                    color:
+                        primaryPurple,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Rewarded Ad',
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize:
+                    MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Watch the rewarded ad before claiming your mining reward.',
+                    textAlign:
+                        TextAlign.center,
+                  ),
+                  const SizedBox(
+                    height: 18,
+                  ),
+                  if (seconds > 0)
+                    Text(
+                      'Ad playing... $seconds',
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.w800,
+                        color:
+                            primaryPurple,
+                      ),
+                    )
+                  else
+                    const Text(
+                      'Reward received',
+                      style:
+                          TextStyle(
+                        fontWeight:
+                            FontWeight.w800,
+                        color:
+                            Colors.green,
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                if (seconds == 0)
+                  SizedBox(
+                    width:
+                        double.infinity,
+                    child:
+                        ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(
+                          dialogContext,
+                        ).pop(true);
+                      },
+                      style:
+                          ElevatedButton
+                              .styleFrom(
+                        backgroundColor:
+                            primaryPurple,
+                        foregroundColor:
+                            Colors.white,
+                      ),
+                      child: const Text(
+                        'CONTINUE',
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    return result == true;
+  }
+
   Future<void> _claimMining() async {
     if (_actionLoading) return;
+
+    if (_isMining) {
+      return;
+    }
+
+    final canClaim =
+        _endsAt != null &&
+        _remaining == Duration.zero;
+
+    if (!canClaim) {
+      return;
+    }
 
     setState(() {
       _actionLoading = true;
     });
 
     try {
+      /*
+       * Rewarded ad must be completed before claim.
+       *
+       * Currently this is TEST MODE because AppLovin MAX
+       * is not connected yet.
+       */
+      final adCompleted =
+          await _showRewardedAdForClaim();
+
+      if (!adCompleted) {
+        return;
+      }
+
       final result =
           await _miningService.claimMining();
 
@@ -428,6 +713,13 @@ class _HomeInterfaceState
       );
 
       await _loadProfile();
+
+      /*
+       * Immediately start a new mining session
+       * after successful claim.
+       */
+      await _miningService.startMining();
+
       await _loadMining();
 
       if (mounted) {
@@ -458,6 +750,210 @@ class _HomeInterfaceState
         });
       }
     }
+  }
+
+  Future<void> _watchBoostAd() async {
+    if (_actionLoading) return;
+
+    if (!_isMining) {
+      _showMessage(
+        _tr(
+          context,
+          'start_mining_watch_ads',
+        ),
+      );
+      return;
+    }
+
+    if (_adsWatched >= 7) {
+      _showMessage(
+        _tr(
+          context,
+          'daily_limit_reached',
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      /*
+       * Temporary test rewarded-ad flow.
+       *
+       * Real AppLovin integration will replace this
+       * with the actual ad completion callback.
+       */
+      final adCompleted =
+          await _showRewardedAdForBoost();
+
+      if (!adCompleted) {
+        return;
+      }
+
+      final result =
+          await _miningService
+              .recordAndVerifyRewardedAd(
+        adReference: 'test_rewarded_ad',
+      );
+
+      final success =
+          result['verified'] == true ||
+              result['success'] == true ||
+              result['boost_amount'] != null;
+
+      if (!success) {
+        throw Exception(
+          result['message'] ??
+              'Rewarded ad verification failed.',
+        );
+      }
+
+      await _loadMining();
+
+      if (mounted) {
+        _showMessage(
+          '+0.10 FAN/H',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(
+          _errorMessage(e),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _showRewardedAdForBoost() async {
+    if (!mounted) return false;
+
+    final result =
+        await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        int seconds = 3;
+
+        return StatefulBuilder(
+          builder: (
+            context,
+            setDialogState,
+          ) {
+            if (seconds > 0) {
+              Future.delayed(
+                const Duration(seconds: 1),
+                () {
+                  if (!context.mounted) {
+                    return;
+                  }
+
+                  setDialogState(() {
+                    seconds--;
+                  });
+                },
+              );
+            }
+
+            return AlertDialog(
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(
+                  20,
+                ),
+              ),
+              title: const Row(
+                children: [
+                  Icon(
+                    Icons.ondemand_video_rounded,
+                    color: primaryPurple,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Rewarded Ad',
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize:
+                    MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Watch the rewarded ad to receive +0.10 FAN/H mining boost.',
+                    textAlign:
+                        TextAlign.center,
+                  ),
+                  const SizedBox(
+                    height: 18,
+                  ),
+                  if (seconds > 0)
+                    Text(
+                      'Ad playing... $seconds',
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.w800,
+                        color:
+                            primaryPurple,
+                      ),
+                    )
+                  else
+                    const Text(
+                      'Reward received',
+                      style:
+                          TextStyle(
+                        fontWeight:
+                            FontWeight.w800,
+                        color:
+                            Colors.green,
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                if (seconds == 0)
+                  SizedBox(
+                    width:
+                        double.infinity,
+                    child:
+                        ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(
+                          dialogContext,
+                        ).pop(true);
+                      },
+                      style:
+                          ElevatedButton
+                              .styleFrom(
+                        backgroundColor:
+                            primaryPurple,
+                        foregroundColor:
+                            Colors.white,
+                      ),
+                      child: const Text(
+                        'CLAIM BOOST',
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    return result == true;
   }
 
   Future<void> _openSocialTask(
@@ -943,16 +1439,45 @@ class _HomeInterfaceState
                               Colors.white,
                         ),
                       )
-                    : Text(
-                        '${_fanBalance.toStringAsFixed(4)} FAN',
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.white,
-                          fontSize: 29,
-                          fontWeight:
-                              FontWeight.w900,
-                        ),
+                    : Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Text(
+                            '${(_fanBalance + _estimatedEarned).toStringAsFixed(4)} FAN',
+                            style:
+                                const TextStyle(
+                              color:
+                                  Colors.white,
+                              fontSize: 29,
+                              fontWeight:
+                                  FontWeight.w900,
+                            ),
+                          ),
+                          if (_isMining &&
+                              _estimatedEarned >
+                                  0)
+                            Padding(
+                              padding:
+                                  const EdgeInsets
+                                      .only(
+                                top: 2,
+                              ),
+                              child: Text(
+                                '+${_estimatedEarned.toStringAsFixed(6)} FAN mining',
+                                style:
+                                    const TextStyle(
+                                  color:
+                                      Colors.white70,
+                                  fontSize:
+                                      10,
+                                  fontWeight:
+                                      FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                 const SizedBox(height: 8),
                 Text(
@@ -1558,16 +2083,10 @@ class _HomeInterfaceState
                 OutlinedButton.icon(
               onPressed:
                   limitReached ||
-                          !_isMining
+                          !_isMining ||
+                          _actionLoading
                       ? null
-                      : () {
-                          _showMessage(
-                            _tr(
-                              context,
-                              'rewarded_ad_next',
-                            ),
-                          );
-                        },
+                      : _watchBoostAd,
               icon: const Icon(
                 Icons
                     .ondemand_video_rounded,
