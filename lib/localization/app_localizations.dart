@@ -358,6 +358,26 @@ class AppLocalizations {
   String get operationSuccessful => _t('operationSuccessful');
 
   // ---------------------------------------------------------------------------
+  // MINING / SECURITY RULES
+  // ---------------------------------------------------------------------------
+
+  String get claimRequiresAd => _t('claimRequiresAd');
+  String get claimAdMessage => _t('claimAdMessage');
+  String get dailyBoostRequired => _t('dailyBoostRequired');
+  String get dailyBoostReminder => _t('dailyBoostReminder');
+  String get miningRules => _t('miningRules');
+  String get miningRuleClaim24h => _t('miningRuleClaim24h');
+  String get miningRuleRateIncrease => _t('miningRuleRateIncrease');
+  String get miningRuleDailyBoost => _t('miningRuleDailyBoost');
+  String get robotWarning => _t('robotWarning');
+  String get unauthorizedActivity => _t('unauthorizedActivity');
+  String get accountRestrictionWarning => _t('accountRestrictionWarning');
+  String get deviceAlreadyRegistered => _t('deviceAlreadyRegistered');
+  String get oneDeviceRuleMessage => _t('oneDeviceRuleMessage');
+  String get boostCompleted => _t('boostCompleted');
+  String get dailyBoostCompleted => _t('dailyBoostCompleted');
+
+  // ---------------------------------------------------------------------------
   // TRANSLATIONS
   // ---------------------------------------------------------------------------
 
@@ -498,6 +518,7 @@ class AppLocalizations {
       'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
       'transactions': 'Transactions',
       'noTransactions': 'No transactions yet',
+
       'send': 'SEND',
       'receive': 'RECEIVE',
       'sendAfam': 'Send AFAM',
@@ -513,13 +534,16 @@ class AppLocalizations {
       'faceVerificationComingSoon': 'Face Verification Coming Soon',
       'kycComingSoon': 'KYC Coming Soon',
       'kycRequirements': 'KYC Requirements',
-      'kycRequirementOne': 'Complete 30 consecutive days of Daily Check-in.',
-      'kycRequirementTwo': 'Complete at least one boost every day for 30 days.',
+      'kycRequirementOne':
+          'Complete 30 consecutive days of Daily Check-in.',
+      'kycRequirementTwo':
+          'Complete at least one boost every day for 30 days.',
       'kycRequirementThree': 'Then complete Face Verification.',
       'thirtyDayCheckIn': '30 Days Daily Check-in',
       'thirtyDayBoost': '30 Days Daily Boost',
       'kycUnlocked': 'KYC Unlocked',
       'kycLocked': 'KYC Locked',
+
       'startFaceVerification': 'START FACE VERIFICATION',
       'verificationInProgress': 'Verification in progress',
       'verificationComplete': 'Verification completed',
@@ -530,6 +554,7 @@ class AppLocalizations {
       'cameraPermissionRequired': 'Camera Permission Required',
       'cameraPermissionMessage':
           'Camera access is required for live face verification.',
+
       'oneDeviceOneAccount': 'One Device = One Account',
       'deviceSecurity': 'Device Security',
       'livenessWarning':
@@ -574,6 +599,32 @@ class AppLocalizations {
       'networkError': 'Network error. Please try again.',
       'noInternet': 'No internet connection.',
       'operationSuccessful': 'Operation successful.',
+
+      'claimRequiresAd':
+          'Watch the rewarded ad before claiming your 24-hour mining reward.',
+      'claimAdMessage':
+          'After the ad is completed, your mining reward will be claimed and a new 24-hour session will start automatically.',
+      'dailyBoostRequired': 'Daily boost required',
+      'dailyBoostReminder':
+          'Watch at least one boost ad each day to remain active and progress toward KYC.',
+      'miningRules': 'Mining Rules',
+      'miningRuleClaim24h':
+          'Claim your mining reward after each 24-hour session.',
+      'miningRuleRateIncrease':
+          'Mining rate can only increase through approved boosts and active referrals.',
+      'miningRuleDailyBoost':
+          'Complete at least one boost every day to remain active.',
+      'robotWarning': 'Robot or automated activity is not allowed.',
+      'unauthorizedActivity':
+          'Unauthorized methods, bots, scripts, or other abusive activity may lead to account restrictions or suspension.',
+      'accountRestrictionWarning':
+          'We may review and restrict accounts that violate the network rules. Action will be based on the violation.',
+      'deviceAlreadyRegistered':
+          'This device is already linked to another account.',
+      'oneDeviceRuleMessage':
+          'One person may use one account on one device. Multiple accounts on the same device are not allowed.',
+      'boostCompleted': 'Boost completed successfully.',
+      'dailyBoostCompleted': 'Today’s boost is complete.',
     },
 
     // ========================================================================
@@ -687,6 +738,7 @@ class AppLocalizations {
       'copyCode': '复制代码',
       'shareCode': '分享代码',
       'copied': '已复制',
+
       'totalReferrals': '总推荐人数',
       'activeReferrals': '活跃推荐人数',
       'referralEarnings': '推荐收益',
@@ -694,6 +746,7 @@ class AppLocalizations {
       'newUserReward': '新用户获得 20 FAN',
       'miningBonus': '挖矿加成',
       'perActiveReferral': '每个活跃推荐 +0.02 FAN/H',
+
       'referralHowItWorks': '推荐方式',
       'referralStepOne': '与朋友分享您的推荐码。',
       'referralStepTwo': '朋友使用您的代码加入。',
@@ -710,6 +763,7 @@ class AppLocalizations {
       'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
       'transactions': '交易记录',
       'noTransactions': '暂无交易',
+
       'send': '发送',
       'receive': '接收',
       'sendAfam': '发送 AFAM',
@@ -731,6 +785,7 @@ class AppLocalizations {
       'thirtyDayBoost': '30 天每日提升',
       'kycUnlocked': 'KYC 已解锁',
       'kycLocked': 'KYC 已锁定',
+
       'startFaceVerification': '开始人脸验证',
       'verificationInProgress': '验证进行中',
       'verificationComplete': '验证完成',
@@ -740,9 +795,11 @@ class AppLocalizations {
       'secondsRemaining': '秒剩余',
       'cameraPermissionRequired': '需要摄像头权限',
       'cameraPermissionMessage': '实时人脸验证需要摄像头权限。',
+
       'oneDeviceOneAccount': '一台设备 = 一个账户',
       'deviceSecurity': '设备安全',
-      'livenessWarning': '实时摄像头验证有助于保护网络，但仅计时 30 秒并不等于完整的生物识别活体检测。',
+      'livenessWarning':
+          '实时摄像头验证有助于保护网络，但仅计时 30 秒并不等于完整的生物识别活体检测。',
 
       'settings': '设置',
       'account': '账户',
@@ -783,8 +840,34 @@ class AppLocalizations {
       'networkError': '网络错误，请重试。',
       'noInternet': '没有网络连接。',
       'operationSuccessful': '操作成功。',
+
+      'claimRequiresAd': '领取24小时挖矿奖励前，请先观看激励广告。',
+      'claimAdMessage':
+          '广告完成后，您的挖矿奖励将被领取，并自动开始新的24小时挖矿周期。',
+      'dailyBoostRequired': '需要每日提升',
+      'dailyBoostReminder':
+          '每天至少完成一次广告提升，以保持活跃并推进KYC进度。',
+      'miningRules': '挖矿规则',
+      'miningRuleClaim24h': '每个24小时挖矿周期结束后领取奖励。',
+      'miningRuleRateIncrease':
+          '挖矿速度只能通过批准的提升和活跃推荐增加。',
+      'miningRuleDailyBoost': '每天至少完成一次提升以保持活跃。',
+      'robotWarning': '禁止使用机器人或自动化活动。',
+      'unauthorizedActivity':
+          '禁止使用未经授权的方法、机器人、脚本或其他滥用行为，否则可能限制或暂停账户。',
+      'accountRestrictionWarning':
+          '我们可能审核并限制违反网络规则的账户，处理措施将根据违规情况决定。',
+      'deviceAlreadyRegistered': '此设备已绑定到其他账户。',
+      'oneDeviceRuleMessage':
+          '一个人只能在一台设备上使用一个账户。不允许在同一设备上使用多个账户。',
+      'boostCompleted': '提升完成。',
+      'dailyBoostCompleted': '今天的提升已完成。',
     },
 
+    // ========================================================================
+    // SPANISH
+    // ========================================================================
+    'es': {
     // ========================================================================
     // SPANISH
     // ========================================================================
@@ -823,12 +906,14 @@ class AppLocalizations {
       'alreadyHaveAccount': '¿Ya tienes una cuenta?',
       'passwordHidden': 'Contraseña oculta',
       'passwordVisible': 'Contraseña visible',
+
       'home': 'Inicio',
       'balance': 'Saldo',
       'fanBalance': 'Saldo FAN',
       'afamBalance': 'Saldo AFAM',
       'miningBalance': 'Saldo de minería',
       'originalCoin': 'Moneda original',
+
       'mining': 'Minería',
       'startMining': 'INICIAR MINERÍA',
       'miningNow': 'MINANDO',
@@ -843,6 +928,7 @@ class AppLocalizations {
       'miningEndsIn': 'La minería termina en',
       'miningStarted': 'Minería iniciada correctamente',
       'miningCompleted': 'Sesión de minería completada',
+
       'boostMining': 'Aumentar minería',
       'boost': 'Aumentar',
       'watchAd': 'VER ANUNCIO',
@@ -853,8 +939,11 @@ class AppLocalizations {
       'maximumBoost': 'Aumento máximo: +0.7 FAN/H',
       'adReward': 'Recompensa por anuncio',
       'rewardedAd': 'Anuncio recompensado',
-      'watchAdsToBoost': 'Mira anuncios para aumentar tu tasa de minería',
-      'adSystemComingSoon': 'El sistema de anuncios llegará pronto',
+      'watchAdsToBoost':
+          'Mira anuncios para aumentar tu tasa de minería',
+      'adSystemComingSoon':
+          'El sistema de anuncios llegará pronto',
+
       'dailySocialTask': 'Tarea social diaria',
       'socialTasks': 'Tareas sociales',
       'dailyTasks': 'Tareas diarias',
@@ -864,7 +953,8 @@ class AppLocalizations {
       'claimReward': 'RECLAMAR RECOMPENSA',
       'taskCompleted': 'Tarea completada',
       'taskClaimed': 'Recompensa ya reclamada',
-      'taskNotReady': 'Completa primero las acciones requeridas',
+      'taskNotReady':
+          'Completa primero las acciones requeridas',
       'follow': 'Seguir',
       'comment': 'Comentar',
       'share': 'Compartir',
@@ -872,12 +962,14 @@ class AppLocalizations {
       'dailyCheckIn': 'Registro diario',
       'socialReward': 'Recompensa social',
       'fanReward': 'Recompensa FAN',
+
       'facebook': 'Facebook',
       'instagram': 'Instagram',
       'telegram': 'Telegram',
       'tiktok': 'TikTok',
       'twitterX': 'X',
       'youtube': 'YouTube',
+
       'referral': 'Referidos',
       'referrals': 'Referidos',
       'inviteFriends': 'Invitar amigos',
@@ -892,54 +984,79 @@ class AppLocalizations {
       'referralReward': 'Recompensa por referido',
       'newUserReward': 'El nuevo usuario recibe 20 FAN',
       'miningBonus': 'Bono de minería',
-      'perActiveReferral': '+0.02 FAN/H por referido activo',
+      'perActiveReferral':
+          '+0.02 FAN/H por referido activo',
+
       'referralHowItWorks': 'Cómo funciona el referido',
-      'referralStepOne': 'Comparte tu código con amigos.',
-      'referralStepTwo': 'Tu amigo se une usando tu código.',
-      'referralStepThree': 'Recibes 5 FAN y un bono de minería.',
+      'referralStepOne':
+          'Comparte tu código con amigos.',
+      'referralStepTwo':
+          'Tu amigo se une usando tu código.',
+      'referralStepThree':
+          'Recibes 5 FAN y un bono de minería.',
+
       'wallet': 'Billetera',
       'afamWallet': 'Billetera AFAM',
       'fanMiningBalance': 'Saldo de minería FAN',
       'migration': 'Migración',
       'migrate': 'MIGRAR',
       'migrationComingSoon': 'Migración próximamente',
-      'migrationInfo': 'Tu saldo FAN podrá migrarse a AFAM más adelante.',
+      'migrationInfo':
+          'Tu saldo FAN podrá migrarse a AFAM más adelante.',
       'migrationRate': 'Tasa de migración',
       'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
       'transactions': 'Transacciones',
       'noTransactions': 'Aún no hay transacciones',
+
       'send': 'ENVIAR',
       'receive': 'RECIBIR',
       'sendAfam': 'Enviar AFAM',
       'receiveAfam': 'Recibir AFAM',
-      'usernameTransactions': 'Las transacciones se realizan mediante el nombre de usuario.',
+      'usernameTransactions':
+          'Las transacciones se realizan mediante el nombre de usuario.',
       'walletSecurity': 'Seguridad de la billetera',
-      'walletSecurityMessage': 'Mantén tu cuenta segura. Nunca compartas tu contraseña ni tus datos de verificación.',
+      'walletSecurityMessage':
+          'Mantén tu cuenta segura. Nunca compartas tu contraseña ni tus datos de verificación.',
+
       'kyc': 'KYC',
       'kycVerification': 'Verificación KYC',
       'faceVerification': 'Verificación facial',
-      'faceVerificationComingSoon': 'Verificación facial próximamente',
+      'faceVerificationComingSoon':
+          'Verificación facial próximamente',
       'kycComingSoon': 'KYC próximamente',
       'kycRequirements': 'Requisitos KYC',
-      'kycRequirementOne': 'Completa 30 días consecutivos de registro diario.',
-      'kycRequirementTwo': 'Completa al menos un aumento cada día durante 30 días.',
-      'kycRequirementThree': 'Después completa la verificación facial.',
+      'kycRequirementOne':
+          'Completa 30 días consecutivos de registro diario.',
+      'kycRequirementTwo':
+          'Completa al menos un aumento cada día durante 30 días.',
+      'kycRequirementThree':
+          'Después completa la verificación facial.',
       'thirtyDayCheckIn': '30 días de registro diario',
       'thirtyDayBoost': '30 días de aumento diario',
       'kycUnlocked': 'KYC desbloqueado',
       'kycLocked': 'KYC bloqueado',
-      'startFaceVerification': 'INICIAR VERIFICACIÓN FACIAL',
+
+      'startFaceVerification':
+          'INICIAR VERIFICACIÓN FACIAL',
       'verificationInProgress': 'Verificación en progreso',
       'verificationComplete': 'Verificación completada',
-      'keepFaceVisible': 'Mantén tu rostro visible en la cámara.',
-      'lookAtCamera': 'Mira directamente a la cámara.',
-      'verificationSeconds': 'Verificación de 30 segundos',
+      'keepFaceVisible':
+          'Mantén tu rostro visible en la cámara.',
+      'lookAtCamera':
+          'Mira directamente a la cámara.',
+      'verificationSeconds':
+          'Verificación de 30 segundos',
       'secondsRemaining': 'segundos restantes',
-      'cameraPermissionRequired': 'Se requiere permiso de cámara',
-      'cameraPermissionMessage': 'Se necesita acceso a la cámara para la verificación facial en vivo.',
-      'oneDeviceOneAccount': 'Un dispositivo = Una cuenta',
+      'cameraPermissionRequired':
+          'Se requiere permiso de cámara',
+      'cameraPermissionMessage':
+          'Se necesita acceso a la cámara para la verificación facial en vivo.',
+      'oneDeviceOneAccount':
+          'Un dispositivo = Una cuenta',
       'deviceSecurity': 'Seguridad del dispositivo',
-      'livenessWarning': 'La verificación con cámara en vivo ayuda a proteger la red, pero un temporizador de 30 segundos por sí solo no es una detección biométrica completa.',
+      'livenessWarning':
+          'La verificación con cámara en vivo ayuda a proteger la red, pero un temporizador de 30 segundos por sí solo no es una detección biométrica completa.',
+
       'settings': 'Configuración',
       'account': 'Cuenta',
       'profile': 'Perfil',
@@ -949,7 +1066,9 @@ class AppLocalizations {
       'about': 'Acerca de',
       'help': 'Ayuda',
       'logout': 'Cerrar sesión',
-      'logoutConfirm': '¿Seguro que quieres cerrar sesión?',
+      'logoutConfirm':
+          '¿Seguro que quieres cerrar sesión?',
+
       'save': 'Guardar',
       'cancel': 'Cancelar',
       'close': 'Cerrar',
@@ -968,15 +1087,54 @@ class AppLocalizations {
       'no': 'No',
       'today': 'Hoy',
       'tomorrow': 'Mañana',
+
       'loginRequired': 'Inicia sesión primero.',
-      'invalidEmail': 'Introduce un correo electrónico válido.',
-      'invalidPassword': 'La contraseña debe tener al menos 6 caracteres.',
-      'invalidUsername': 'Introduce un nombre de usuario válido.',
-      'passwordsDoNotMatch': 'Las contraseñas no coinciden.',
+      'invalidEmail':
+          'Introduce un correo electrónico válido.',
+      'invalidPassword':
+          'La contraseña debe tener al menos 6 caracteres.',
+      'invalidUsername':
+          'Introduce un nombre de usuario válido.',
+      'passwordsDoNotMatch':
+          'Las contraseñas no coinciden.',
       'somethingWentWrong': 'Algo salió mal.',
-      'networkError': 'Error de red. Inténtalo de nuevo.',
-      'noInternet': 'No hay conexión a Internet.',
-      'operationSuccessful': 'Operación exitosa.',
+      'networkError':
+          'Error de red. Inténtalo de nuevo.',
+      'noInternet':
+          'No hay conexión a Internet.',
+      'operationSuccessful':
+          'Operación exitosa.',
+
+      'claimRequiresAd':
+          'Mira el anuncio recompensado antes de reclamar tu recompensa de minería de 24 horas.',
+      'claimAdMessage':
+          'Después de completar el anuncio, se reclamará tu recompensa y comenzará automáticamente una nueva sesión de 24 horas.',
+      'dailyBoostRequired':
+          'Se requiere un boost diario',
+      'dailyBoostReminder':
+          'Mira al menos un anuncio de boost cada día para mantenerte activo y avanzar hacia KYC.',
+      'miningRules':
+          'Reglas de minería',
+      'miningRuleClaim24h':
+          'Reclama tu recompensa después de cada sesión de 24 horas.',
+      'miningRuleRateIncrease':
+          'La tasa de minería solo puede aumentar mediante boosts aprobados y referidos activos.',
+      'miningRuleDailyBoost':
+          'Completa al menos un boost cada día para mantenerte activo.',
+      'robotWarning':
+          'No se permite la actividad de robots o automatizada.',
+      'unauthorizedActivity':
+          'Los métodos no autorizados, bots, scripts u otras actividades abusivas pueden causar restricciones o suspensión de la cuenta.',
+      'accountRestrictionWarning':
+          'Podemos revisar y restringir cuentas que infrinjan las reglas de la red. La acción dependerá de la infracción.',
+      'deviceAlreadyRegistered':
+          'Este dispositivo ya está vinculado a otra cuenta.',
+      'oneDeviceRuleMessage':
+          'Una persona puede usar una cuenta en un dispositivo. No se permiten varias cuentas en el mismo dispositivo.',
+      'boostCompleted':
+          'Boost completado correctamente.',
+      'dailyBoostCompleted':
+          'El boost de hoy está completo.',
     },
 
     // ========================================================================
@@ -999,30 +1157,45 @@ class AppLocalizations {
       'signUp': "S'inscrire",
       'welcomeBack': 'Bon retour',
       'createAccount': 'Créer un compte',
-      'loginToContinue': 'Connectez-vous pour continuer',
-      'joinPowerFanNetwork': 'Rejoindre POWER FAN NETWORK',
+      'loginToContinue':
+          'Connectez-vous pour continuer',
+      'joinPowerFanNetwork':
+          'Rejoindre POWER FAN NETWORK',
       'username': "Nom d'utilisateur",
       'email': 'E-mail',
       'password': 'Mot de passe',
-      'confirmPassword': 'Confirmer le mot de passe',
+      'confirmPassword':
+          'Confirmer le mot de passe',
       'referralCode': 'Code de parrainage',
-      'referralCodeOptional': 'Code de parrainage (facultatif)',
-      'enterUsername': "Entrez votre nom d'utilisateur",
+      'referralCodeOptional':
+          'Code de parrainage (facultatif)',
+      'enterUsername':
+          "Entrez votre nom d'utilisateur",
       'enterEmail': 'Entrez votre e-mail',
-      'enterPassword': 'Entrez votre mot de passe',
-      'enterReferralCode': 'Entrez le code de parrainage',
-      'forgotPassword': 'Mot de passe oublié ?',
-      'resetPassword': 'Réinitialiser le mot de passe',
-      'dontHaveAccount': "Vous n'avez pas de compte ?",
-      'alreadyHaveAccount': 'Vous avez déjà un compte ?',
-      'passwordHidden': 'Mot de passe masqué',
-      'passwordVisible': 'Mot de passe visible',
+      'enterPassword':
+          'Entrez votre mot de passe',
+      'enterReferralCode':
+          'Entrez le code de parrainage',
+      'forgotPassword':
+          'Mot de passe oublié ?',
+      'resetPassword':
+          'Réinitialiser le mot de passe',
+      'dontHaveAccount':
+          "Vous n'avez pas de compte ?",
+      'alreadyHaveAccount':
+          'Vous avez déjà un compte ?',
+      'passwordHidden':
+          'Mot de passe masqué',
+      'passwordVisible':
+          'Mot de passe visible',
+
       'home': 'Accueil',
       'balance': 'Solde',
       'fanBalance': 'Solde FAN',
       'afamBalance': 'Solde AFAM',
       'miningBalance': 'Solde de minage',
       'originalCoin': 'Monnaie originale',
+
       'mining': 'Minage',
       'startMining': 'DÉMARRER LE MINAGE',
       'miningNow': 'MINAGE EN COURS',
@@ -1034,106 +1207,186 @@ class AppLocalizations {
       'fanPerHour': 'FAN / Heure',
       'remainingTime': 'Temps restant',
       'miningSession': 'Session de minage',
-      'miningEndsIn': 'Le minage se termine dans',
-      'miningStarted': 'Minage démarré avec succès',
-      'miningCompleted': 'Session de minage terminée',
+      'miningEndsIn':
+          'Le minage se termine dans',
+      'miningStarted':
+          'Minage démarré avec succès',
+      'miningCompleted':
+          'Session de minage terminée',
+
       'boostMining': 'Booster le minage',
       'boost': 'Booster',
       'watchAd': 'REGARDER LA PUB',
       'adsWatched': 'Publicités regardées',
       'dailyAds': 'Publicités quotidiennes',
       'maxAds': 'Maximum de publicités',
-      'boostPerAd': '+0.1 FAN/H par publicité',
-      'maximumBoost': 'Boost maximum : +0.7 FAN/H',
-      'adReward': 'Récompense publicitaire',
-      'rewardedAd': 'Publicité récompensée',
-      'watchAdsToBoost': 'Regardez des publicités pour augmenter votre taux de minage',
-      'adSystemComingSoon': 'Le système de publicités récompensées arrive bientôt',
-      'dailySocialTask': 'Tâche sociale quotidienne',
+      'boostPerAd':
+          '+0.1 FAN/H par publicité',
+      'maximumBoost':
+          'Boost maximum : +0.7 FAN/H',
+      'adReward':
+          'Récompense publicitaire',
+      'rewardedAd':
+          'Publicité récompensée',
+      'watchAdsToBoost':
+          'Regardez des publicités pour augmenter votre taux de minage',
+      'adSystemComingSoon':
+          'Le système de publicités récompensées arrive bientôt',
+
+      'dailySocialTask':
+          'Tâche sociale quotidienne',
       'socialTasks': 'Tâches sociales',
       'dailyTasks': 'Tâches quotidiennes',
-      'completeTask': 'Terminer la tâche',
+      'completeTask':
+          'Terminer la tâche',
       'openTask': 'OUVRIR LA TÂCHE',
-      'verifyTask': 'VÉRIFIER LA TÂCHE',
-      'claimReward': 'RÉCLAMER LA RÉCOMPENSE',
-      'taskCompleted': 'Tâche terminée',
-      'taskClaimed': 'Récompense déjà réclamée',
-      'taskNotReady': 'Effectuez d’abord les actions requises',
+      'verifyTask':
+          'VÉRIFIER LA TÂCHE',
+      'claimReward':
+          'RÉCLAMER LA RÉCOMPENSE',
+      'taskCompleted':
+          'Tâche terminée',
+      'taskClaimed':
+          'Récompense déjà réclamée',
+      'taskNotReady':
+          'Effectuez d’abord les actions requises',
       'follow': 'Suivre',
       'comment': 'Commenter',
       'share': 'Partager',
       'checkIn': 'Enregistrement',
-      'dailyCheckIn': 'Enregistrement quotidien',
-      'socialReward': 'Récompense sociale',
-      'fanReward': 'Récompense FAN',
+      'dailyCheckIn':
+          'Enregistrement quotidien',
+      'socialReward':
+          'Récompense sociale',
+      'fanReward':
+          'Récompense FAN',
+
       'facebook': 'Facebook',
       'instagram': 'Instagram',
       'telegram': 'Telegram',
       'tiktok': 'TikTok',
       'twitterX': 'X',
       'youtube': 'YouTube',
+
       'referral': 'Parrainage',
       'referrals': 'Parrainages',
-      'inviteFriends': 'Inviter des amis',
-      'inviteAndEarn': 'Inviter et gagner',
-      'myReferralCode': 'Mon code de parrainage',
+      'inviteFriends':
+          'Inviter des amis',
+      'inviteAndEarn':
+          'Inviter et gagner',
+      'myReferralCode':
+          'Mon code de parrainage',
       'copyCode': 'COPIER LE CODE',
-      'shareCode': 'PARTAGER LE CODE',
+      'shareCode':
+          'PARTAGER LE CODE',
       'copied': 'Copié',
-      'totalReferrals': 'Total des parrainages',
-      'activeReferrals': 'Parrainages actifs',
-      'referralEarnings': 'Gains de parrainage',
-      'referralReward': 'Récompense de parrainage',
-      'newUserReward': 'Le nouvel utilisateur reçoit 20 FAN',
-      'miningBonus': 'Bonus de minage',
-      'perActiveReferral': '+0.02 FAN/H par parrainage actif',
-      'referralHowItWorks': 'Comment fonctionne le parrainage',
-      'referralStepOne': 'Partagez votre code avec vos amis.',
-      'referralStepTwo': 'Votre ami rejoint avec votre code.',
-      'referralStepThree': 'Vous recevez 5 FAN et un bonus de minage.',
+      'totalReferrals':
+          'Total des parrainages',
+      'activeReferrals':
+          'Parrainages actifs',
+      'referralEarnings':
+          'Gains de parrainage',
+      'referralReward':
+          'Récompense de parrainage',
+      'newUserReward':
+          'Le nouvel utilisateur reçoit 20 FAN',
+      'miningBonus':
+          'Bonus de minage',
+      'perActiveReferral':
+          '+0.02 FAN/H par parrainage actif',
+
+      'referralHowItWorks':
+          'Comment fonctionne le parrainage',
+      'referralStepOne':
+          'Partagez votre code avec vos amis.',
+      'referralStepTwo':
+          'Votre ami rejoint avec votre code.',
+      'referralStepThree':
+          'Vous recevez 5 FAN et un bonus de minage.',
+
       'wallet': 'Portefeuille',
-      'afamWallet': 'Portefeuille AFAM',
-      'fanMiningBalance': 'Solde de minage FAN',
+      'afamWallet':
+          'Portefeuille AFAM',
+      'fanMiningBalance':
+          'Solde de minage FAN',
       'migration': 'Migration',
       'migrate': 'MIGRER',
-      'migrationComingSoon': 'Migration bientôt disponible',
-      'migrationInfo': 'Votre solde FAN pourra être migré vers AFAM plus tard.',
-      'migrationRate': 'Taux de migration',
-      'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
-      'transactions': 'Transactions',
-      'noTransactions': 'Aucune transaction',
+      'migrationComingSoon':
+          'Migration bientôt disponible',
+      'migrationInfo':
+          'Votre solde FAN pourra être migré vers AFAM plus tard.',
+      'migrationRate':
+          'Taux de migration',
+      'oneHundredFanOneAfam':
+          '100 FAN = 1 AFAM',
+      'transactions':
+          'Transactions',
+      'noTransactions':
+          'Aucune transaction',
       'send': 'ENVOYER',
       'receive': 'RECEVOIR',
-      'sendAfam': 'Envoyer AFAM',
-      'receiveAfam': 'Recevoir AFAM',
-      'usernameTransactions': 'Les transactions utilisent le nom d’utilisateur.',
-      'walletSecurity': 'Sécurité du portefeuille',
-      'walletSecurityMessage': 'Gardez votre compte sécurisé. Ne partagez jamais votre mot de passe ou vos informations de vérification.',
+      'sendAfam':
+          'Envoyer AFAM',
+      'receiveAfam':
+          'Recevoir AFAM',
+      'usernameTransactions':
+          'Les transactions utilisent le nom d’utilisateur.',
+      'walletSecurity':
+          'Sécurité du portefeuille',
+      'walletSecurityMessage':
+          'Gardez votre compte sécurisé. Ne partagez jamais votre mot de passe ou vos informations de vérification.',
+
       'kyc': 'KYC',
-      'kycVerification': 'Vérification KYC',
-      'faceVerification': 'Vérification faciale',
-      'faceVerificationComingSoon': 'Vérification faciale bientôt disponible',
-      'kycComingSoon': 'KYC bientôt disponible',
-      'kycRequirements': 'Exigences KYC',
-      'kycRequirementOne': 'Effectuez 30 jours consécutifs d’enregistrement quotidien.',
-      'kycRequirementTwo': 'Effectuez au moins un boost chaque jour pendant 30 jours.',
-      'kycRequirementThree': 'Effectuez ensuite la vérification faciale.',
-      'thirtyDayCheckIn': '30 jours d’enregistrement quotidien',
-      'thirtyDayBoost': '30 jours de boost quotidien',
-      'kycUnlocked': 'KYC déverrouillé',
-      'kycLocked': 'KYC verrouillé',
-      'startFaceVerification': 'DÉMARRER LA VÉRIFICATION FACIALE',
-      'verificationInProgress': 'Vérification en cours',
-      'verificationComplete': 'Vérification terminée',
-      'keepFaceVisible': 'Gardez votre visage visible dans la caméra.',
-      'lookAtCamera': 'Regardez directement la caméra.',
-      'verificationSeconds': 'Vérification de 30 secondes',
-      'secondsRemaining': 'secondes restantes',
-      'cameraPermissionRequired': 'Autorisation de caméra requise',
-      'cameraPermissionMessage': 'L’accès à la caméra est nécessaire pour la vérification faciale en direct.',
-      'oneDeviceOneAccount': 'Un appareil = Un compte',
-      'deviceSecurity': 'Sécurité de l’appareil',
-      'livenessWarning': 'La vérification par caméra en direct aide à protéger le réseau, mais un minuteur de 30 secondes seul ne constitue pas une détection biométrique complète.',
+      'kycVerification':
+          'Vérification KYC',
+      'faceVerification':
+          'Vérification faciale',
+      'faceVerificationComingSoon':
+          'Vérification faciale bientôt disponible',
+      'kycComingSoon':
+          'KYC bientôt disponible',
+      'kycRequirements':
+          'Exigences KYC',
+      'kycRequirementOne':
+          'Effectuez 30 jours consécutifs d’enregistrement quotidien.',
+      'kycRequirementTwo':
+          'Effectuez au moins un boost chaque jour pendant 30 jours.',
+      'kycRequirementThree':
+          'Effectuez ensuite la vérification faciale.',
+      'thirtyDayCheckIn':
+          '30 jours d’enregistrement quotidien',
+      'thirtyDayBoost':
+          '30 jours de boost quotidien',
+      'kycUnlocked':
+          'KYC déverrouillé',
+      'kycLocked':
+          'KYC verrouillé',
+
+      'startFaceVerification':
+          'DÉMARRER LA VÉRIFICATION FACIALE',
+      'verificationInProgress':
+          'Vérification en cours',
+      'verificationComplete':
+          'Vérification terminée',
+      'keepFaceVisible':
+          'Gardez votre visage visible dans la caméra.',
+      'lookAtCamera':
+          'Regardez directement la caméra.',
+      'verificationSeconds':
+          'Vérification de 30 secondes',
+      'secondsRemaining':
+          'secondes restantes',
+      'cameraPermissionRequired':
+          'Autorisation de caméra requise',
+      'cameraPermissionMessage':
+          'L’accès à la caméra est nécessaire pour la vérification faciale en direct.',
+      'oneDeviceOneAccount':
+          'Un appareil = Un compte',
+      'deviceSecurity':
+          'Sécurité de l’appareil',
+      'livenessWarning':
+          'La vérification par caméra en direct aide à protéger le réseau, mais un minuteur de 30 secondes seul ne constitue pas une détection biométrique complète.',
+
       'settings': 'Paramètres',
       'account': 'Compte',
       'profile': 'Profil',
@@ -1143,7 +1396,9 @@ class AppLocalizations {
       'about': 'À propos',
       'help': 'Aide',
       'logout': 'Déconnexion',
-      'logoutConfirm': 'Voulez-vous vraiment vous déconnecter ?',
+      'logoutConfirm':
+          'Voulez-vous vraiment vous déconnecter ?',
+
       'save': 'Enregistrer',
       'cancel': 'Annuler',
       'close': 'Fermer',
@@ -1162,15 +1417,56 @@ class AppLocalizations {
       'no': 'Non',
       'today': "Aujourd'hui",
       'tomorrow': 'Demain',
-      'loginRequired': "Veuillez d'abord vous connecter.",
-      'invalidEmail': 'Veuillez entrer une adresse e-mail valide.',
-      'invalidPassword': 'Le mot de passe doit contenir au moins 6 caractères.',
-      'invalidUsername': "Veuillez entrer un nom d'utilisateur valide.",
-      'passwordsDoNotMatch': 'Les mots de passe ne correspondent pas.',
-      'somethingWentWrong': "Une erreur s'est produite.",
-      'networkError': 'Erreur réseau. Veuillez réessayer.',
-      'noInternet': 'Aucune connexion Internet.',
-      'operationSuccessful': 'Opération réussie.',
+
+      'loginRequired':
+          "Veuillez d'abord vous connecter.",
+      'invalidEmail':
+          'Veuillez entrer une adresse e-mail valide.',
+      'invalidPassword':
+          'Le mot de passe doit contenir au moins 6 caractères.',
+      'invalidUsername':
+          "Veuillez entrer un nom d'utilisateur valide.",
+      'passwordsDoNotMatch':
+          'Les mots de passe ne correspondent pas.',
+      'somethingWentWrong':
+          "Une erreur s'est produite.",
+      'networkError':
+          'Erreur réseau. Veuillez réessayer.',
+      'noInternet':
+          'Aucune connexion Internet.',
+      'operationSuccessful':
+          'Opération réussie.',
+
+      'claimRequiresAd':
+          'Regardez la publicité récompensée avant de réclamer votre récompense de minage de 24 heures.',
+      'claimAdMessage':
+          'Après la publicité, votre récompense sera réclamée et une nouvelle session de 24 heures commencera automatiquement.',
+      'dailyBoostRequired':
+          'Boost quotidien requis',
+      'dailyBoostReminder':
+          'Regardez au moins une publicité de boost chaque jour pour rester actif et progresser vers le KYC.',
+      'miningRules':
+          'Règles de minage',
+      'miningRuleClaim24h':
+          'Réclamez votre récompense après chaque session de 24 heures.',
+      'miningRuleRateIncrease':
+          'Le taux de minage ne peut augmenter que grâce aux boosts approuvés et aux parrainages actifs.',
+      'miningRuleDailyBoost':
+          'Effectuez au moins un boost chaque jour pour rester actif.',
+      'robotWarning':
+          'Les robots et activités automatisées sont interdits.',
+      'unauthorizedActivity':
+          'Les méthodes non autorisées, bots, scripts ou autres abus peuvent entraîner des restrictions ou la suspension du compte.',
+      'accountRestrictionWarning':
+          'Nous pouvons examiner et restreindre les comptes qui enfreignent les règles du réseau. La mesure dépendra de l’infraction.',
+      'deviceAlreadyRegistered':
+          'Cet appareil est déjà lié à un autre compte.',
+      'oneDeviceRuleMessage':
+          'Une personne peut utiliser un compte sur un appareil. Plusieurs comptes sur le même appareil sont interdits.',
+      'boostCompleted':
+          'Boost terminé avec succès.',
+      'dailyBoostCompleted':
+          'Le boost du jour est terminé.',
     },
 
     // ========================================================================
@@ -1187,6 +1483,7 @@ class AppLocalizations {
       'selectLanguage': 'اختيار اللغة',
       'chooseLanguage': 'اختر لغتك',
       'languageChanged': 'تم تغيير اللغة بنجاح',
+
       'login': 'تسجيل الدخول',
       'register': 'إنشاء حساب',
       'signIn': 'تسجيل الدخول',
@@ -1194,29 +1491,41 @@ class AppLocalizations {
       'welcomeBack': 'مرحباً بعودتك',
       'createAccount': 'إنشاء حساب',
       'loginToContinue': 'سجل الدخول للمتابعة',
-      'joinPowerFanNetwork': 'انضم إلى POWER FAN NETWORK',
+      'joinPowerFanNetwork':
+          'انضم إلى POWER FAN NETWORK',
+
       'username': 'اسم المستخدم',
       'email': 'البريد الإلكتروني',
       'password': 'كلمة المرور',
       'confirmPassword': 'تأكيد كلمة المرور',
       'referralCode': 'رمز الإحالة',
-      'referralCodeOptional': 'رمز الإحالة (اختياري)',
+      'referralCodeOptional':
+          'رمز الإحالة (اختياري)',
       'enterUsername': 'أدخل اسم المستخدم',
       'enterEmail': 'أدخل البريد الإلكتروني',
       'enterPassword': 'أدخل كلمة المرور',
       'enterReferralCode': 'أدخل رمز الإحالة',
-      'forgotPassword': 'هل نسيت كلمة المرور؟',
-      'resetPassword': 'إعادة تعيين كلمة المرور',
-      'dontHaveAccount': 'ليس لديك حساب؟',
-      'alreadyHaveAccount': 'لديك حساب بالفعل؟',
-      'passwordHidden': 'كلمة المرور مخفية',
-      'passwordVisible': 'كلمة المرور ظاهرة',
+
+      'forgotPassword':
+          'هل نسيت كلمة المرور؟',
+      'resetPassword':
+          'إعادة تعيين كلمة المرور',
+      'dontHaveAccount':
+          'ليس لديك حساب؟',
+      'alreadyHaveAccount':
+          'لديك حساب بالفعل؟',
+      'passwordHidden':
+          'كلمة المرور مخفية',
+      'passwordVisible':
+          'كلمة المرور ظاهرة',
+
       'home': 'الرئيسية',
       'balance': 'الرصيد',
       'fanBalance': 'رصيد FAN',
       'afamBalance': 'رصيد AFAM',
       'miningBalance': 'رصيد التعدين',
       'originalCoin': 'العملة الأصلية',
+
       'mining': 'التعدين',
       'startMining': 'بدء التعدين',
       'miningNow': 'جاري التعدين',
@@ -1228,106 +1537,173 @@ class AppLocalizations {
       'fanPerHour': 'FAN / ساعة',
       'remainingTime': 'الوقت المتبقي',
       'miningSession': 'جلسة التعدين',
-      'miningEndsIn': 'ينتهي التعدين خلال',
-      'miningStarted': 'تم بدء التعدين بنجاح',
-      'miningCompleted': 'اكتملت جلسة التعدين',
+      'miningEndsIn':
+          'ينتهي التعدين خلال',
+      'miningStarted':
+          'تم بدء التعدين بنجاح',
+      'miningCompleted':
+          'اكتملت جلسة التعدين',
+
       'boostMining': 'تعزيز التعدين',
       'boost': 'تعزيز',
       'watchAd': 'مشاهدة الإعلان',
       'adsWatched': 'الإعلانات المشاهدة',
       'dailyAds': 'الإعلانات اليومية',
       'maxAds': 'الحد الأقصى للإعلانات',
-      'boostPerAd': '+0.1 FAN/H لكل إعلان',
-      'maximumBoost': 'الحد الأقصى للتعزيز: +0.7 FAN/H',
+      'boostPerAd':
+          '+0.1 FAN/H لكل إعلان',
+      'maximumBoost':
+          'الحد الأقصى للتعزيز: +0.7 FAN/H',
       'adReward': 'مكافأة الإعلان',
       'rewardedAd': 'إعلان بمكافأة',
-      'watchAdsToBoost': 'شاهد الإعلانات لزيادة معدل التعدين',
-      'adSystemComingSoon': 'نظام الإعلانات بمكافآت قريباً',
-      'dailySocialTask': 'المهمة الاجتماعية اليومية',
+      'watchAdsToBoost':
+          'شاهد الإعلانات لزيادة معدل التعدين',
+      'adSystemComingSoon':
+          'نظام الإعلانات بمكافآت قريباً',
+
+      'dailySocialTask':
+          'المهمة الاجتماعية اليومية',
       'socialTasks': 'المهام الاجتماعية',
       'dailyTasks': 'المهام اليومية',
       'completeTask': 'إكمال المهمة',
       'openTask': 'فتح المهمة',
       'verifyTask': 'التحقق من المهمة',
       'claimReward': 'استلام المكافأة',
-      'taskCompleted': 'تم إكمال المهمة',
-      'taskClaimed': 'تم استلام المكافأة بالفعل',
-      'taskNotReady': 'أكمل الإجراءات المطلوبة أولاً',
+      'taskCompleted':
+          'تم إكمال المهمة',
+      'taskClaimed':
+          'تم استلام المكافأة بالفعل',
+      'taskNotReady':
+          'أكمل الإجراءات المطلوبة أولاً',
       'follow': 'متابعة',
       'comment': 'تعليق',
       'share': 'مشاركة',
       'checkIn': 'تسجيل الحضور',
       'dailyCheckIn': 'الحضور اليومي',
-      'socialReward': 'المكافأة الاجتماعية',
+      'socialReward':
+          'المكافأة الاجتماعية',
       'fanReward': 'مكافأة FAN',
+
       'facebook': 'Facebook',
       'instagram': 'Instagram',
       'telegram': 'Telegram',
       'tiktok': 'TikTok',
       'twitterX': 'X',
       'youtube': 'YouTube',
+
       'referral': 'الإحالة',
       'referrals': 'الإحالات',
-      'inviteFriends': 'دعوة الأصدقاء',
-      'inviteAndEarn': 'ادعُ واربح',
-      'myReferralCode': 'رمز الإحالة الخاص بي',
+      'inviteFriends':
+          'دعوة الأصدقاء',
+      'inviteAndEarn':
+          'ادعُ واربح',
+      'myReferralCode':
+          'رمز الإحالة الخاص بي',
       'copyCode': 'نسخ الرمز',
       'shareCode': 'مشاركة الرمز',
       'copied': 'تم النسخ',
-      'totalReferrals': 'إجمالي الإحالات',
-      'activeReferrals': 'الإحالات النشطة',
-      'referralEarnings': 'أرباح الإحالة',
-      'referralReward': 'مكافأة الإحالة',
-      'newUserReward': 'يحصل المستخدم الجديد على 20 FAN',
-      'miningBonus': 'مكافأة التعدين',
-      'perActiveReferral': '+0.02 FAN/H لكل إحالة نشطة',
-      'referralHowItWorks': 'كيفية عمل الإحالة',
-      'referralStepOne': 'شارك رمز الإحالة مع أصدقائك.',
-      'referralStepTwo': 'ينضم صديقك باستخدام رمزك.',
-      'referralStepThree': 'تحصل على 5 FAN ومكافأة تعدين.',
+      'totalReferrals':
+          'إجمالي الإحالات',
+      'activeReferrals':
+          'الإحالات النشطة',
+      'referralEarnings':
+          'أرباح الإحالة',
+      'referralReward':
+          'مكافأة الإحالة',
+      'newUserReward':
+          'يحصل المستخدم الجديد على 20 FAN',
+      'miningBonus':
+          'مكافأة التعدين',
+      'perActiveReferral':
+          '+0.02 FAN/H لكل إحالة نشطة',
+
+      'referralHowItWorks':
+          'كيفية عمل الإحالة',
+      'referralStepOne':
+          'شارك رمز الإحالة مع أصدقائك.',
+      'referralStepTwo':
+          'ينضم صديقك باستخدام رمزك.',
+      'referralStepThree':
+          'تحصل على 5 FAN ومكافأة تعدين.',
+
       'wallet': 'المحفظة',
       'afamWallet': 'محفظة AFAM',
-      'fanMiningBalance': 'رصيد تعدين FAN',
+      'fanMiningBalance':
+          'رصيد تعدين FAN',
       'migration': 'الترحيل',
       'migrate': 'ترحيل',
-      'migrationComingSoon': 'الترحيل قريباً',
-      'migrationInfo': 'يمكن ترحيل رصيد FAN إلى AFAM لاحقاً.',
-      'migrationRate': 'معدل الترحيل',
-      'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
+      'migrationComingSoon':
+          'الترحيل قريباً',
+      'migrationInfo':
+          'يمكن ترحيل رصيد FAN إلى AFAM لاحقاً.',
+      'migrationRate':
+          'معدل الترحيل',
+      'oneHundredFanOneAfam':
+          '100 FAN = 1 AFAM',
       'transactions': 'المعاملات',
-      'noTransactions': 'لا توجد معاملات بعد',
+      'noTransactions':
+          'لا توجد معاملات بعد',
       'send': 'إرسال',
       'receive': 'استلام',
       'sendAfam': 'إرسال AFAM',
       'receiveAfam': 'استلام AFAM',
-      'usernameTransactions': 'تتم المعاملات باستخدام اسم المستخدم.',
-      'walletSecurity': 'أمان المحفظة',
-      'walletSecurityMessage': 'حافظ على أمان حسابك. لا تشارك كلمة المرور أو معلومات التحقق.',
+      'usernameTransactions':
+          'تتم المعاملات باستخدام اسم المستخدم.',
+      'walletSecurity':
+          'أمان المحفظة',
+      'walletSecurityMessage':
+          'حافظ على أمان حسابك. لا تشارك كلمة المرور أو معلومات التحقق.',
+
       'kyc': 'KYC',
-      'kycVerification': 'التحقق من KYC',
-      'faceVerification': 'التحقق من الوجه',
-      'faceVerificationComingSoon': 'التحقق من الوجه قريباً',
+      'kycVerification':
+          'التحقق من KYC',
+      'faceVerification':
+          'التحقق من الوجه',
+      'faceVerificationComingSoon':
+          'التحقق من الوجه قريباً',
       'kycComingSoon': 'KYC قريباً',
-      'kycRequirements': 'متطلبات KYC',
-      'kycRequirementOne': 'إكمال تسجيل الحضور اليومي لمدة 30 يوماً متتالياً.',
-      'kycRequirementTwo': 'إكمال تعزيز واحد على الأقل يومياً لمدة 30 يوماً.',
-      'kycRequirementThree': 'ثم إكمال التحقق من الوجه.',
-      'thirtyDayCheckIn': '30 يوماً من الحضور اليومي',
-      'thirtyDayBoost': '30 يوماً من التعزيز اليومي',
-      'kycUnlocked': 'تم فتح KYC',
-      'kycLocked': 'KYC مقفل',
-      'startFaceVerification': 'بدء التحقق من الوجه',
-      'verificationInProgress': 'التحقق جارٍ',
-      'verificationComplete': 'اكتمل التحقق',
-      'keepFaceVisible': 'أبقِ وجهك ظاهراً أمام الكاميرا.',
-      'lookAtCamera': 'انظر مباشرة إلى الكاميرا.',
-      'verificationSeconds': 'تحقق لمدة 30 ثانية',
-      'secondsRemaining': 'ثوانٍ متبقية',
-      'cameraPermissionRequired': 'مطلوب إذن الكاميرا',
-      'cameraPermissionMessage': 'يلزم الوصول إلى الكاميرا للتحقق المباشر من الوجه.',
-      'oneDeviceOneAccount': 'جهاز واحد = حساب واحد',
-      'deviceSecurity': 'أمان الجهاز',
-      'livenessWarning': 'يساعد التحقق بالكاميرا المباشرة في حماية الشبكة، لكن مؤقت 30 ثانية وحده ليس نظاماً كاملاً لاكتشاف الحيوية البيومترية.',
+      'kycRequirements':
+          'متطلبات KYC',
+      'kycRequirementOne':
+          'إكمال تسجيل الحضور اليومي لمدة 30 يوماً متتالياً.',
+      'kycRequirementTwo':
+          'إكمال تعزيز واحد على الأقل يومياً لمدة 30 يوماً.',
+      'kycRequirementThree':
+          'ثم إكمال التحقق من الوجه.',
+      'thirtyDayCheckIn':
+          '30 يوماً من الحضور اليومي',
+      'thirtyDayBoost':
+          '30 يوماً من التعزيز اليومي',
+      'kycUnlocked':
+          'تم فتح KYC',
+      'kycLocked':
+          'KYC مقفل',
+
+      'startFaceVerification':
+          'بدء التحقق من الوجه',
+      'verificationInProgress':
+          'التحقق جارٍ',
+      'verificationComplete':
+          'اكتمل التحقق',
+      'keepFaceVisible':
+          'أبقِ وجهك ظاهراً أمام الكاميرا.',
+      'lookAtCamera':
+          'انظر مباشرة إلى الكاميرا.',
+      'verificationSeconds':
+          'تحقق لمدة 30 ثانية',
+      'secondsRemaining':
+          'ثوانٍ متبقية',
+      'cameraPermissionRequired':
+          'مطلوب إذن الكاميرا',
+      'cameraPermissionMessage':
+          'يلزم الوصول إلى الكاميرا للتحقق المباشر من الوجه.',
+      'oneDeviceOneAccount':
+          'جهاز واحد = حساب واحد',
+      'deviceSecurity':
+          'أمان الجهاز',
+      'livenessWarning':
+          'يساعد التحقق بالكاميرا المباشرة في حماية الشبكة، لكن مؤقت 30 ثانية وحده ليس نظاماً كاملاً لاكتشاف الحيوية البيومترية.',
+
       'settings': 'الإعدادات',
       'account': 'الحساب',
       'profile': 'الملف الشخصي',
@@ -1337,7 +1713,9 @@ class AppLocalizations {
       'about': 'حول',
       'help': 'المساعدة',
       'logout': 'تسجيل الخروج',
-      'logoutConfirm': 'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+      'logoutConfirm':
+          'هل أنت متأكد أنك تريد تسجيل الخروج؟',
+
       'save': 'حفظ',
       'cancel': 'إلغاء',
       'close': 'إغلاق',
@@ -1356,15 +1734,56 @@ class AppLocalizations {
       'no': 'لا',
       'today': 'اليوم',
       'tomorrow': 'غداً',
-      'loginRequired': 'يرجى تسجيل الدخول أولاً.',
-      'invalidEmail': 'يرجى إدخال بريد إلكتروني صالح.',
-      'invalidPassword': 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.',
-      'invalidUsername': 'يرجى إدخال اسم مستخدم صالح.',
-      'passwordsDoNotMatch': 'كلمات المرور غير متطابقة.',
-      'somethingWentWrong': 'حدث خطأ ما.',
-      'networkError': 'خطأ في الشبكة. حاول مرة أخرى.',
-      'noInternet': 'لا يوجد اتصال بالإنترنت.',
-      'operationSuccessful': 'تمت العملية بنجاح.',
+
+      'loginRequired':
+          'يرجى تسجيل الدخول أولاً.',
+      'invalidEmail':
+          'يرجى إدخال بريد إلكتروني صالح.',
+      'invalidPassword':
+          'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.',
+      'invalidUsername':
+          'يرجى إدخال اسم مستخدم صالح.',
+      'passwordsDoNotMatch':
+          'كلمات المرور غير متطابقة.',
+      'somethingWentWrong':
+          'حدث خطأ ما.',
+      'networkError':
+          'خطأ في الشبكة. حاول مرة أخرى.',
+      'noInternet':
+          'لا يوجد اتصال بالإنترنت.',
+      'operationSuccessful':
+          'تمت العملية بنجاح.',
+
+      'claimRequiresAd':
+          'شاهد الإعلان بمكافأة قبل استلام مكافأة التعدين لمدة 24 ساعة.',
+      'claimAdMessage':
+          'بعد إكمال الإعلان، سيتم استلام مكافأة التعدين وستبدأ جلسة جديدة لمدة 24 ساعة تلقائياً.',
+      'dailyBoostRequired':
+          'التعزيز اليومي مطلوب',
+      'dailyBoostReminder':
+          'شاهد إعلان تعزيز واحداً على الأقل كل يوم للبقاء نشطاً والتقدم نحو KYC.',
+      'miningRules':
+          'قواعد التعدين',
+      'miningRuleClaim24h':
+          'استلم مكافأة التعدين بعد كل جلسة مدتها 24 ساعة.',
+      'miningRuleRateIncrease':
+          'لا يمكن زيادة معدل التعدين إلا من خلال التعزيزات المعتمدة والإحالات النشطة.',
+      'miningRuleDailyBoost':
+          'أكمل تعزيزا واحداً على الأقل كل يوم للبقاء نشطاً.',
+      'robotWarning':
+          'الروبوتات والأنشطة الآلية غير مسموح بها.',
+      'unauthorizedActivity':
+          'قد تؤدي الطرق غير المصرح بها أو الروبوتات أو البرامج النصية أو أي إساءة استخدام أخرى إلى تقييد الحساب أو تعليقه.',
+      'accountRestrictionWarning':
+          'قد نراجع الحسابات التي تنتهك قواعد الشبكة ونقيّدها. وسيعتمد الإجراء على نوع المخالفة.',
+      'deviceAlreadyRegistered':
+          'هذا الجهاز مرتبط بالفعل بحساب آخر.',
+      'oneDeviceRuleMessage':
+          'يمكن لشخص واحد استخدام حساب واحد على جهاز واحد. لا يُسمح بإنشاء حسابات متعددة على الجهاز نفسه.',
+      'boostCompleted':
+          'تم إكمال التعزيز بنجاح.',
+      'dailyBoostCompleted':
+          'تم إكمال تعزيز اليوم.',
     },
 
     // ========================================================================
@@ -1380,185 +1799,387 @@ class AppLocalizations {
       'language': 'भाषा',
       'selectLanguage': 'भाषा चुनें',
       'chooseLanguage': 'अपनी भाषा चुनें',
-      'languageChanged': 'भाषा सफलतापूर्वक बदल दी गई',
+      'languageChanged':
+          'भाषा सफलतापूर्वक बदल दी गई',
+
       'login': 'लॉगिन',
       'register': 'रजिस्टर',
       'signIn': 'साइन इन',
       'signUp': 'साइन अप',
       'welcomeBack': 'वापसी पर स्वागत है',
       'createAccount': 'खाता बनाएं',
-      'loginToContinue': 'जारी रखने के लिए लॉगिन करें',
-      'joinPowerFanNetwork': 'POWER FAN NETWORK से जुड़ें',
+      'loginToContinue':
+          'जारी रखने के लिए लॉगिन करें',
+      'joinPowerFanNetwork':
+          'POWER FAN NETWORK से जुड़ें',
+
       'username': 'यूज़रनेम',
       'email': 'ईमेल',
       'password': 'पासवर्ड',
-      'confirmPassword': 'पासवर्ड की पुष्टि करें',
+      'confirmPassword':
+          'पासवर्ड की पुष्टि करें',
       'referralCode': 'रेफरल कोड',
-      'referralCodeOptional': 'रेफरल कोड (वैकल्पिक)',
-      'enterUsername': 'यूज़रनेम दर्ज करें',
+      'referralCodeOptional':
+          'रेफरल कोड (वैकल्पिक)',
+      'enterUsername':
+          'यूज़रनेम दर्ज करें',
       'enterEmail': 'ईमेल दर्ज करें',
-      'enterPassword': 'पासवर्ड दर्ज करें',
-      'enterReferralCode': 'रेफरल कोड दर्ज करें',
-      'forgotPassword': 'पासवर्ड भूल गए?',
-      'resetPassword': 'पासवर्ड रीसेट करें',
-      'dontHaveAccount': 'खाता नहीं है?',
-      'alreadyHaveAccount': 'पहले से खाता है?',
-      'passwordHidden': 'पासवर्ड छिपा है',
-      'passwordVisible': 'पासवर्ड दिखाई दे रहा है',
+      'enterPassword':
+          'पासवर्ड दर्ज करें',
+      'enterReferralCode':
+          'रेफरल कोड दर्ज करें',
+
+      'forgotPassword':
+          'पासवर्ड भूल गए?',
+      'resetPassword':
+          'पासवर्ड रीसेट करें',
+      'dontHaveAccount':
+          'खाता नहीं है?',
+      'alreadyHaveAccount':
+          'पहले से खाता है?',
+      'passwordHidden':
+          'पासवर्ड छिपा है',
+      'passwordVisible':
+          'पासवर्ड दिखाई दे रहा है',
+
       'home': 'होम',
       'balance': 'बैलेंस',
       'fanBalance': 'FAN बैलेंस',
       'afamBalance': 'AFAM बैलेंस',
-      'miningBalance': 'माइनिंग बैलेंस',
-      'originalCoin': 'मूल कॉइन',
+      'miningBalance':
+          'माइनिंग बैलेंस',
+      'originalCoin':
+          'मूल कॉइन',
+
       'mining': 'माइनिंग',
-      'startMining': 'माइनिंग शुरू करें',
-      'miningNow': 'माइनिंग चल रही है',
-      'miningStopped': 'माइनिंग बंद है',
-      'claimMining': 'माइनिंग क्लेम करें',
+      'startMining':
+          'माइनिंग शुरू करें',
+      'miningNow':
+          'माइनिंग चल रही है',
+      'miningStopped':
+          'माइनिंग बंद है',
+      'claimMining':
+          'माइनिंग क्लेम करें',
       'claim': 'क्लेम करें',
-      'claimed': 'क्लेम किया गया',
-      'miningRate': 'माइनिंग रेट',
-      'fanPerHour': 'FAN / घंटा',
-      'remainingTime': 'शेष समय',
-      'miningSession': 'माइनिंग सत्र',
-      'miningEndsIn': 'माइनिंग समाप्त होगी',
-      'miningStarted': 'माइनिंग सफलतापूर्वक शुरू हुई',
-      'miningCompleted': 'माइनिंग सत्र पूरा हुआ',
-      'boostMining': 'माइनिंग बढ़ाएं',
+      'claimed':
+          'क्लेम किया गया',
+      'miningRate':
+          'माइनिंग रेट',
+      'fanPerHour':
+          'FAN / घंटा',
+      'remainingTime':
+          'शेष समय',
+      'miningSession':
+          'माइनिंग सत्र',
+      'miningEndsIn':
+          'माइनिंग समाप्त होगी',
+      'miningStarted':
+          'माइनिंग सफलतापूर्वक शुरू हुई',
+      'miningCompleted':
+          'माइनिंग सत्र पूरा हुआ',
+
+      'boostMining':
+          'माइनिंग बढ़ाएं',
       'boost': 'बूस्ट',
-      'watchAd': 'विज्ञापन देखें',
-      'adsWatched': 'देखे गए विज्ञापन',
-      'dailyAds': 'दैनिक विज्ञापन',
-      'maxAds': 'अधिकतम विज्ञापन',
-      'boostPerAd': 'हर विज्ञापन पर +0.1 FAN/H',
-      'maximumBoost': 'अधिकतम बूस्ट: +0.7 FAN/H',
-      'adReward': 'विज्ञापन इनाम',
-      'rewardedAd': 'रिवॉर्डेड विज्ञापन',
-      'watchAdsToBoost': 'माइनिंग रेट बढ़ाने के लिए विज्ञापन देखें',
-      'adSystemComingSoon': 'रिवॉर्डेड विज्ञापन सिस्टम जल्द आएगा',
-      'dailySocialTask': 'दैनिक सोशल टास्क',
-      'socialTasks': 'सोशल टास्क',
-      'dailyTasks': 'दैनिक टास्क',
-      'completeTask': 'टास्क पूरा करें',
-      'openTask': 'टास्क खोलें',
-      'verifyTask': 'टास्क सत्यापित करें',
-      'claimReward': 'इनाम क्लेम करें',
-      'taskCompleted': 'टास्क पूरा हुआ',
-      'taskClaimed': 'इनाम पहले ही क्लेम किया जा चुका है',
-      'taskNotReady': 'पहले आवश्यक कार्य पूरे करें',
-      'follow': 'फॉलो करें',
-      'comment': 'कमेंट करें',
-      'share': 'शेयर करें',
-      'checkIn': 'चेक-इन',
-      'dailyCheckIn': 'दैनिक चेक-इन',
-      'socialReward': 'सोशल इनाम',
-      'fanReward': 'FAN इनाम',
+      'watchAd':
+          'विज्ञापन देखें',
+      'adsWatched':
+          'देखे गए विज्ञापन',
+      'dailyAds':
+          'दैनिक विज्ञापन',
+      'maxAds':
+          'अधिकतम विज्ञापन',
+      'boostPerAd':
+          'हर विज्ञापन पर +0.1 FAN/H',
+      'maximumBoost':
+          'अधिकतम बूस्ट: +0.7 FAN/H',
+      'adReward':
+          'विज्ञापन इनाम',
+      'rewardedAd':
+          'रिवॉर्डेड विज्ञापन',
+      'watchAdsToBoost':
+          'माइनिंग रेट बढ़ाने के लिए विज्ञापन देखें',
+      'adSystemComingSoon':
+          'रिवॉर्डेड विज्ञापन सिस्टम जल्द आएगा',
+
+      'dailySocialTask':
+          'दैनिक सोशल टास्क',
+      'socialTasks':
+          'सोशल टास्क',
+      'dailyTasks':
+          'दैनिक टास्क',
+      'completeTask':
+          'टास्क पूरा करें',
+      'openTask':
+          'टास्क खोलें',
+      'verifyTask':
+          'टास्क सत्यापित करें',
+      'claimReward':
+          'इनाम क्लेम करें',
+      'taskCompleted':
+          'टास्क पूरा हुआ',
+      'taskClaimed':
+          'इनाम पहले ही क्लेम किया जा चुका है',
+      'taskNotReady':
+          'पहले आवश्यक कार्य पूरे करें',
+      'follow':
+          'फॉलो करें',
+      'comment':
+          'कमेंट करें',
+      'share':
+          'शेयर करें',
+      'checkIn':
+          'चेक-इन',
+      'dailyCheckIn':
+          'दैनिक चेक-इन',
+      'socialReward':
+          'सोशल इनाम',
+      'fanReward':
+          'FAN इनाम',
+
       'facebook': 'Facebook',
       'instagram': 'Instagram',
       'telegram': 'Telegram',
       'tiktok': 'TikTok',
       'twitterX': 'X',
       'youtube': 'YouTube',
-      'referral': 'रेफरल',
-      'referrals': 'रेफरल',
-      'inviteFriends': 'दोस्तों को आमंत्रित करें',
-      'inviteAndEarn': 'आमंत्रित करें और कमाएं',
-      'myReferralCode': 'मेरा रेफरल कोड',
-      'copyCode': 'कोड कॉपी करें',
-      'shareCode': 'कोड शेयर करें',
-      'copied': 'कॉपी हो गया',
-      'totalReferrals': 'कुल रेफरल',
-      'activeReferrals': 'सक्रिय रेफरल',
-      'referralEarnings': 'रेफरल कमाई',
-      'referralReward': 'रेफरल इनाम',
-      'newUserReward': 'नए यूज़र को 20 FAN मिलेंगे',
-      'miningBonus': 'माइनिंग बोनस',
-      'perActiveReferral': 'हर सक्रिय रेफरल पर +0.02 FAN/H',
-      'referralHowItWorks': 'रेफरल कैसे काम करता है',
-      'referralStepOne': 'अपना रेफरल कोड दोस्तों के साथ शेयर करें।',
-      'referralStepTwo': 'आपका दोस्त आपके कोड से जुड़ता है।',
-      'referralStepThree': 'आपको 5 FAN और माइनिंग बोनस मिलता है।',
-      'wallet': 'वॉलेट',
-      'afamWallet': 'AFAM वॉलेट',
-      'fanMiningBalance': 'FAN माइनिंग बैलेंस',
-      'migration': 'माइग्रेशन',
-      'migrate': 'माइग्रेट करें',
-      'migrationComingSoon': 'माइग्रेशन जल्द आएगा',
-      'migrationInfo': 'आपका FAN बैलेंस बाद में AFAM में माइग्रेट किया जा सकेगा।',
-      'migrationRate': 'माइग्रेशन दर',
-      'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
-      'transactions': 'लेन-देन',
-      'noTransactions': 'अभी कोई लेन-देन नहीं',
-      'send': 'भेजें',
-      'receive': 'प्राप्त करें',
-      'sendAfam': 'AFAM भेजें',
-      'receiveAfam': 'AFAM प्राप्त करें',
-      'usernameTransactions': 'लेन-देन यूज़रनेम के माध्यम से किए जाते हैं।',
-      'walletSecurity': 'वॉलेट सुरक्षा',
-      'walletSecurityMessage': 'अपने खाते को सुरक्षित रखें। पासवर्ड या सत्यापन जानकारी साझा न करें।',
-      'kyc': 'KYC',
-      'kycVerification': 'KYC सत्यापन',
-      'faceVerification': 'चेहरा सत्यापन',
-      'faceVerificationComingSoon': 'चेहरा सत्यापन जल्द आएगा',
-      'kycComingSoon': 'KYC जल्द आएगा',
-      'kycRequirements': 'KYC आवश्यकताएं',
-      'kycRequirementOne': 'लगातार 30 दिनों तक दैनिक चेक-इन पूरा करें।',
-      'kycRequirementTwo': '30 दिनों तक हर दिन कम से कम एक बूस्ट पूरा करें।',
-      'kycRequirementThree': 'इसके बाद चेहरा सत्यापन पूरा करें।',
-      'thirtyDayCheckIn': '30 दिन दैनिक चेक-इन',
-      'thirtyDayBoost': '30 दिन दैनिक बूस्ट',
-      'kycUnlocked': 'KYC अनलॉक है',
-      'kycLocked': 'KYC लॉक है',
-      'startFaceVerification': 'चेहरा सत्यापन शुरू करें',
-      'verificationInProgress': 'सत्यापन जारी है',
-      'verificationComplete': 'सत्यापन पूरा हुआ',
-      'keepFaceVisible': 'अपना चेहरा कैमरे में दिखाई देता रखें।',
-      'lookAtCamera': 'कैमरे की ओर सीधे देखें।',
-      'verificationSeconds': '30 सेकंड सत्यापन',
-      'secondsRemaining': 'सेकंड शेष',
-      'cameraPermissionRequired': 'कैमरा अनुमति आवश्यक है',
-      'cameraPermissionMessage': 'लाइव चेहरा सत्यापन के लिए कैमरा एक्सेस आवश्यक है।',
-      'oneDeviceOneAccount': 'एक डिवाइस = एक खाता',
-      'deviceSecurity': 'डिवाइस सुरक्षा',
-      'livenessWarning': 'लाइव कैमरा सत्यापन नेटवर्क की सुरक्षा में मदद करता है, लेकिन केवल 30 सेकंड का टाइमर पूर्ण बायोमेट्रिक लाइवनेस डिटेक्शन नहीं है।',
-      'settings': 'सेटिंग्स',
-      'account': 'खाता',
-      'profile': 'प्रोफ़ाइल',
-      'notifications': 'सूचनाएं',
-      'security': 'सुरक्षा',
-      'privacy': 'गोपनीयता',
-      'about': 'जानकारी',
-      'help': 'मदद',
-      'logout': 'लॉगआउट',
-      'logoutConfirm': 'क्या आप वाकई लॉगआउट करना चाहते हैं?',
-      'save': 'सहेजें',
-      'cancel': 'रद्द करें',
-      'close': 'बंद करें',
-      'continue': 'जारी रखें',
-      'done': 'पूरा',
-      'refresh': 'रिफ्रेश',
-      'retry': 'फिर कोशिश करें',
-      'loading': 'लोड हो रहा है...',
-      'error': 'त्रुटि',
-      'success': 'सफल',
-      'failed': 'विफल',
-      'comingSoon': 'जल्द आ रहा है',
-      'enabled': 'सक्षम',
-      'disabled': 'अक्षम',
-      'yes': 'हाँ',
-      'no': 'नहीं',
-      'today': 'आज',
-      'tomorrow': 'कल',
-      'loginRequired': 'कृपया पहले लॉगिन करें।',
-      'invalidEmail': 'कृपया मान्य ईमेल दर्ज करें।',
-      'invalidPassword': 'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
-      'invalidUsername': 'कृपया मान्य यूज़रनेम दर्ज करें।',
-      'passwordsDoNotMatch': 'पासवर्ड मेल नहीं खाते।',
-      'somethingWentWrong': 'कुछ गलत हो गया।',
-      'networkError': 'नेटवर्क त्रुटि। फिर कोशिश करें।',
-      'noInternet': 'इंटरनेट कनेक्शन नहीं है।',
-      'operationSuccessful': 'ऑपरेशन सफल रहा।',
+
+      'referral':
+          'रेफरल',
+      'referrals':
+          'रेफरल',
+      'inviteFriends':
+          'दोस्तों को आमंत्रित करें',
+      'inviteAndEarn':
+          'आमंत्रित करें और कमाएं',
+      'myReferralCode':
+          'मेरा रेफरल कोड',
+      'copyCode':
+          'कोड कॉपी करें',
+      'shareCode':
+          'कोड शेयर करें',
+      'copied':
+          'कॉपी हो गया',
+      'totalReferrals':
+          'कुल रेफरल',
+      'activeReferrals':
+          'सक्रिय रेफरल',
+      'referralEarnings':
+          'रेफरल कमाई',
+      'referralReward':
+          'रेफरल इनाम',
+      'newUserReward':
+          'नए यूज़र को 20 FAN मिलेंगे',
+      'miningBonus':
+          'माइनिंग बोनस',
+      'perActiveReferral':
+          'हर सक्रिय रेफरल पर +0.02 FAN/H',
+
+      'referralHowItWorks':
+          'रेफरल कैसे काम करता है',
+      'referralStepOne':
+          'अपना रेफरल कोड दोस्तों के साथ शेयर करें।',
+      'referralStepTwo':
+          'आपका दोस्त आपके कोड से जुड़ता है।',
+      'referralStepThree':
+          'आपको 5 FAN और माइनिंग बोनस मिलता है।',
+
+      'wallet':
+          'वॉलेट',
+      'afamWallet':
+          'AFAM वॉलेट',
+      'fanMiningBalance':
+          'FAN माइनिंग बैलेंस',
+      'migration':
+          'माइग्रेशन',
+      'migrate':
+          'माइग्रेट करें',
+      'migrationComingSoon':
+          'माइग्रेशन जल्द आएगा',
+      'migrationInfo':
+          'आपका FAN बैलेंस बाद में AFAM में माइग्रेट किया जा सकेगा।',
+      'migrationRate':
+          'माइग्रेशन दर',
+      'oneHundredFanOneAfam':
+          '100 FAN = 1 AFAM',
+      'transactions':
+          'लेन-देन',
+      'noTransactions':
+          'अभी कोई लेन-देन नहीं',
+      'send':
+          'भेजें',
+      'receive':
+          'प्राप्त करें',
+      'sendAfam':
+          'AFAM भेजें',
+      'receiveAfam':
+          'AFAM प्राप्त करें',
+      'usernameTransactions':
+          'लेन-देन यूज़रनेम के माध्यम से किए जाते हैं।',
+      'walletSecurity':
+          'वॉलेट सुरक्षा',
+      'walletSecurityMessage':
+          'अपने खाते को सुरक्षित रखें। पासवर्ड या सत्यापन जानकारी साझा न करें।',
+
+      'kyc':
+          'KYC',
+      'kycVerification':
+          'KYC सत्यापन',
+      'faceVerification':
+          'चेहरा सत्यापन',
+      'faceVerificationComingSoon':
+          'चेहरा सत्यापन जल्द आएगा',
+      'kycComingSoon':
+          'KYC जल्द आएगा',
+      'kycRequirements':
+          'KYC आवश्यकताएं',
+      'kycRequirementOne':
+          'लगातार 30 दिनों तक दैनिक चेक-इन पूरा करें।',
+      'kycRequirementTwo':
+          '30 दिनों तक हर दिन कम से कम एक बूस्ट पूरा करें।',
+      'kycRequirementThree':
+          'इसके बाद चेहरा सत्यापन पूरा करें।',
+      'thirtyDayCheckIn':
+          '30 दिन दैनिक चेक-इन',
+      'thirtyDayBoost':
+          '30 दिन दैनिक बूस्ट',
+      'kycUnlocked':
+          'KYC अनलॉक है',
+      'kycLocked':
+          'KYC लॉक है',
+
+      'startFaceVerification':
+          'चेहरा सत्यापन शुरू करें',
+      'verificationInProgress':
+          'सत्यापन जारी है',
+      'verificationComplete':
+          'सत्यापन पूरा हुआ',
+      'keepFaceVisible':
+          'अपना चेहरा कैमरे में दिखाई देता रखें।',
+      'lookAtCamera':
+          'कैमरे की ओर सीधे देखें।',
+      'verificationSeconds':
+          '30 सेकंड सत्यापन',
+      'secondsRemaining':
+          'सेकंड शेष',
+      'cameraPermissionRequired':
+          'कैमरा अनुमति आवश्यक है',
+      'cameraPermissionMessage':
+          'लाइव चेहरा सत्यापन के लिए कैमरा एक्सेस आवश्यक है।',
+      'oneDeviceOneAccount':
+          'एक डिवाइस = एक खाता',
+      'deviceSecurity':
+          'डिवाइस सुरक्षा',
+      'livenessWarning':
+          'लाइव कैमरा सत्यापन नेटवर्क की सुरक्षा में मदद करता है, लेकिन केवल 30 सेकंड का टाइमर पूर्ण बायोमेट्रिक लाइवनेस डिटेक्शन नहीं है।',
+
+      'settings':
+          'सेटिंग्स',
+      'account':
+          'खाता',
+      'profile':
+          'प्रोफ़ाइल',
+      'notifications':
+          'सूचनाएं',
+      'security':
+          'सुरक्षा',
+      'privacy':
+          'गोपनीयता',
+      'about':
+          'जानकारी',
+      'help':
+          'मदद',
+      'logout':
+          'लॉगआउट',
+      'logoutConfirm':
+          'क्या आप वाकई लॉगआउट करना चाहते हैं?',
+
+      'save':
+          'सहेजें',
+      'cancel':
+          'रद्द करें',
+      'close':
+          'बंद करें',
+      'continue':
+          'जारी रखें',
+      'done':
+          'पूरा',
+      'refresh':
+          'रिफ्रेश',
+      'retry':
+          'फिर कोशिश करें',
+      'loading':
+          'लोड हो रहा है...',
+      'error':
+          'त्रुटि',
+      'success':
+          'सफल',
+      'failed':
+          'विफल',
+      'comingSoon':
+          'जल्द आ रहा है',
+      'enabled':
+          'सक्षम',
+      'disabled':
+          'अक्षम',
+      'yes':
+          'हाँ',
+      'no':
+          'नहीं',
+      'today':
+          'आज',
+      'tomorrow':
+          'कल',
+
+      'loginRequired':
+          'कृपया पहले लॉगिन करें।',
+      'invalidEmail':
+          'कृपया मान्य ईमेल दर्ज करें।',
+      'invalidPassword':
+          'पासवर्ड कम से कम 6 अक्षरों का होना चाहिए।',
+      'invalidUsername':
+          'कृपया मान्य यूज़रनेम दर्ज करें।',
+      'passwordsDoNotMatch':
+          'पासवर्ड मेल नहीं खाते।',
+      'somethingWentWrong':
+          'कुछ गलत हो गया।',
+      'networkError':
+          'नेटवर्क त्रुटि। फिर कोशिश करें।',
+      'noInternet':
+          'इंटरनेट कनेक्शन नहीं है।',
+      'operationSuccessful':
+          'ऑपरेशन सफल रहा।',
+
+      'claimRequiresAd':
+          '24 घंटे के माइनिंग रिवॉर्ड को क्लेम करने से पहले रिवॉर्डेड विज्ञापन देखें।',
+      'claimAdMessage':
+          'विज्ञापन पूरा होने के बाद आपका माइनिंग रिवॉर्ड क्लेम होगा और नया 24 घंटे का सत्र अपने आप शुरू होगा।',
+      'dailyBoostRequired':
+          'दैनिक बूस्ट आवश्यक है',
+      'dailyBoostReminder':
+          'सक्रिय रहने और KYC की प्रगति के लिए हर दिन कम से कम एक बूस्ट विज्ञापन देखें।',
+      'miningRules':
+          'माइनिंग नियम',
+      'miningRuleClaim24h':
+          'हर 24 घंटे के माइनिंग सत्र के बाद अपना रिवॉर्ड क्लेम करें।',
+      'miningRuleRateIncrease':
+          'माइनिंग रेट केवल स्वीकृत बूस्ट और सक्रिय रेफरल से बढ़ सकता है।',
+      'miningRuleDailyBoost':
+          'सक्रिय रहने के लिए हर दिन कम से कम एक बूस्ट पूरा करें।',
+      'robotWarning':
+          'रोबोट या स्वचालित गतिविधि की अनुमति नहीं है।',
+      'unauthorizedActivity':
+          'अनधिकृत तरीके, बॉट, स्क्रिप्ट या अन्य दुरुपयोग से अकाउंट पर प्रतिबंध या निलंबन हो सकता है।',
+      'accountRestrictionWarning':
+          'नेटवर्क नियमों का उल्लंघन करने वाले अकाउंट की समीक्षा और प्रतिबंध किया जा सकता है। कार्रवाई उल्लंघन के आधार पर होगी।',
+      'deviceAlreadyRegistered':
+          'यह डिवाइस पहले से किसी अन्य अकाउंट से जुड़ा है।',
+      'oneDeviceRuleMessage':
+          'एक व्यक्ति एक डिवाइस पर एक ही अकाउंट इस्तेमाल कर सकता है। एक ही डिवाइस पर कई अकाउंट की अनुमति नहीं है।',
+      'boostCompleted':
+          'बूस्ट सफलतापूर्वक पूरा हुआ।',
+      'dailyBoostCompleted':
+          'आज का बूस्ट पूरा हो गया है।',
     },
 
     // ========================================================================
@@ -1572,22 +2193,400 @@ class AppLocalizations {
       'fan': 'FAN',
       'afam': 'AFAM',
       'language': 'ভাষা',
-      'selectLanguage': 'ভাষা নির্বাচন করুন',
-      'chooseLanguage': 'আপনার ভাষা নির্বাচন করুন',
-      'languageChanged': 'ভাষা সফলভাবে পরিবর্তন হয়েছে',
+      'selectLanguage':
+          'ভাষা নির্বাচন করুন',
+      'chooseLanguage':
+          'আপনার ভাষা নির্বাচন করুন',
+      'languageChanged':
+          'ভাষা সফলভাবে পরিবর্তন হয়েছে',
+
       'login': 'লগইন',
       'register': 'রেজিস্টার',
       'signIn': 'সাইন ইন',
       'signUp': 'সাইন আপ',
-      'welcomeBack': 'আবারও স্বাগতম',
-      'createAccount': 'অ্যাকাউন্ট তৈরি করুন',
-      'loginToContinue': 'চালিয়ে যেতে লগইন করুন',
-      'joinPowerFanNetwork': 'POWER FAN NETWORK-এ যোগ দিন',
+      'welcomeBack':
+          'আবারও স্বাগতম',
+      'createAccount':
+          'অ্যাকাউন্ট তৈরি করুন',
+      'loginToContinue':
+          'চালিয়ে যেতে লগইন করুন',
+      'joinPowerFanNetwork':
+          'POWER FAN NETWORK-এ যোগ দিন',
+
       'username': 'ইউজারনেম',
       'email': 'ইমেইল',
       'password': 'পাসওয়ার্ড',
-      'confirmPassword': 'পাসওয়ার্ড নিশ্চিত করুন',
-      'referralCode': 'রেফারেল কোড',
+      'confirmPassword':
+          'পাসওয়ার্ড নিশ্চিত করুন',
+      'referralCode':
+          'রেফারেল কোড',
+      'referralCodeOptional':
+          'রেফারেল কোড (ঐচ্ছিক)',
+      'enterUsername':
+          'ইউজারনেম লিখুন',
+      'enterEmail':
+          'ইমেইল লিখুন',
+      'enterPassword':
+          'পাসওয়ার্ড লিখুন',
+      'enterReferralCode':
+          'রেফারেল কোড লিখুন',
+
+      'forgotPassword':
+          'পাসওয়ার্ড ভুলে গেছেন?',
+      'resetPassword':
+          'পাসওয়ার্ড রিসেট করুন',
+      'dontHaveAccount':
+          'অ্যাকাউন্ট নেই?',
+      'alreadyHaveAccount':
+          'ইতিমধ্যে অ্যাকাউন্ট আছে?',
+      'passwordHidden':
+          'পাসওয়ার্ড লুকানো',
+      'passwordVisible':
+          'পাসওয়ার্ড দৃশ্যমান',
+
+      'home': 'হোম',
+      'balance': 'ব্যালেন্স',
+      'fanBalance':
+          'FAN ব্যালেন্স',
+      'afamBalance':
+          'AFAM ব্যালেন্স',
+      'miningBalance':
+          'মাইনিং ব্যালেন্স',
+      'originalCoin':
+          'মূল কয়েন',
+
+      'mining': 'মাইনিং',
+      'startMining':
+          'মাইনিং শুরু করুন',
+      'miningNow':
+          'মাইনিং চলছে',
+      'miningStopped':
+          'মাইনিং বন্ধ',
+      'claimMining':
+          'মাইনিং ক্লেম করুন',
+      'claim':
+          'ক্লেম',
+      'claimed':
+          'ক্লেম করা হয়েছে',
+      'miningRate':
+          'মাইনিং রেট',
+      'fanPerHour':
+          'FAN / ঘণ্টা',
+      'remainingTime':
+          'অবশিষ্ট সময়',
+      'miningSession':
+          'মাইনিং সেশন',
+      'miningEndsIn':
+          'মাইনিং শেষ হবে',
+      'miningStarted':
+          'মাইনিং সফলভাবে শুরু হয়েছে',
+      'miningCompleted':
+          'মাইনিং সেশন সম্পন্ন হয়েছে',
+
+      'boostMining':
+          'মাইনিং বুস্ট',
+      'boost':
+          'বুস্ট',
+      'watchAd':
+          'বিজ্ঞাপন দেখুন',
+      'adsWatched':
+          'দেখা বিজ্ঞাপন',
+      'dailyAds':
+          'দৈনিক বিজ্ঞাপন',
+      'maxAds':
+          'সর্বোচ্চ বিজ্ঞাপন',
+      'boostPerAd':
+          'প্রতি বিজ্ঞাপনে +0.1 FAN/H',
+      'maximumBoost':
+          'সর্বোচ্চ বুস্ট: +0.7 FAN/H',
+      'adReward':
+          'বিজ্ঞাপন পুরস্কার',
+      'rewardedAd':
+          'রিওয়ার্ডেড বিজ্ঞাপন',
+      'watchAdsToBoost':
+          'মাইনিং রেট বাড়াতে বিজ্ঞাপন দেখুন',
+      'adSystemComingSoon':
+          'রিওয়ার্ডেড বিজ্ঞাপন সিস্টেম শীঘ্রই আসছে',
+
+      'dailySocialTask':
+          'দৈনিক সোশ্যাল টাস্ক',
+      'socialTasks':
+          'সোশ্যাল টাস্ক',
+      'dailyTasks':
+          'দৈনিক টাস্ক',
+      'completeTask':
+          'টাস্ক সম্পন্ন করুন',
+      'openTask':
+          'টাস্ক খুলুন',
+      'verifyTask':
+          'টাস্ক যাচাই করুন',
+      'claimReward':
+          'পুরস্কার ক্লেম করুন',
+      'taskCompleted':
+          'টাস্ক সম্পন্ন হয়েছে',
+      'taskClaimed':
+          'পুরস্কার ইতিমধ্যে নেওয়া হয়েছে',
+      'taskNotReady':
+          'প্রথমে প্রয়োজনীয় কাজ সম্পন্ন করুন',
+      'follow':
+          'ফলো',
+      'comment':
+          'কমেন্ট',
+      'share':
+          'শেয়ার',
+      'checkIn':
+          'চেক-ইন',
+      'dailyCheckIn':
+          'দৈনিক চেক-ইন',
+      'socialReward':
+          'সোশ্যাল পুরস্কার',
+      'fanReward':
+          'FAN পুরস্কার',
+
+      'facebook': 'Facebook',
+      'instagram': 'Instagram',
+      'telegram': 'Telegram',
+      'tiktok': 'TikTok',
+      'twitterX': 'X',
+      'youtube': 'YouTube',
+
+      'referral':
+          'রেফারেল',
+      'referrals':
+          'রেফারেল',
+      'inviteFriends':
+          'বন্ধুদের আমন্ত্রণ করুন',
+      'inviteAndEarn':
+          'আমন্ত্রণ করুন ও আয় করুন',
+      'myReferralCode':
+          'আমার রেফারেল কোড',
+      'copyCode':
+          'কোড কপি করুন',
+      'shareCode':
+          'কোড শেয়ার করুন',
+      'copied':
+          'কপি হয়েছে',
+      'totalReferrals':
+          'মোট রেফারেল',
+      'activeReferrals':
+          'সক্রিয় রেফারেল',
+      'referralEarnings':
+          'রেফারেল আয়',
+      'referralReward':
+          'রেফারেল পুরস্কার',
+      'newUserReward':
+          'নতুন ব্যবহারকারী 20 FAN পাবেন',
+      'miningBonus':
+          'মাইনিং বোনাস',
+      'perActiveReferral':
+          'প্রতি সক্রিয় রেফারেলে +0.02 FAN/H',
+
+      'referralHowItWorks':
+          'রেফারেল কীভাবে কাজ করে',
+      'referralStepOne':
+          'আপনার রেফারেল কোড বন্ধুদের সাথে শেয়ার করুন।',
+      'referralStepTwo':
+          'আপনার বন্ধু আপনার কোড ব্যবহার করে যোগ দেবে।',
+      'referralStepThree':
+          'আপনি 5 FAN এবং মাইনিং বোনাস পাবেন।',
+
+      'wallet':
+          'ওয়ালেট',
+      'afamWallet':
+          'AFAM ওয়ালেট',
+      'fanMiningBalance':
+          'FAN মাইনিং ব্যালেন্স',
+      'migration':
+          'মাইগ্রেশন',
+      'migrate':
+          'মাইগ্রেট করুন',
+      'migrationComingSoon':
+          'মাইগ্রেশন শীঘ্রই আসছে',
+      'migrationInfo':
+          'আপনার FAN ব্যালেন্স পরে AFAM-এ মাইগ্রেট করা যাবে।',
+      'migrationRate':
+          'মাইগ্রেশন হার',
+      'oneHundredFanOneAfam':
+          '100 FAN = 1 AFAM',
+      'transactions':
+          'লেনদেন',
+      'noTransactions':
+          'এখনও কোনো লেনদেন নেই',
+      'send':
+          'পাঠান',
+      'receive':
+          'গ্রহণ করুন',
+      'sendAfam':
+          'AFAM পাঠান',
+      'receiveAfam':
+          'AFAM গ্রহণ করুন',
+      'usernameTransactions':
+          'ইউজারনেম ব্যবহার করে লেনদেন করা হয়।',
+      'walletSecurity':
+          'ওয়ালেট নিরাপত্তা',
+      'walletSecurityMessage':
+          'আপনার অ্যাকাউন্ট নিরাপদ রাখুন। পাসওয়ার্ড বা যাচাই তথ্য শেয়ার করবেন না।',
+
+      'kyc':
+          'KYC',
+      'kycVerification':
+          'KYC যাচাই',
+      'faceVerification':
+          'ফেস ভেরিফিকেশন',
+      'faceVerificationComingSoon':
+          'ফেস ভেরিফিকেশন শীঘ্রই আসছে',
+      'kycComingSoon':
+          'KYC শীঘ্রই আসছে',
+      'kycRequirements':
+          'KYC প্রয়োজনীয়তা',
+      'kycRequirementOne':
+          'টানা 30 দিন দৈনিক চেক-ইন সম্পন্ন করুন।',
+      'kycRequirementTwo':
+          '30 দিন প্রতিদিন অন্তত একটি বুস্ট সম্পন্ন করুন।',
+      'kycRequirementThree':
+          'তারপর ফেস ভেরিফিকেশন সম্পন্ন করুন।',
+      'thirtyDayCheckIn':
+          '30 দিনের দৈনিক চেক-ইন',
+      'thirtyDayBoost':
+          '30 দিনের দৈনিক বুস্ট',
+      'kycUnlocked':
+          'KYC আনলক হয়েছে',
+      'kycLocked':
+          'KYC লক করা আছে',
+
+      'startFaceVerification':
+          'ফেস ভেরিফিকেশন শুরু করুন',
+      'verificationInProgress':
+          'ভেরিফিকেশন চলছে',
+      'verificationComplete':
+          'ভেরিফিকেশন সম্পন্ন হয়েছে',
+      'keepFaceVisible':
+          'ক্যামেরায় আপনার মুখ দৃশ্যমান রাখুন।',
+      'lookAtCamera':
+          'সরাসরি ক্যামেরার দিকে তাকান।',
+      'verificationSeconds':
+          '30 সেকেন্ড ভেরিফিকেশন',
+      'secondsRemaining':
+          'সেকেন্ড বাকি',
+      'cameraPermissionRequired':
+          'ক্যামেরা অনুমতি প্রয়োজন',
+      'cameraPermissionMessage':
+          'লাইভ ফেস ভেরিফিকেশনের জন্য ক্যামেরা অ্যাক্সেস প্রয়োজন।',
+      'oneDeviceOneAccount':
+          'একটি ডিভাইস = একটি অ্যাকাউন্ট',
+      'deviceSecurity':
+          'ডিভাইস নিরাপত্তা',
+      'livenessWarning':
+          'লাইভ ক্যামেরা যাচাই নেটওয়ার্ক সুরক্ষায় সহায়তা করে, তবে শুধু 30 সেকেন্ডের টাইমার সম্পূর্ণ বায়োমেট্রিক লাইভনেস শনাক্তকরণ নয়।',
+
+      'settings':
+          'সেটিংস',
+      'account':
+          'অ্যাকাউন্ট',
+      'profile':
+          'প্রোফাইল',
+      'notifications':
+          'নোটিফিকেশন',
+      'security':
+          'নিরাপত্তা',
+      'privacy':
+          'গোপনীয়তা',
+      'about':
+          'সম্পর্কে',
+      'help':
+          'সহায়তা',
+      'logout':
+          'লগআউট',
+      'logoutConfirm':
+          'আপনি কি নিশ্চিত যে লগআউট করতে চান?',
+
+      'save':
+          'সংরক্ষণ',
+      'cancel':
+          'বাতিল',
+      'close':
+          'বন্ধ',
+      'continue':
+          'চালিয়ে যান',
+      'done':
+          'সম্পন্ন',
+      'refresh':
+          'রিফ্রেশ',
+      'retry':
+          'আবার চেষ্টা করুন',
+      'loading':
+          'লোড হচ্ছে...',
+      'error':
+          'ত্রুটি',
+      'success':
+          'সফল',
+      'failed':
+          'ব্যর্থ',
+      'comingSoon':
+          'শীঘ্রই আসছে',
+      'enabled':
+          'চালু',
+      'disabled':
+          'বন্ধ',
+      'yes':
+          'হ্যাঁ',
+      'no':
+          'না',
+      'today':
+          'আজ',
+      'tomorrow':
+          'আগামীকাল',
+
+      'loginRequired':
+          'অনুগ্রহ করে প্রথমে লগইন করুন।',
+      'invalidEmail':
+          'সঠিক ইমেইল ঠিকানা লিখুন।',
+      'invalidPassword':
+          'পাসওয়ার্ড কমপক্ষে 6 অক্ষরের হতে হবে।',
+      'invalidUsername':
+          'সঠিক ইউজারনেম লিখুন।',
+      'passwordsDoNotMatch':
+          'পাসওয়ার্ড মিলছে না।',
+      'somethingWentWrong':
+          'কিছু ভুল হয়েছে।',
+      'networkError':
+          'নেটওয়ার্ক সমস্যা। আবার চেষ্টা করুন।',
+      'noInternet':
+          'ইন্টারনেট সংযোগ নেই।',
+      'operationSuccessful':
+          'অপারেশন সফল হয়েছে।',
+
+      'claimRequiresAd':
+          '২৪ ঘণ্টার মাইনিং রিওয়ার্ড ক্লেম করার আগে রিওয়ার্ডেড বিজ্ঞাপন দেখুন।',
+      'claimAdMessage':
+          'বিজ্ঞাপন সম্পন্ন হলে আপনার মাইনিং রিওয়ার্ড ক্লেম হবে এবং নতুন ২৪ ঘণ্টার সেশন স্বয়ংক্রিয়ভাবে শুরু হবে।',
+      'dailyBoostRequired':
+          'দৈনিক বুস্ট প্রয়োজন',
+      'dailyBoostReminder':
+          'সক্রিয় থাকতে এবং KYC-এর দিকে এগোতে প্রতিদিন অন্তত একটি বুস্ট বিজ্ঞাপন দেখুন।',
+      'miningRules':
+          'মাইনিং নিয়ম',
+      'miningRuleClaim24h':
+          'প্রতিটি ২৪ ঘণ্টার মাইনিং সেশনের পর রিওয়ার্ড ক্লেম করুন।',
+      'miningRuleRateIncrease':
+          'মাইনিং রেট শুধুমাত্র অনুমোদিত বুস্ট এবং সক্রিয় রেফারেলের মাধ্যমে বাড়তে পারে।',
+      'miningRuleDailyBoost':
+          'সক্রিয় থাকতে প্রতিদিন অন্তত একটি বুস্ট সম্পন্ন করুন।',
+      'robotWarning':
+          'রোবট বা স্বয়ংক্রিয় কার্যকলাপ অনুমোদিত নয়।',
+      'unauthorizedActivity':
+          'অননুমোদিত পদ্ধতি, বট, স্ক্রিপ্ট বা অন্য কোনো অপব্যবহারের কারণে অ্যাকাউন্ট সীমাবদ্ধ বা স্থগিত হতে পারে।',
+      'accountRestrictionWarning':
+          'নেটওয়ার্কের নিয়ম ভঙ্গকারী অ্যাকাউন্ট পর্যালোচনা ও সীমাবদ্ধ করা হতে পারে। ব্যবস্থা লঙ্ঘনের ওপর নির্ভর করবে।',
+      'deviceAlreadyRegistered':
+          'এই ডিভাইসটি ইতিমধ্যে অন্য একটি অ্যাকাউন্টের সাথে যুক্ত।',
+      'oneDeviceRuleMessage':
+          'একজন ব্যক্তি একটি ডিভাইসে একটি অ্যাকাউন্ট ব্যবহার করতে পারবেন। একই ডিভাইসে একাধিক অ্যাকাউন্ট অনুমোদিত নয়।',
+      'boostCompleted':
+          'বুস্ট সফলভাবে সম্পন্ন হয়েছে।',
+      'dailyBoostCompleted':
+          'আজকের বুস্ট সম্পন্ন হয়েছে।',
+    },
       'referralCodeOptional': 'রেফারেল কোড (ঐচ্ছিক)',
       'enterUsername': 'ইউজারনেম লিখুন',
       'enterEmail': 'ইমেইল লিখুন',
@@ -1753,6 +2752,21 @@ class AppLocalizations {
       'networkError': 'নেটওয়ার্ক সমস্যা। আবার চেষ্টা করুন।',
       'noInternet': 'ইন্টারনেট সংযোগ নেই।',
       'operationSuccessful': 'অপারেশন সফল হয়েছে।',
+      'claimRequiresAd': '২৪ ঘণ্টার মাইনিং রিওয়ার্ড ক্লেম করার আগে রিওয়ার্ডেড বিজ্ঞাপন দেখুন।',
+      'claimAdMessage': 'বিজ্ঞাপন সম্পন্ন হলে আপনার মাইনিং রিওয়ার্ড ক্লেম হবে এবং নতুন ২৪ ঘণ্টার সেশন স্বয়ংক্রিয়ভাবে শুরু হবে।',
+      'dailyBoostRequired': 'দৈনিক বুস্ট প্রয়োজন',
+      'dailyBoostReminder': 'সক্রিয় থাকতে এবং KYC-এর দিকে এগোতে প্রতিদিন অন্তত একটি বুস্ট বিজ্ঞাপন দেখুন।',
+      'miningRules': 'মাইনিং নিয়ম',
+      'miningRuleClaim24h': 'প্রতিটি ২৪ ঘণ্টার মাইনিং সেশনের পর রিওয়ার্ড ক্লেম করুন।',
+      'miningRuleRateIncrease': 'মাইনিং রেট শুধুমাত্র অনুমোদিত বুস্ট এবং সক্রিয় রেফারেলের মাধ্যমে বাড়তে পারে।',
+      'miningRuleDailyBoost': 'সক্রিয় থাকতে প্রতিদিন অন্তত একটি বুস্ট সম্পন্ন করুন।',
+      'robotWarning': 'রোবট বা স্বয়ংক্রিয় কার্যকলাপ অনুমোদিত নয়।',
+      'unauthorizedActivity': 'অননুমোদিত পদ্ধতি, বট, স্ক্রিপ্ট বা অন্য কোনো অপব্যবহারের কারণে অ্যাকাউন্ট সীমাবদ্ধ বা স্থগিত হতে পারে।',
+      'accountRestrictionWarning': 'নেটওয়ার্কের নিয়ম ভঙ্গকারী অ্যাকাউন্ট পর্যালোচনা ও সীমাবদ্ধ করা হতে পারে। ব্যবস্থা লঙ্ঘনের ওপর নির্ভর করবে।',
+      'deviceAlreadyRegistered': 'এই ডিভাইসটি ইতিমধ্যে অন্য একটি অ্যাকাউন্টের সাথে যুক্ত।',
+      'oneDeviceRuleMessage': 'একজন ব্যক্তি একটি ডিভাইসে একটি অ্যাকাউন্ট ব্যবহার করতে পারবেন। একই ডিভাইসে একাধিক অ্যাকাউন্ট অনুমোদিত নয়।',
+      'boostCompleted': 'বুস্ট সফলভাবে সম্পন্ন হয়েছে।',
+      'dailyBoostCompleted': 'আজকের বুস্ট সম্পন্ন হয়েছে।',
     },
 
     // ========================================================================
@@ -1947,430 +2961,19 @@ class AppLocalizations {
       'networkError': 'Ошибка сети. Попробуйте снова.',
       'noInternet': 'Нет подключения к интернету.',
       'operationSuccessful': 'Операция выполнена успешно.',
+      'claimRequiresAd': 'Посмотрите рекламу с наградой перед получением награды за 24 часа майнинга.',
+      'claimAdMessage': 'После завершения рекламы награда будет получена, и автоматически начнётся новый 24-часовой сеанс.',
+      'dailyBoostRequired': 'Требуется ежедневное ускорение',
+      'dailyBoostReminder': 'Смотрите хотя бы одну рекламу для ускорения каждый день, чтобы оставаться активным и продвигаться к KYC.',
+      'miningRules': 'Правила майнинга',
+      'miningRuleClaim24h': 'Получайте награду после каждого 24-часового сеанса.',
+      'miningRuleRateIncrease': 'Скорость майнинга может увеличиваться только благодаря одобренным ускорениям и активным рефералам.',
+      'miningRuleDailyBoost': 'Выполняйте хотя бы одно ускорение каждый день, чтобы оставаться активным.',
+      'robotWarning': 'Использование роботов и автоматизированная активность запрещены.',
+      'unauthorizedActivity': 'Несанкционированные методы, боты, скрипты и другие злоупотребления могут привести к ограничению или блокировке аккаунта.',
+      'accountRestrictionWarning': 'Мы можем проверять и ограничивать аккаунты, нарушающие правила сети. Мера зависит от нарушения.',
+      'deviceAlreadyRegistered': 'Это устройство уже связано с другим аккаунтом.',
+      'oneDeviceRuleMessage': 'Один человек может использовать один аккаунт на одном устройстве. Несколько аккаунтов на одном устройстве запрещены.',
+      'boostCompleted': 'Ускорение успешно выполнено.',
+      'dailyBoostCompleted': 'Сегодняшнее ускорение выполнено.',
     },
-
-    // ========================================================================
-    // TURKISH
-    // ========================================================================
-    'tr': {
-      'appName': 'POWER FAN',
-      'brandName': 'POWER FAN',
-      'mineFan': 'FAN Madenciliği',
-      'powerFanNetwork': 'POWER FAN NETWORK',
-      'fan': 'FAN',
-      'afam': 'AFAM',
-      'language': 'Dil',
-      'selectLanguage': 'Dil Seç',
-      'chooseLanguage': 'Dilinizi seçin',
-      'languageChanged': 'Dil başarıyla değiştirildi',
-      'login': 'Giriş Yap',
-      'register': 'Kayıt Ol',
-      'signIn': 'Giriş Yap',
-      'signUp': 'Kayıt Ol',
-      'welcomeBack': 'Tekrar Hoş Geldiniz',
-      'createAccount': 'Hesap Oluştur',
-      'loginToContinue': 'Devam etmek için giriş yapın',
-      'joinPowerFanNetwork': 'POWER FAN NETWORK\'e Katıl',
-      'username': 'Kullanıcı adı',
-      'email': 'E-posta',
-      'password': 'Şifre',
-      'confirmPassword': 'Şifreyi Onayla',
-      'referralCode': 'Referans Kodu',
-      'referralCodeOptional': 'Referans Kodu (İsteğe bağlı)',
-      'enterUsername': 'Kullanıcı adını girin',
-      'enterEmail': 'E-posta adresini girin',
-      'enterPassword': 'Şifrenizi girin',
-      'enterReferralCode': 'Referans kodunu girin',
-      'forgotPassword': 'Şifrenizi mi unuttunuz?',
-      'resetPassword': 'Şifreyi Sıfırla',
-      'dontHaveAccount': 'Hesabınız yok mu?',
-      'alreadyHaveAccount': 'Zaten hesabınız var mı?',
-      'passwordHidden': 'Şifre gizli',
-      'passwordVisible': 'Şifre görünür',
-      'home': 'Ana Sayfa',
-      'balance': 'Bakiye',
-      'fanBalance': 'FAN Bakiyesi',
-      'afamBalance': 'AFAM Bakiyesi',
-      'miningBalance': 'Madencilik Bakiyesi',
-      'originalCoin': 'Orijinal Coin',
-      'mining': 'Madencilik',
-      'startMining': 'MADENCİLİĞİ BAŞLAT',
-      'miningNow': 'MADENCİLİK AKTİF',
-      'miningStopped': 'Madencilik Durdu',
-      'claimMining': 'MADENCİLİK ÖDÜLÜNÜ AL',
-      'claim': 'Al',
-      'claimed': 'Alındı',
-      'miningRate': 'Madencilik Hızı',
-      'fanPerHour': 'FAN / Saat',
-      'remainingTime': 'Kalan Süre',
-      'miningSession': 'Madencilik Oturumu',
-      'miningEndsIn': 'Madencilik bitişi',
-      'miningStarted': 'Madencilik başarıyla başlatıldı',
-      'miningCompleted': 'Madencilik oturumu tamamlandı',
-      'boostMining': 'Madenciliği Hızlandır',
-      'boost': 'Hızlandır',
-      'watchAd': 'REKLAM İZLE',
-      'adsWatched': 'İzlenen Reklamlar',
-      'dailyAds': 'Günlük Reklamlar',
-      'maxAds': 'Maksimum Reklam',
-      'boostPerAd': 'Reklam başına +0.1 FAN/H',
-      'maximumBoost': 'Maksimum Hızlandırma: +0.7 FAN/H',
-      'adReward': 'Reklam Ödülü',
-      'rewardedAd': 'Ödüllü Reklam',
-      'watchAdsToBoost': 'Madencilik hızınızı artırmak için reklam izleyin',
-      'adSystemComingSoon': 'Ödüllü reklam sistemi yakında',
-      'dailySocialTask': 'Günlük Sosyal Görev',
-      'socialTasks': 'Sosyal Görevler',
-      'dailyTasks': 'Günlük Görevler',
-      'completeTask': 'Görevi Tamamla',
-      'openTask': 'GÖREVİ AÇ',
-      'verifyTask': 'GÖREVİ DOĞRULA',
-      'claimReward': 'ÖDÜLÜ AL',
-      'taskCompleted': 'Görev tamamlandı',
-      'taskClaimed': 'Ödül zaten alındı',
-      'taskNotReady': 'Önce gerekli işlemleri tamamlayın',
-      'follow': 'Takip Et',
-      'comment': 'Yorum Yap',
-      'share': 'Paylaş',
-      'checkIn': 'Günlük Giriş',
-      'dailyCheckIn': 'Günlük Check-in',
-      'socialReward': 'Sosyal Ödül',
-      'fanReward': 'FAN Ödülü',
-      'facebook': 'Facebook',
-      'instagram': 'Instagram',
-      'telegram': 'Telegram',
-      'tiktok': 'TikTok',
-      'twitterX': 'X',
-      'youtube': 'YouTube',
-      'referral': 'Referans',
-      'referrals': 'Referanslar',
-      'inviteFriends': 'Arkadaşlarını Davet Et',
-      'inviteAndEarn': 'Davet Et ve Kazan',
-      'myReferralCode': 'Referans Kodum',
-      'copyCode': 'KODU KOPYALA',
-      'shareCode': 'KODU PAYLAŞ',
-      'copied': 'Kopyalandı',
-      'totalReferrals': 'Toplam Referans',
-      'activeReferrals': 'Aktif Referanslar',
-      'referralEarnings': 'Referans Kazançları',
-      'referralReward': 'Referans Ödülü',
-      'newUserReward': 'Yeni kullanıcı 20 FAN alır',
-      'miningBonus': 'Madencilik Bonusu',
-      'perActiveReferral': 'Aktif referans başına +0.02 FAN/H',
-      'referralHowItWorks': 'Referans Sistemi Nasıl Çalışır',
-      'referralStepOne': 'Referans kodunuzu arkadaşlarınızla paylaşın.',
-      'referralStepTwo': 'Arkadaşınız kodunuzu kullanarak katılır.',
-      'referralStepThree': '5 FAN ve madencilik bonusu kazanırsınız.',
-      'wallet': 'Cüzdan',
-      'afamWallet': 'AFAM Cüzdanı',
-      'fanMiningBalance': 'FAN Madencilik Bakiyesi',
-      'migration': 'Geçiş',
-      'migrate': 'GEÇİŞ YAP',
-      'migrationComingSoon': 'Geçiş Yakında',
-      'migrationInfo': 'FAN bakiyeniz daha sonra AFAM\'a geçirilebilir.',
-      'migrationRate': 'Geçiş Oranı',
-      'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
-      'transactions': 'İşlemler',
-      'noTransactions': 'Henüz işlem yok',
-      'send': 'GÖNDER',
-      'receive': 'AL',
-      'sendAfam': 'AFAM Gönder',
-      'receiveAfam': 'AFAM Al',
-      'usernameTransactions': 'İşlemler kullanıcı adı ile yapılır.',
-      'walletSecurity': 'Cüzdan Güvenliği',
-      'walletSecurityMessage': 'Hesabınızı güvende tutun. Şifrenizi veya doğrulama bilgilerinizi paylaşmayın.',
-      'kyc': 'KYC',
-      'kycVerification': 'KYC Doğrulaması',
-      'faceVerification': 'Yüz Doğrulaması',
-      'faceVerificationComingSoon': 'Yüz Doğrulaması Yakında',
-      'kycComingSoon': 'KYC Yakında',
-      'kycRequirements': 'KYC Gereksinimleri',
-      'kycRequirementOne': 'Aralıksız 30 gün günlük check-in yapın.',
-      'kycRequirementTwo': '30 gün boyunca her gün en az bir boost yapın.',
-      'kycRequirementThree': 'Ardından yüz doğrulamasını tamamlayın.',
-      'thirtyDayCheckIn': '30 Günlük Günlük Check-in',
-      'thirtyDayBoost': '30 Günlük Günlük Boost',
-      'kycUnlocked': 'KYC Açıldı',
-      'kycLocked': 'KYC Kilitli',
-      'startFaceVerification': 'YÜZ DOĞRULAMASINI BAŞLAT',
-      'verificationInProgress': 'Doğrulama devam ediyor',
-      'verificationComplete': 'Doğrulama tamamlandı',
-      'keepFaceVisible': 'Yüzünüzü kamerada görünür tutun.',
-      'lookAtCamera': 'Doğrudan kameraya bakın.',
-      'verificationSeconds': '30 saniyelik doğrulama',
-      'secondsRemaining': 'saniye kaldı',
-      'cameraPermissionRequired': 'Kamera izni gerekli',
-      'cameraPermissionMessage': 'Canlı yüz doğrulaması için kamera erişimi gereklidir.',
-      'oneDeviceOneAccount': 'Bir Cihaz = Bir Hesap',
-      'deviceSecurity': 'Cihaz Güvenliği',
-      'livenessWarning': 'Canlı kamera doğrulaması ağı korumaya yardımcı olur, ancak yalnızca 30 saniyelik zamanlayıcı tam biyometrik canlılık algılama değildir.',
-      'settings': 'Ayarlar',
-      'account': 'Hesap',
-      'profile': 'Profil',
-      'notifications': 'Bildirimler',
-      'security': 'Güvenlik',
-      'privacy': 'Gizlilik',
-      'about': 'Hakkında',
-      'help': 'Yardım',
-      'logout': 'Çıkış Yap',
-      'logoutConfirm': 'Çıkış yapmak istediğinizden emin misiniz?',
-      'save': 'Kaydet',
-      'cancel': 'İptal',
-      'close': 'Kapat',
-      'continue': 'Devam Et',
-      'done': 'Tamam',
-      'refresh': 'Yenile',
-      'retry': 'Tekrar Dene',
-      'loading': 'Yükleniyor...',
-      'error': 'Hata',
-      'success': 'Başarılı',
-      'failed': 'Başarısız',
-      'comingSoon': 'Yakında',
-      'enabled': 'Etkin',
-      'disabled': 'Devre dışı',
-      'yes': 'Evet',
-      'no': 'Hayır',
-      'today': 'Bugün',
-      'tomorrow': 'Yarın',
-      'loginRequired': 'Lütfen önce giriş yapın.',
-      'invalidEmail': 'Geçerli bir e-posta adresi girin.',
-      'invalidPassword': 'Şifre en az 6 karakter olmalıdır.',
-      'invalidUsername': 'Geçerli bir kullanıcı adı girin.',
-      'passwordsDoNotMatch': 'Şifreler eşleşmiyor.',
-      'somethingWentWrong': 'Bir şeyler ters gitti.',
-      'networkError': 'Ağ hatası. Lütfen tekrar deneyin.',
-      'noInternet': 'İnternet bağlantısı yok.',
-      'operationSuccessful': 'İşlem başarılı.',
-    },
-
-    // ========================================================================
-    // INDONESIAN
-    // ========================================================================
-    'id': {
-      'appName': 'POWER FAN',
-      'brandName': 'POWER FAN',
-      'mineFan': 'Mining FAN',
-      'powerFanNetwork': 'POWER FAN NETWORK',
-      'fan': 'FAN',
-      'afam': 'AFAM',
-      'language': 'Bahasa',
-      'selectLanguage': 'Pilih Bahasa',
-      'chooseLanguage': 'Pilih bahasa Anda',
-      'languageChanged': 'Bahasa berhasil diubah',
-      'login': 'Masuk',
-      'register': 'Daftar',
-      'signIn': 'Masuk',
-      'signUp': 'Daftar',
-      'welcomeBack': 'Selamat Datang Kembali',
-      'createAccount': 'Buat Akun',
-      'loginToContinue': 'Masuk untuk melanjutkan',
-      'joinPowerFanNetwork': 'Bergabung dengan POWER FAN NETWORK',
-      'username': 'Nama pengguna',
-      'email': 'Email',
-      'password': 'Kata sandi',
-      'confirmPassword': 'Konfirmasi kata sandi',
-      'referralCode': 'Kode referral',
-      'referralCodeOptional': 'Kode referral (opsional)',
-      'enterUsername': 'Masukkan nama pengguna',
-      'enterEmail': 'Masukkan email',
-      'enterPassword': 'Masukkan kata sandi',
-      'enterReferralCode': 'Masukkan kode referral',
-      'forgotPassword': 'Lupa kata sandi?',
-      'resetPassword': 'Atur Ulang Kata Sandi',
-      'dontHaveAccount': 'Belum punya akun?',
-      'alreadyHaveAccount': 'Sudah punya akun?',
-      'passwordHidden': 'Kata sandi tersembunyi',
-      'passwordVisible': 'Kata sandi terlihat',
-      'home': 'Beranda',
-      'balance': 'Saldo',
-      'fanBalance': 'Saldo FAN',
-      'afamBalance': 'Saldo AFAM',
-      'miningBalance': 'Saldo Mining',
-      'originalCoin': 'Koin Asli',
-      'mining': 'Mining',
-      'startMining': 'MULAI MINING',
-      'miningNow': 'SEDANG MINING',
-      'miningStopped': 'Mining Berhenti',
-      'claimMining': 'KLAIM MINING',
-      'claim': 'Klaim',
-      'claimed': 'Sudah Diklaim',
-      'miningRate': 'Kecepatan Mining',
-      'fanPerHour': 'FAN / Jam',
-      'remainingTime': 'Waktu Tersisa',
-      'miningSession': 'Sesi Mining',
-      'miningEndsIn': 'Mining berakhir dalam',
-      'miningStarted': 'Mining berhasil dimulai',
-      'miningCompleted': 'Sesi mining selesai',
-      'boostMining': 'Boost Mining',
-      'boost': 'Boost',
-      'watchAd': 'TONTON IKLAN',
-      'adsWatched': 'Iklan Ditonton',
-      'dailyAds': 'Iklan Harian',
-      'maxAds': 'Maksimal Iklan',
-      'boostPerAd': '+0.1 FAN/H per iklan',
-      'maximumBoost': 'Boost Maksimal: +0.7 FAN/H',
-      'adReward': 'Hadiah Iklan',
-      'rewardedAd': 'Iklan Berhadiah',
-      'watchAdsToBoost': 'Tonton iklan untuk meningkatkan kecepatan mining',
-      'adSystemComingSoon': 'Sistem iklan berhadiah segera hadir',
-      'dailySocialTask': 'Tugas Sosial Harian',
-      'socialTasks': 'Tugas Sosial',
-      'dailyTasks': 'Tugas Harian',
-      'completeTask': 'Selesaikan Tugas',
-      'openTask': 'BUKA TUGAS',
-      'verifyTask': 'VERIFIKASI TUGAS',
-      'claimReward': 'KLAIM HADIAH',
-      'taskCompleted': 'Tugas selesai',
-      'taskClaimed': 'Hadiah sudah diklaim',
-      'taskNotReady': 'Selesaikan tindakan yang diperlukan terlebih dahulu',
-      'follow': 'Ikuti',
-      'comment': 'Komentar',
-      'share': 'Bagikan',
-      'checkIn': 'Check-in',
-      'dailyCheckIn': 'Check-in Harian',
-      'socialReward': 'Hadiah Sosial',
-      'fanReward': 'Hadiah FAN',
-      'facebook': 'Facebook',
-      'instagram': 'Instagram',
-      'telegram': 'Telegram',
-      'tiktok': 'TikTok',
-      'twitterX': 'X',
-      'youtube': 'YouTube',
-      'referral': 'Referral',
-      'referrals': 'Referral',
-      'inviteFriends': 'Undang Teman',
-      'inviteAndEarn': 'Undang & Dapatkan',
-      'myReferralCode': 'Kode Referral Saya',
-      'copyCode': 'SALIN KODE',
-      'shareCode': 'BAGIKAN KODE',
-      'copied': 'Disalin',
-      'totalReferrals': 'Total Referral',
-      'activeReferrals': 'Referral Aktif',
-      'referralEarnings': 'Penghasilan Referral',
-      'referralReward': 'Hadiah Referral',
-      'newUserReward': 'Pengguna baru menerima 20 FAN',
-      'miningBonus': 'Bonus Mining',
-      'perActiveReferral': '+0.02 FAN/H per referral aktif',
-      'referralHowItWorks': 'Cara Kerja Referral',
-      'referralStepOne': 'Bagikan kode referral Anda kepada teman.',
-      'referralStepTwo': 'Teman Anda bergabung menggunakan kode Anda.',
-      'referralStepThree': 'Anda menerima 5 FAN dan bonus mining.',
-      'wallet': 'Dompet',
-      'afamWallet': 'Dompet AFAM',
-      'fanMiningBalance': 'Saldo Mining FAN',
-      'migration': 'Migrasi',
-      'migrate': 'MIGRASI',
-      'migrationComingSoon': 'Migrasi Segera Hadir',
-      'migrationInfo': 'Saldo FAN Anda nantinya dapat dimigrasikan ke AFAM.',
-      'migrationRate': 'Rasio Migrasi',
-      'oneHundredFanOneAfam': '100 FAN = 1 AFAM',
-      'transactions': 'Transaksi',
-      'noTransactions': 'Belum ada transaksi',
-      'send': 'KIRIM',
-      'receive': 'TERIMA',
-      'sendAfam': 'Kirim AFAM',
-      'receiveAfam': 'Terima AFAM',
-      'usernameTransactions': 'Transaksi dilakukan menggunakan nama pengguna.',
-      'walletSecurity': 'Keamanan Dompet',
-      'walletSecurityMessage': 'Jaga keamanan akun Anda. Jangan pernah membagikan kata sandi atau informasi verifikasi.',
-      'kyc': 'KYC',
-      'kycVerification': 'Verifikasi KYC',
-      'faceVerification': 'Verifikasi Wajah',
-      'faceVerificationComingSoon': 'Verifikasi Wajah Segera Hadir',
-      'kycComingSoon': 'KYC Segera Hadir',
-      'kycRequirements': 'Persyaratan KYC',
-      'kycRequirementOne': 'Selesaikan check-in harian selama 30 hari berturut-turut.',
-      'kycRequirementTwo': 'Lakukan minimal satu boost setiap hari selama 30 hari.',
-      'kycRequirementThree': 'Kemudian selesaikan Verifikasi Wajah.',
-      'thirtyDayCheckIn': '30 Hari Check-in Harian',
-      'thirtyDayBoost': '30 Hari Boost Harian',
-      'kycUnlocked': 'KYC Terbuka',
-      'kycLocked': 'KYC Terkunci',
-      'startFaceVerification': 'MULAI VERIFIKASI WAJAH',
-      'verificationInProgress': 'Verifikasi sedang berlangsung',
-      'verificationComplete': 'Verifikasi selesai',
-      'keepFaceVisible': 'Pastikan wajah Anda terlihat di kamera.',
-      'lookAtCamera': 'Lihat langsung ke kamera.',
-      'verificationSeconds': 'Verifikasi 30 detik',
-      'secondsRemaining': 'detik tersisa',
-      'cameraPermissionRequired': 'Izin Kamera Diperlukan',
-      'cameraPermissionMessage': 'Akses kamera diperlukan untuk verifikasi wajah secara langsung.',
-      'oneDeviceOneAccount': 'Satu Perangkat = Satu Akun',
-      'deviceSecurity': 'Keamanan Perangkat',
-      'livenessWarning': 'Verifikasi kamera langsung membantu melindungi jaringan, tetapi timer 30 detik saja bukan deteksi liveness biometrik lengkap.',
-      'settings': 'Pengaturan',
-      'account': 'Akun',
-      'profile': 'Profil',
-      'notifications': 'Notifikasi',
-      'security': 'Keamanan',
-      'privacy': 'Privasi',
-      'about': 'Tentang',
-      'help': 'Bantuan',
-      'logout': 'Keluar',
-      'logoutConfirm': 'Apakah Anda yakin ingin keluar?',
-      'save': 'Simpan',
-      'cancel': 'Batal',
-      'close': 'Tutup',
-      'continue': 'Lanjutkan',
-      'done': 'Selesai',
-      'refresh': 'Segarkan',
-      'retry': 'Coba Lagi',
-      'loading': 'Memuat...',
-      'error': 'Kesalahan',
-      'success': 'Berhasil',
-      'failed': 'Gagal',
-      'comingSoon': 'Segera Hadir',
-      'enabled': 'Aktif',
-      'disabled': 'Nonaktif',
-      'yes': 'Ya',
-      'no': 'Tidak',
-      'today': 'Hari Ini',
-      'tomorrow': 'Besok',
-      'loginRequired': 'Silakan masuk terlebih dahulu.',
-      'invalidEmail': 'Masukkan alamat email yang valid.',
-      'invalidPassword': 'Kata sandi harus minimal 6 karakter.',
-      'invalidUsername': 'Masukkan nama pengguna yang valid.',
-      'passwordsDoNotMatch': 'Kata sandi tidak cocok.',
-      'somethingWentWrong': 'Terjadi kesalahan.',
-      'networkError': 'Kesalahan jaringan. Silakan coba lagi.',
-      'noInternet': 'Tidak ada koneksi internet.',
-      'operationSuccessful': 'Operasi berhasil.',
-    },
-  };
-}
-
-/// Language item used by the language selector.
-class LanguageOption {
-  final String code;
-  final String name;
-  final String nativeName;
-
-  const LanguageOption({
-    required this.code,
-    required this.name,
-    required this.nativeName,
-  });
-
-  Locale get locale => Locale(code);
-}
-
-/// Localizations delegate for MaterialApp.
-class AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
-  const AppLocalizationsDelegate();
-
-  @override
-  bool isSupported(Locale locale) {
-    return AppLocalizations.supportedLocales.any(
-      (supported) => supported.languageCode == locale.languageCode,
-    );
-  }
-
-  @override
-  Future<AppLocalizations> load(Locale locale) async {
-    return AppLocalizations(locale);
-  }
-
-  @override
-  bool shouldReload(AppLocalizationsDelegate old) => false;
-}
