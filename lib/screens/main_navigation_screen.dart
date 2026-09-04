@@ -1,5 +1,10 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../services/mining_service.dart';
+import '../services/social_task_service.dart';
 import 'referral_screen.dart';
 import 'wallet_screen.dart';
 import 'settings_screen.dart';
@@ -8,10 +13,12 @@ class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
 
   @override
-  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+  State<MainNavigationScreen> createState() =>
+      _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState
+    extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
   @override
@@ -129,30 +136,404 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-class _HomeInterface extends StatelessWidget {
+class _HomeInterface extends StatefulWidget {
   const _HomeInterface();
 
+  @override
+  State<_HomeInterface> createState() => _HomeInterfaceState();
+}
+
+class _HomeInterfaceState extends State<_HomeInterface> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
+
+  final MiningService _miningService =
+      MiningService.instance;
+
+  final SocialTaskService _socialTaskService =
+      SocialTaskService.instance;
+
+  Timer? _timer;
+
+  bool _loading = true;
+  bool _actionLoading = false;
+
+  double _fanBalance = 0;
+  double _afamBalance = 0;
+  double _miningRate = 0.20;
+
+  bool _isMining = false;
+
+  DateTime? _endsAt;
+
+  Duration _remaining = Duration.zero;
+
+  int _adsWatched = 0;
+
+  List<DailySocialTask> _tasks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadAll() async {
+    if (!mounted) return;
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      await Future.wait([
+        _loadProfile(),
+        _loadMining(),
+        _loadTasks(),
+      ]);
+    } catch (e) {
+      if (mounted) {
+        _showMessage(_errorMessage(e));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _miningService.getProfile();
+
+    if (!mounted) return;
+
+    setState(() {
+      _fanBalance =
+          _toDouble(profile['fan_balance']);
+
+      _afamBalance =
+          _toDouble(profile['afam_balance']);
+    });
+  }
+
+  Future<void> _loadMining() async {
+    final active =
+        await _miningService.getActiveMining();
+
+    final rate =
+        await _miningService.getUserMiningRate();
+
+    final endsAt = _parseDateTime(
+      active['ends_at'] ??
+          active['end_time'] ??
+          active['expires_at'],
+    );
+
+    final mining =
+        active['is_mining'] ??
+            active['is_active'] ??
+            false;
+
+    final ads =
+        active['ads_watched'] ??
+            active['ad_count'] ??
+            active['ads_count'] ??
+            0;
+
+    if (!mounted) return;
+
+    setState(() {
+      _isMining = mining == true;
+      _endsAt = endsAt;
+      _miningRate =
+          rate <= 0 ? 0.20 : rate;
+      _adsWatched =
+          _toInt(ads).clamp(0, 7);
+
+      _remaining = _calculateRemaining();
+
+      if (_isMining && _endsAt != null) {
+        _startCountdown();
+      } else {
+        _timer?.cancel();
+      }
+    });
+  }
+
+  Future<void> _loadTasks() async {
+    final tasks =
+        await _socialTaskService
+            .getDailyTasks();
+
+    if (!mounted) return;
+
+    setState(() {
+      _tasks = tasks;
+    });
+  }
+
+  Duration _calculateRemaining() {
+    if (!_isMining || _endsAt == null) {
+      return Duration.zero;
+    }
+
+    final difference =
+        _endsAt!.difference(DateTime.now());
+
+    if (difference.isNegative) {
+      return Duration.zero;
+    }
+
+    return difference;
+  }
+
+  void _startCountdown() {
+    _timer?.cancel();
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!mounted) return;
+
+        final remaining =
+            _calculateRemaining();
+
+        if (remaining <= Duration.zero) {
+          _timer?.cancel();
+
+          setState(() {
+            _remaining = Duration.zero;
+            _isMining = false;
+          });
+
+          _loadMining();
+          return;
+        }
+
+        setState(() {
+          _remaining = remaining;
+        });
+      },
+    );
+  }
+
+  Future<void> _startMining() async {
+    if (_actionLoading) return;
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      await _miningService.startMining();
+
+      await _loadMining();
+
+      if (mounted) {
+        _showMessage(
+          'Mining started successfully.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(_errorMessage(e));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _claimMining() async {
+    if (_actionLoading) return;
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      final result =
+          await _miningService.claimMining();
+
+      final earned =
+          _extractNumber(
+        result,
+        [
+          'earned',
+          'earned_fan',
+          'reward',
+          'reward_fan',
+          'amount',
+        ],
+      );
+
+      await _loadProfile();
+      await _loadMining();
+
+      if (mounted) {
+        if (earned > 0) {
+          _showMessage(
+            '${earned.toStringAsFixed(4)} FAN claimed successfully.',
+          );
+        } else {
+          _showMessage(
+            'Mining reward claimed successfully.',
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(_errorMessage(e));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openSocialTask(
+    DailySocialTask task,
+  ) async {
+    if (task.claimed || _actionLoading) {
+      return;
+    }
+
+    setState(() {
+      _actionLoading = true;
+    });
+
+    try {
+      await _socialTaskService.startTask(task.id);
+
+      await _socialTaskService
+          .openTaskUrl(task.url);
+
+      await Future.delayed(
+        const Duration(seconds: 2),
+      );
+
+      await _socialTaskService
+          .verifyTask(task.id);
+
+      await _socialTaskService
+          .claimTask(task.id);
+
+      await _loadTasks();
+      await _loadProfile();
+
+      if (mounted) {
+        _showMessage(
+          '+${task.rewardFan.toStringAsFixed(0)} FAN earned.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showMessage(_errorMessage(e));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _actionLoading = false;
+        });
+      }
+    }
+  }
+
+  String _miningStatusText() {
+    if (_isMining) {
+      return 'MINING';
+    }
+
+    if (_endsAt != null &&
+        _remaining == Duration.zero) {
+      return 'READY TO CLAIM';
+    }
+
+    return 'READY';
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours =
+        duration.inHours
+            .toString()
+            .padLeft(2, '0');
+
+    final minutes =
+        duration.inMinutes
+            .remainder(60)
+            .toString()
+            .padLeft(2, '0');
+
+    final seconds =
+        duration.inSeconds
+            .remainder(60)
+            .toString()
+            .padLeft(2, '0');
+
+    return '$hours:$minutes:$seconds';
+  }
+
+  double _progressValue() {
+    const totalSeconds =
+        24 * 60 * 60;
+
+    final remainingSeconds =
+        _remaining.inSeconds;
+
+    final elapsed =
+        totalSeconds - remainingSeconds;
+
+    if (elapsed <= 0) return 0;
+    if (elapsed >= totalSeconds) return 1;
+
+    return elapsed / totalSeconds;
+  }
+
+  Future<void> _refresh() async {
+    await _loadAll();
+  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          _buildHeader(),
-          const SizedBox(height: 18),
-          _buildBalanceCard(),
-          const SizedBox(height: 16),
-          _buildMiningCard(),
-          const SizedBox(height: 14),
-          _buildBoostCard(),
-          const SizedBox(height: 20),
-          _buildDailyTaskSection(),
-          const SizedBox(height: 20),
-          _buildKycCard(),
-        ],
+      child: RefreshIndicator(
+        color: primaryPurple,
+        onRefresh: _refresh,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            24,
+          ),
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 18),
+            _buildBalanceCard(),
+            const SizedBox(height: 16),
+            _buildMiningCard(),
+            const SizedBox(height: 14),
+            _buildBoostCard(),
+            const SizedBox(height: 20),
+            _buildDailyTaskSection(),
+            const SizedBox(height: 20),
+            _buildKycCard(),
+          ],
+        ),
       ),
     );
   }
@@ -165,7 +546,8 @@ class _HomeInterface extends StatelessWidget {
           height: 45,
           decoration: BoxDecoration(
             color: primaryPurple,
-            borderRadius: BorderRadius.circular(13),
+            borderRadius:
+                BorderRadius.circular(13),
           ),
           child: const Center(
             child: Text(
@@ -181,7 +563,8 @@ class _HomeInterface extends StatelessWidget {
         const SizedBox(width: 11),
         const Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
               Text(
                 'POWER FAN',
@@ -209,7 +592,8 @@ class _HomeInterface extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius:
+                BorderRadius.circular(12),
           ),
           child: const Icon(
             Icons.notifications_none_rounded,
@@ -233,10 +617,12 @@ class _HomeInterface extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius:
+            BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: primaryPurple.withOpacity(0.20),
+            color:
+                primaryPurple.withOpacity(0.20),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -250,23 +636,33 @@ class _HomeInterface extends StatelessWidget {
             child: Container(
               width: 135,
               height: 135,
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.06),
+                color:
+                    Colors.white.withOpacity(0.06),
               ),
             ),
           ),
           Positioned(
             right: 18,
             bottom: 14,
-            child: _buildMiningIllustration(),
+            child:
+                _buildMiningIllustration(),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 18, 20, 15),
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(
+              20,
+              18,
+              20,
+              15,
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'FAN BALANCE',
                   style: TextStyle(
                     color: Colors.white70,
@@ -275,27 +671,38 @@ class _HomeInterface extends StatelessWidget {
                     letterSpacing: 1,
                   ),
                 ),
-                SizedBox(height: 7),
-                Text(
-                  '0.0000 FAN',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 27,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 12),
-                Text(
+                const SizedBox(height: 7),
+                _loading
+                    ? const SizedBox(
+                        width: 100,
+                        height: 31,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        '${_fanBalance.toStringAsFixed(4)} FAN',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 27,
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
+                      ),
+                const SizedBox(height: 12),
+                const Text(
                   'AFAM Balance',
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 11,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  '0.0000 AFAM',
-                  style: TextStyle(
+                  '${_afamBalance.toStringAsFixed(4)} AFAM',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -340,11 +747,17 @@ class _HomeInterface extends StatelessWidget {
   }
 
   Widget _buildMiningCard() {
+    final canClaim =
+        !_isMining &&
+        _endsAt != null &&
+        _remaining == Duration.zero;
+
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade100,
         ),
@@ -357,8 +770,10 @@ class _HomeInterface extends StatelessWidget {
                 width: 43,
                 height: 43,
                 decoration: BoxDecoration(
-                  color: primaryPurple.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
+                  color:
+                      primaryPurple.withOpacity(0.08),
+                  borderRadius:
+                      BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.bolt_rounded,
@@ -367,44 +782,53 @@ class _HomeInterface extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 11),
-              const Expanded(
+              Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Mining Status',
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight:
+                            FontWeight.w700,
                       ),
                     ),
-                    SizedBox(height: 3),
+                    const SizedBox(height: 3),
                     Text(
-                      'READY',
+                      _miningStatusText(),
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.green,
-                        fontWeight: FontWeight.w700,
+                        color: _isMining
+                            ? Colors.orange
+                            : canClaim
+                                ? Colors.blue
+                                : Colors.green,
+                        fontWeight:
+                            FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Text(
-                '0.20 FAN/H',
-                style: TextStyle(
+              Text(
+                '${_miningRate.toStringAsFixed(2)} FAN/H',
+                style: const TextStyle(
                   color: primaryPurple,
                   fontSize: 14,
-                  fontWeight: FontWeight.w800,
+                  fontWeight:
+                      FontWeight.w800,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 17),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text(
+            mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
                 'Session Time',
                 style: TextStyle(
                   color: Colors.grey,
@@ -412,22 +836,27 @@ class _HomeInterface extends StatelessWidget {
                 ),
               ),
               Text(
-                '00:00:00 / 24:00:00',
-                style: TextStyle(
+                '${_formatDuration(_remaining)} / 24:00:00',
+                style: const TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight:
+                      FontWeight.w700,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 11),
           ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius:
+                BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: 0,
+              value: _progressValue(),
               minHeight: 7,
-              backgroundColor: Color(0xFFEDEAF7),
-              valueColor: AlwaysStoppedAnimation<Color>(
+              backgroundColor:
+                  const Color(0xFFEDEAF7),
+              valueColor:
+                  const AlwaysStoppedAnimation<
+                      Color>(
                 primaryPurple,
               ),
             ),
@@ -437,24 +866,51 @@ class _HomeInterface extends StatelessWidget {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryPurple,
-                disabledBackgroundColor: primaryPurple,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(13),
+              onPressed: _actionLoading
+                  ? null
+                  : _isMining
+                      ? null
+                      : canClaim
+                          ? _claimMining
+                          : _startMining,
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    primaryPurple,
+                disabledBackgroundColor:
+                    primaryPurple,
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(13),
                 ),
                 elevation: 0,
               ),
-              child: const Text(
-                'START MINING',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                ),
-              ),
+              child: _actionLoading
+                  ? const SizedBox(
+                      width: 21,
+                      height: 21,
+                      child:
+                          CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      canClaim
+                          ? 'CLAIM MINING'
+                          : _isMining
+                              ? 'MINING...'
+                              : 'START MINING',
+                      style:
+                          const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight:
+                            FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
             ),
           ),
         ],
@@ -463,11 +919,15 @@ class _HomeInterface extends StatelessWidget {
   }
 
   Widget _buildBoostCard() {
+    final limitReached =
+        _adsWatched >= 7;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade100,
         ),
@@ -478,8 +938,10 @@ class _HomeInterface extends StatelessWidget {
             width: 45,
             height: 45,
             decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
+              color:
+                  Colors.orange.withOpacity(0.10),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.play_circle_fill_rounded,
@@ -490,13 +952,15 @@ class _HomeInterface extends StatelessWidget {
           const SizedBox(width: 12),
           const Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Boost by Watching Ads',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
                 SizedBox(height: 4),
@@ -511,20 +975,26 @@ class _HomeInterface extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(
+            padding:
+                const EdgeInsets.symmetric(
               horizontal: 10,
               vertical: 7,
             ),
             decoration: BoxDecoration(
-              color: primaryPurple.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10),
+              color:
+                  primaryPurple.withOpacity(0.08),
+              borderRadius:
+                  BorderRadius.circular(10),
             ),
-            child: const Text(
-              '0 / 7',
+            child: Text(
+              '$_adsWatched / 7',
               style: TextStyle(
-                color: primaryPurple,
+                color: limitReached
+                    ? Colors.grey
+                    : primaryPurple,
                 fontSize: 12,
-                fontWeight: FontWeight.w800,
+                fontWeight:
+                    FontWeight.w800,
               ),
             ),
           ),
@@ -534,98 +1004,179 @@ class _HomeInterface extends StatelessWidget {
   }
 
   Widget _buildDailyTaskSection() {
+    if (_tasks.isEmpty) {
+      return Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Daily Task',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 11),
+          Container(
+            padding:
+                const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(15),
+            ),
+            child: const Center(
+              child: Text(
+                'No daily tasks available.',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         const Text(
           'Daily Task',
           style: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.w800,
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
         const SizedBox(height: 11),
-        _socialTask(
-          icon: Icons.close_rounded,
-          title: 'X',
-        ),
-        _socialTask(
-          icon: Icons.send_rounded,
-          title: 'Telegram',
-        ),
-        _socialTask(
-          icon: Icons.camera_alt_rounded,
-          title: 'Instagram',
-        ),
-        _socialTask(
-          icon: Icons.play_arrow_rounded,
-          title: 'YouTube',
+        ..._tasks.map(
+          (task) => _socialTask(task),
         ),
       ],
     );
   }
 
-  Widget _socialTask({
-    required IconData icon,
-    required String title,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 13,
-        vertical: 11,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.grey.shade100,
+  Widget _socialTask(
+    DailySocialTask task,
+  ) {
+    return InkWell(
+      borderRadius:
+          BorderRadius.circular(15),
+      onTap: task.claimed
+          ? null
+          : () => _openSocialTask(task),
+      child: Container(
+        margin:
+            const EdgeInsets.only(bottom: 9),
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 13,
+          vertical: 11,
         ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: primaryPurple.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              icon,
-              color: primaryPurple,
-              size: 20,
-            ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius:
+              BorderRadius.circular(15),
+          border: Border.all(
+            color: Colors.grey.shade100,
           ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color:
+                    primaryPurple.withOpacity(0.08),
+                borderRadius:
+                    BorderRadius.circular(10),
+              ),
+              child: Icon(
+                _platformIcon(task.platform),
+                color: primaryPurple,
+                size: 20,
               ),
             ),
-          ),
-          const Text(
-            '10 FAN',
-            style: TextStyle(
-              color: primaryPurple,
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+                  ),
+                  if (task.description
+                      .isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      task.description,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Text(
+              task.claimed
+                  ? 'CLAIMED'
+                  : '${task.rewardFan.toStringAsFixed(0)} FAN',
+              style: TextStyle(
+                color: task.claimed
+                    ? Colors.green
+                    : primaryPurple,
+                fontSize: 11,
+                fontWeight:
+                    FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  IconData _platformIcon(String platform) {
+    switch (platform.toLowerCase()) {
+      case 'telegram':
+        return Icons.send_rounded;
+      case 'instagram':
+        return Icons.camera_alt_rounded;
+      case 'youtube':
+        return Icons.play_arrow_rounded;
+      case 'x':
+      case 'twitter':
+        return Icons.close_rounded;
+      default:
+        return Icons.public_rounded;
+    }
+  }
+
   Widget _buildKycCard() {
     return Container(
-      padding: const EdgeInsets.all(17),
+      padding:
+          const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade100,
         ),
@@ -636,8 +1187,10 @@ class _HomeInterface extends StatelessWidget {
             width: 45,
             height: 45,
             decoration: BoxDecoration(
-              color: primaryPurple.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
+              color:
+                  primaryPurple.withOpacity(0.08),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.verified_user_rounded,
@@ -648,13 +1201,15 @@ class _HomeInterface extends StatelessWidget {
           const SizedBox(width: 12),
           const Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'KYC Verification',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
                 SizedBox(height: 4),
@@ -675,5 +1230,90 @@ class _HomeInterface extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        0;
+  }
+
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is int) return value;
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value.toString(),
+        ) ??
+        0;
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+
+    if (value is DateTime) {
+      return value.toLocal();
+    }
+
+    final parsed =
+        DateTime.tryParse(value.toString());
+
+    return parsed?.toLocal();
+  }
+
+  double _extractNumber(
+    Map<String, dynamic> data,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      if (data.containsKey(key)) {
+        final value =
+            _toDouble(data[key]);
+
+        if (value != 0) {
+          return value;
+        }
+      }
+    }
+
+    return 0;
+  }
+
+  String _errorMessage(Object error) {
+    final message = error.toString();
+
+    if (message.startsWith(
+      'Exception: ',
+    )) {
+      return message.substring(11);
+    }
+
+    return message;
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior:
+              SnackBarBehavior.floating,
+        ),
+      );
   }
 }
