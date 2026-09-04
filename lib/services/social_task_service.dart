@@ -1,329 +1,241 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'supabase_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DailySocialTask {
   final String id;
   final String title;
   final String description;
-  final bool claimed;
-  final int rewardFan;
   final String url;
   final String platform;
+  final double rewardFan;
+
+  final bool claimed;
+  final bool canClaim;
+
+  final bool followVerified;
+  final bool commentVerified;
+  final bool shareVerified;
+
+  final bool requiresFollow;
+  final bool requiresComment;
+  final bool requiresShare;
+
+  final DateTime? taskDate;
 
   const DailySocialTask({
     required this.id,
     required this.title,
     required this.description,
-    required this.claimed,
-    required this.rewardFan,
     required this.url,
     required this.platform,
+    required this.rewardFan,
+    required this.claimed,
+    required this.canClaim,
+    required this.followVerified,
+    required this.commentVerified,
+    required this.shareVerified,
+    required this.requiresFollow,
+    required this.requiresComment,
+    required this.requiresShare,
+    required this.taskDate,
   });
+
+  factory DailySocialTask.fromMap(Map<String, dynamic> map) {
+    return DailySocialTask(
+      id: (map['id'] ?? '').toString(),
+      title: (map['title'] ?? '').toString(),
+      description: (map['description'] ?? '').toString(),
+      url: (map['task_url'] ?? map['url'] ?? '').toString(),
+      platform: (map['platform'] ?? '').toString(),
+      rewardFan: _toDouble(map['reward_fan']),
+      claimed: _toBool(map['claimed']),
+      canClaim: _toBool(map['can_claim']),
+      followVerified: _toBool(map['follow_verified']),
+      commentVerified: _toBool(map['comment_verified']),
+      shareVerified: _toBool(map['share_verified']),
+      requiresFollow: _toBool(map['requires_follow']),
+      requiresComment: _toBool(map['requires_comment']),
+      requiresShare: _toBool(map['requires_share']),
+      taskDate: _toDate(map['task_date']),
+    );
+  }
+
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  static bool _toBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+
+    final text = value?.toString().toLowerCase().trim();
+    return text == 'true' || text == '1';
+  }
+
+  static DateTime? _toDate(dynamic value) {
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
 }
 
 class SocialTaskService {
-  SocialTaskService._();
+  final SupabaseClient _client = Supabase.instance.client;
 
-  static final SocialTaskService instance = SocialTaskService._();
-
-  final SupabaseClient _client = SupabaseService.client;
-
-  String get _userId {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
-      throw Exception('User is not logged in.');
-    }
-
-    return user.id;
-  }
-
-  /// Gets today's active social-media tasks.
+  /// Gets today's active social-media tasks for the logged-in user.
   ///
-  /// This uses the Supabase RPC:
-  /// get_daily_social_tasks()
+  /// Supabase function:
+  /// public.get_daily_social_tasks()
   ///
-  /// The RPC is responsible for returning the user's current
-  /// verification/claim status for today's tasks.
+  /// IMPORTANT:
+  /// This RPC takes NO parameters.
   Future<List<DailySocialTask>> getDailyTasksForCard() async {
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'get_daily_social_tasks',
+    try {
+      final response = await _client.rpc('get_daily_social_tasks');
+
+      if (response == null) {
+        return [];
+      }
+
+      final data = response as List;
+
+      return data
+          .map(
+            (item) => DailySocialTask.fromMap(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList();
+    } on PostgrestException catch (e) {
+      throw Exception(
+        'Failed to load social tasks: ${e.message}',
       );
-
-      if (result == null) {
-        return <DailySocialTask>[];
-      }
-
-      if (result is! List) {
-        return <DailySocialTask>[];
-      }
-
-      final tasks = <DailySocialTask>[];
-
-      for (final item in result) {
-        if (item is! Map) {
-          continue;
-        }
-
-        final task = Map<String, dynamic>.from(item);
-
-        final id = task['id']?.toString().trim() ?? '';
-
-        final platform =
-            task['platform']?.toString().trim().toLowerCase() ?? '';
-
-        final title =
-            task['title']?.toString().trim() ?? '';
-
-        final url =
-            task['task_url']?.toString().trim() ?? '';
-
-        final reward = _toInt(
-          task['reward_fan'] ?? 10,
-        );
-
-        final claimed =
-            task['claimed'] == true;
-
-        if (id.isEmpty || url.isEmpty) {
-          continue;
-        }
-
-        tasks.add(
-          DailySocialTask(
-            id: id,
-            title: title.isNotEmpty
-                ? title
-                : _defaultTitle(platform),
-            description: _defaultDescription(platform),
-            claimed: claimed,
-            rewardFan: reward > 0 ? reward : 10,
-            url: url,
-            platform: platform,
-          ),
-        );
-      }
-
-      return tasks;
-    });
+    } catch (e) {
+      throw Exception(
+        'Failed to load social tasks: $e',
+      );
+    }
   }
 
-  /// Starts/tracks a social task.
+  /// Starts a social task.
   ///
-  /// Supabase handles the actual server-side task tracking.
-  Future<void> startTask({
+  /// Supabase function:
+  /// public.start_social_task(p_task_id uuid)
+  ///
+  /// IMPORTANT:
+  /// User ID is NOT sent because the database gets auth.uid()
+  /// automatically from the logged-in Supabase session.
+  Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
     final cleanTaskId = taskId.trim();
 
     if (cleanTaskId.isEmpty) {
-      throw Exception('Invalid task.');
+      throw Exception('Invalid social task ID.');
     }
 
-    await SupabaseService.safeCall(() async {
-      await _client.rpc(
+    try {
+      final response = await _client.rpc(
         'start_social_task',
         params: {
-          'p_user_id': _userId,
           'p_task_id': cleanTaskId,
         },
       );
-    });
+
+      if (response == null) {
+        throw Exception('Unable to start social task.');
+      }
+
+      return Map<String, dynamic>.from(response as Map);
+    } on PostgrestException catch (e) {
+      throw Exception(
+        'Failed to start social task: ${e.message}',
+      );
+    } catch (e) {
+      throw Exception(
+        'Failed to start social task: $e',
+      );
+    }
   }
 
-  /// Verifies whether the user completed the required
-  /// social-media actions.
-  Future<bool> verifyTask({
-    required String taskId,
-  }) async {
-    final cleanTaskId = taskId.trim();
+  /// Opens the social-media task URL.
+  Future<bool> openTaskUrl(String url) async {
+    final cleanUrl = url.trim();
 
-    if (cleanTaskId.isEmpty) {
-      throw Exception('Invalid task.');
+    if (cleanUrl.isEmpty) {
+      return false;
     }
 
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'verify_social_task_actions',
-        params: {
-          'p_user_id': _userId,
-          'p_task_id': cleanTaskId,
-        },
-      );
+    Uri? uri;
 
-      return _parseBoolResult(result);
-    });
+    try {
+      uri = Uri.parse(cleanUrl);
+    } catch (_) {
+      return false;
+    }
+
+    if (!uri.hasScheme) {
+      return false;
+    }
+
+    try {
+      return await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
-  /// Claims the daily social reward.
+  /// Claims today's social reward.
   ///
-  /// The reward is created server-side by Supabase.
-  /// Flutter does NOT directly modify the FAN balance.
+  /// Supabase function:
+  /// public.claim_daily_social_reward(p_task_id uuid)
+  ///
+  /// The server decides whether the task can actually be claimed.
+  /// We do NOT fake verification from the Flutter app.
   Future<Map<String, dynamic>> verifyAndClaim({
     required String taskId,
   }) async {
     final cleanTaskId = taskId.trim();
 
     if (cleanTaskId.isEmpty) {
-      throw Exception('Invalid task.');
+      throw Exception('Invalid social task ID.');
     }
 
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
+    try {
+      final response = await _client.rpc(
         'claim_daily_social_reward',
         params: {
-          'p_user_id': _userId,
           'p_task_id': cleanTaskId,
         },
       );
 
-      return _parseMapResult(result);
-    });
-  }
+      if (response == null) {
+        throw Exception('Unable to claim social reward.');
+      }
 
-  /// Refreshes today's social-task claim status.
-  ///
-  /// This asks Supabase to recalculate the user's task status.
-  Future<void> refreshClaimStatus() async {
-    await SupabaseService.safeCall(() async {
-      await _client.rpc(
-        'refresh_social_task_claim_status',
-        params: {
-          'p_user_id': _userId,
-        },
+      return Map<String, dynamic>.from(response as Map);
+    } on PostgrestException catch (e) {
+      throw Exception(
+        'Failed to claim social reward: ${e.message}',
       );
-    });
-  }
-
-  /// Converts different Supabase RPC return formats
-  /// into a boolean.
-  bool _parseBoolResult(dynamic result) {
-    if (result is bool) {
-      return result;
-    }
-
-    if (result is Map) {
-      return result['verified'] == true ||
-          result['success'] == true ||
-          result['is_verified'] == true ||
-          result['can_claim'] == true;
-    }
-
-    if (result is List && result.isNotEmpty) {
-      final first = result.first;
-
-      if (first is bool) {
-        return first;
-      }
-
-      if (first is Map) {
-        return first['verified'] == true ||
-            first['success'] == true ||
-            first['is_verified'] == true ||
-            first['can_claim'] == true;
-      }
-    }
-
-    return false;
-  }
-
-  /// Converts the Supabase claim RPC result
-  /// into a predictable Map.
-  Map<String, dynamic> _parseMapResult(dynamic result) {
-    if (result is Map) {
-      return Map<String, dynamic>.from(result);
-    }
-
-    if (result is List &&
-        result.isNotEmpty &&
-        result.first is Map) {
-      return Map<String, dynamic>.from(result.first);
-    }
-
-    if (result is bool) {
-      return {
-        'success': result,
-      };
-    }
-
-    if (result is num) {
-      return {
-        'success': true,
-        'reward': result.toInt(),
-      };
-    }
-
-    return {
-      'success': false,
-    };
-  }
-
-  String _defaultTitle(String platform) {
-    switch (platform.toLowerCase()) {
-      case 'facebook':
-        return 'Follow, Comment and Share';
-
-      case 'youtube':
-        return 'Subscribe, Comment and Share';
-
-      case 'tiktok':
-        return 'Follow, Comment and Share';
-
-      case 'x':
-      case 'twitter':
-        return 'Follow, Comment and Share';
-
-      case 'telegram':
-        return 'Join, Comment and Share';
-
-      case 'instagram':
-        return 'Follow, Comment and Share';
-
-      default:
-        return 'Complete Social Task';
+    } catch (e) {
+      throw Exception(
+        'Failed to claim social reward: $e',
+      );
     }
   }
 
-  String _defaultDescription(String platform) {
-    switch (platform.toLowerCase()) {
-      case 'facebook':
-        return 'Visit our Facebook page and complete the task.';
-
-      case 'youtube':
-        return 'Visit our YouTube channel and complete the task.';
-
-      case 'tiktok':
-        return 'Visit our TikTok page and complete the task.';
-
-      case 'x':
-      case 'twitter':
-        return 'Visit our X page and complete the task.';
-
-      case 'telegram':
-        return 'Join our Telegram community and complete the task.';
-
-      case 'instagram':
-        return 'Visit our Instagram page and complete the task.';
-
-      default:
-        return 'Complete this social media task.';
-    }
-  }
-
-  int _toInt(dynamic value) {
-    if (value == null) {
-      return 0;
-    }
-
-    if (value is int) {
-      return value;
-    }
-
-    if (value is num) {
-      return value.toInt();
-    }
-
-    return int.tryParse(value.toString()) ?? 0;
+  /// Convenience method:
+  /// Reloads today's tasks from Supabase.
+  ///
+  /// This is preferable to calling refresh_social_task_claim_status
+  /// because the public daily-task function already returns the
+  /// current can_claim/claimed/verification status.
+  Future<List<DailySocialTask>> refreshTasks() async {
+    return getDailyTasksForCard();
   }
 }
