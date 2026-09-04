@@ -3,8 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthService {
   AuthService._();
 
-  static final AuthService instance =
-      AuthService._();
+  static final AuthService instance = AuthService._();
 
   final SupabaseClient _supabase =
       Supabase.instance.client;
@@ -15,6 +14,9 @@ class AuthService {
   Session? get currentSession =>
       _supabase.auth.currentSession;
 
+  bool get isLoggedIn =>
+      _supabase.auth.currentSession != null;
+
   Stream<AuthState> get authStateChanges =>
       _supabase.auth.onAuthStateChange;
 
@@ -24,14 +26,10 @@ class AuthService {
     required String password,
     String? referralCode,
   }) async {
-    final cleanUsername =
-        username.trim();
-
-    final cleanEmail =
-        email.trim().toLowerCase();
-
+    final cleanUsername = username.trim();
+    final cleanEmail = email.trim().toLowerCase();
     final cleanReferral =
-        referralCode?.trim();
+        referralCode?.trim().toUpperCase();
 
     if (cleanUsername.isEmpty) {
       throw const AuthException(
@@ -51,30 +49,30 @@ class AuthService {
       );
     }
 
-    final response =
-        await _supabase.auth.signUp(
-      email: cleanEmail,
-      password: password,
-      data: <String, dynamic>{
-        'username': cleanUsername,
-        'referral_code':
-            cleanReferral ?? '',
-      },
-    );
+    try {
+      final response = await _supabase.auth.signUp(
+        email: cleanEmail,
+        password: password,
+        data: {
+          'username': cleanUsername,
+          'referral_code': cleanReferral ?? '',
+        },
+      );
 
-    if (response.user == null) {
-      throw const AuthException(
-        'Registration failed. Please try again.',
+      if (response.user == null) {
+        throw const AuthException(
+          'Registration failed. Please try again.',
+        );
+      }
+
+      return response;
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      throw AuthException(
+        _cleanError(e),
       );
     }
-
-    if (response.session == null) {
-      throw const AuthException(
-        'Email confirmation is enabled. Please disable Confirm email in Supabase Authentication settings.',
-      );
-    }
-
-    return response;
   }
 
   Future<AuthResponse> login({
@@ -96,20 +94,28 @@ class AuthService {
       );
     }
 
-    final response =
-        await _supabase.auth.signInWithPassword(
-      email: cleanEmail,
-      password: password,
-    );
+    try {
+      final response =
+          await _supabase.auth.signInWithPassword(
+        email: cleanEmail,
+        password: password,
+      );
 
-    if (response.user == null ||
-        response.session == null) {
-      throw const AuthException(
-        'Login failed. Please check your email and password.',
+      if (response.user == null ||
+          response.session == null) {
+        throw const AuthException(
+          'Login failed. Please check your email and password.',
+        );
+      }
+
+      return response;
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      throw AuthException(
+        _cleanError(e),
       );
     }
-
-    return response;
   }
 
   Future<void> logout() async {
@@ -128,9 +134,32 @@ class AuthService {
       );
     }
 
-    await _supabase.auth
-        .resetPasswordForEmail(
+    await _supabase.auth.resetPasswordForEmail(
       cleanEmail,
     );
+  }
+
+  Future<void> refreshSession() async {
+    if (_supabase.auth.currentSession == null) {
+      return;
+    }
+
+    await _supabase.auth.refreshSession();
+  }
+
+  String _cleanError(Object error) {
+    var message = error.toString();
+
+    if (message.startsWith('Exception: ')) {
+      message = message.substring(11);
+    }
+
+    if (message.startsWith('AuthException: ')) {
+      message = message.substring(14);
+    }
+
+    return message.trim().isEmpty
+        ? 'Something went wrong. Please try again.'
+        : message.trim();
   }
 }
