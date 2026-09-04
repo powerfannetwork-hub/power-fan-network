@@ -25,6 +25,12 @@ dependencies:
   # Open official social links
   url_launcher: ^6.3.0
 
+  # Live camera for KYC face verification
+  camera: ^0.11.2+1
+
+  # Share referral code/link
+  share_plus: ^11.0.0
+
   # Notifications
   flutter_local_notifications: ^17.2.2
 
