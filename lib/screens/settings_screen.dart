@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'profile_screen.dart';
 import '../services/auth_service.dart';
+import '../services/kyc_service.dart';
 import '../localization/app_localizations.dart';
 import '../localization/language_controller.dart';
 
@@ -19,7 +20,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final LanguageController _languageController =
       LanguageController.instance;
 
+  final KycService _kycService = KycService.instance;
+
   Map<String, dynamic>? _profile;
+  KycStatus? _kycStatus;
 
   bool _loading = true;
   bool _notificationsEnabled = true;
@@ -27,18 +31,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const Color purple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color background = Color(0xFFF8F8FC);
+  static const Color green = Color(0xFF159B61);
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    _loadData();
   }
 
   // ---------------------------------------------------------------------------
-  // PROFILE
+  // LOAD DATA
   // ---------------------------------------------------------------------------
 
-  Future<void> _loadProfile() async {
+  Future<void> _loadData() async {
     if (!mounted) return;
 
     setState(() {
@@ -53,22 +58,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
         setState(() {
           _profile = null;
+          _kycStatus = null;
           _loading = false;
         });
 
         return;
       }
 
-      final profile = await _client
-          .from('profiles')
-          .select()
-          .eq('id', user.id)
-          .maybeSingle();
+      final results = await Future.wait<dynamic>([
+        _client
+            .from('profiles')
+            .select()
+            .eq('id', user.id)
+            .maybeSingle(),
+        _kycService.getStatus(),
+      ]);
 
       if (!mounted) return;
 
       setState(() {
-        _profile = profile;
+        _profile = results[0] as Map<String, dynamic>?;
+        _kycStatus = results[1] as KycStatus;
         _loading = false;
       });
     } catch (_) {
@@ -79,6 +89,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     }
   }
+
+  Future<void> _loadProfile() async {
+    await _loadData();
+  }
+
+  // ---------------------------------------------------------------------------
+  // PROFILE DATA
+  // ---------------------------------------------------------------------------
 
   String get _name {
     final name = _profile?['name']?.toString().trim() ?? '';
@@ -181,15 +199,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   width: 42,
                   height: 4,
-                  margin: const EdgeInsets.only(
-                    bottom: 8,
-                  ),
+                  margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade300,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     20,
@@ -226,9 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
@@ -334,6 +347,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _openProfile() async {
+    final kyc = _kycStatus;
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ProfileScreen(
@@ -348,16 +363,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           activeReferrals: _integer(
             _profile?['active_referrals'],
           ),
-          kyc1Verified:
-              _profile?['kyc1_verified'] == true,
-          kyc2Eligible:
-              _profile?['kyc2_eligible'] == true,
+          checkInDays: kyc?.checkInDays ?? 0,
+          boostDays: kyc?.boostDays ?? 0,
+          faceVerificationUnlocked:
+              kyc?.faceVerificationUnlocked ?? false,
+          faceVerified:
+              kyc?.faceVerified ?? false,
         ),
       ),
     );
 
     if (mounted) {
-      await _loadProfile();
+      await _loadData();
     }
   }
 
@@ -382,7 +399,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 height: 40,
                 decoration: BoxDecoration(
                   color: purple.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius:
+                      BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.security_rounded,
@@ -541,9 +559,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage(
-        _cleanError(error),
-      );
+      _showMessage(_cleanError(error));
     }
   }
 
@@ -608,7 +624,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               IconButton(
                 tooltip: l10n.refresh,
                 onPressed:
-                    _loading ? null : _loadProfile,
+                    _loading ? null : _loadData,
                 icon: const Icon(
                   Icons.refresh_rounded,
                 ),
@@ -623,7 +639,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 )
               : RefreshIndicator(
                   color: purple,
-                  onRefresh: _loadProfile,
+                  onRefresh: _loadData,
                   child: ListView(
                     physics:
                         const AlwaysScrollableScrollPhysics(),
@@ -637,7 +653,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _buildProfileCard(),
                       const SizedBox(height: 16),
 
-                      // ACCOUNT
                       _buildSection(
                         title: l10n.account,
                         children: [
@@ -645,8 +660,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             icon:
                                 Icons.person_outline_rounded,
                             title: l10n.profile,
-                            subtitle:
-                                l10n.account,
+                            subtitle: l10n.account,
                             onTap: _openProfile,
                           ),
                         ],
@@ -654,7 +668,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       const SizedBox(height: 16),
 
-                      // PREFERENCES
                       _buildSection(
                         title: l10n.language,
                         children: [
@@ -671,7 +684,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       const SizedBox(height: 16),
 
-                      // SECURITY
                       _buildSection(
                         title: l10n.security,
                         children: [
@@ -688,7 +700,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       const SizedBox(height: 16),
 
-                      // ABOUT
                       _buildSection(
                         title: l10n.about,
                         children: [
@@ -767,9 +778,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-
           const SizedBox(width: 14),
-
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -785,9 +794,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   _email,
                   maxLines: 1,
@@ -797,9 +804,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontSize: 11,
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
                 Row(
                   children: [
                     const Icon(
@@ -821,7 +826,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-
           const Icon(
             Icons.chevron_right_rounded,
             color: Colors.white70,
@@ -838,19 +842,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return 'PF';
     }
 
-    final parts = value.split(
-      RegExp(r'\s+'),
-    );
+    final parts = value.split(RegExp(r'\s+'));
 
     if (parts.length == 1) {
       final text = parts.first;
 
-      return text
-          .substring(
-            0,
-            text.length > 2 ? 2 : text.length,
-          )
-          .toUpperCase();
+      return text.substring(
+        0,
+        text.length > 2 ? 2 : text.length,
+      ).toUpperCase();
     }
 
     return '${parts.first[0]}${parts.last[0]}'
@@ -894,7 +894,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-
           ...children,
         ],
       ),
@@ -1007,7 +1006,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // LOGOUT BUTTON
+  // LOGOUT
   // ---------------------------------------------------------------------------
 
   Widget _buildLogoutButton() {
