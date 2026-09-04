@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/mining_service.dart';
 import '../services/social_task_service.dart';
@@ -59,7 +58,8 @@ class _MainNavigationScreenState
             vertical: 8,
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment:
+                MainAxisAlignment.spaceAround,
             children: [
               _navItem(
                 icon: Icons.home_rounded,
@@ -72,7 +72,8 @@ class _MainNavigationScreenState
                 index: 1,
               ),
               _navItem(
-                icon: Icons.account_balance_wallet_rounded,
+                icon:
+                    Icons.account_balance_wallet_rounded,
                 label: 'WALLET',
                 index: 2,
               ),
@@ -122,8 +123,9 @@ class _MainNavigationScreenState
               label,
               style: TextStyle(
                 fontSize: 10,
-                fontWeight:
-                    selected ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: selected
+                    ? FontWeight.w700
+                    : FontWeight.w500,
                 color: selected
                     ? const Color(0xFF3B159B)
                     : Colors.grey.shade500,
@@ -140,18 +142,22 @@ class _HomeInterface extends StatefulWidget {
   const _HomeInterface();
 
   @override
-  State<_HomeInterface> createState() => _HomeInterfaceState();
+  State<_HomeInterface> createState() =>
+      _HomeInterfaceState();
 }
 
 class _HomeInterfaceState extends State<_HomeInterface> {
-  static const Color primaryPurple = Color(0xFF3B159B);
-  static const Color deepPurple = Color(0xFF241064);
+  static const Color primaryPurple =
+      Color(0xFF3B159B);
+
+  static const Color deepPurple =
+      Color(0xFF241064);
 
   final MiningService _miningService =
       MiningService.instance;
 
   final SocialTaskService _socialTaskService =
-      SocialTaskService.instance;
+      SocialTaskService();
 
   Timer? _timer;
 
@@ -211,7 +217,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   Future<void> _loadProfile() async {
-    final profile = await _miningService.getProfile();
+    final profile =
+        await _miningService.getProfile();
 
     if (!mounted) return;
 
@@ -253,12 +260,15 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     setState(() {
       _isMining = mining == true;
       _endsAt = endsAt;
+
       _miningRate =
           rate <= 0 ? 0.20 : rate;
+
       _adsWatched =
           _toInt(ads).clamp(0, 7);
 
-      _remaining = _calculateRemaining();
+      _remaining =
+          _calculateRemaining();
 
       if (_isMining && _endsAt != null) {
         _startCountdown();
@@ -271,7 +281,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   Future<void> _loadTasks() async {
     final tasks =
         await _socialTaskService
-            .getDailyTasks();
+            .getDailyTasksForCard();
 
     if (!mounted) return;
 
@@ -366,8 +376,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       final result =
           await _miningService.claimMining();
 
-      final earned =
-          _extractNumber(
+      final earned = _extractNumber(
         result,
         [
           'earned',
@@ -417,27 +426,111 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     });
 
     try {
-      await _socialTaskService.startTask(task.id);
-
-      await _socialTaskService
-          .openTaskUrl(task.url);
-
-      await Future.delayed(
-        const Duration(seconds: 2),
+      /*
+       * Step 1:
+       * Register/start the task on Supabase.
+       */
+      final startResult =
+          await _socialTaskService.startTask(
+        taskId: task.id,
       );
 
-      await _socialTaskService
-          .verifyTask(task.id);
+      if (startResult['success'] == false) {
+        throw Exception(
+          startResult['message'] ??
+              'Unable to start this task.',
+        );
+      }
 
-      await _socialTaskService
-          .claimTask(task.id);
+      /*
+       * Step 2:
+       * Open the social-media URL.
+       */
+      final opened =
+          await _socialTaskService.openTaskUrl(
+        task.url,
+      );
+
+      if (!opened) {
+        throw Exception(
+          'Unable to open the social task link.',
+        );
+      }
+
+      /*
+       * Step 3:
+       * Reload the task status from Supabase.
+       *
+       * We intentionally DO NOT fake verification
+       * by waiting for 2 seconds.
+       */
+      await _loadTasks();
+
+      final updatedTask =
+          _findTaskById(task.id);
+
+      if (updatedTask == null) {
+        throw Exception(
+          'Task status could not be refreshed.',
+        );
+      }
+
+      /*
+       * Step 4:
+       * The backend decides whether this task can
+       * actually be claimed.
+       */
+      if (updatedTask.claimed) {
+        await _loadProfile();
+
+        if (mounted) {
+          _showMessage(
+            'This task has already been claimed.',
+          );
+        }
+
+        return;
+      }
+
+      if (!updatedTask.canClaim) {
+        if (mounted) {
+          _showSocialVerificationMessage(
+            updatedTask,
+          );
+        }
+
+        return;
+      }
+
+      /*
+       * Step 5:
+       * Claim only when Supabase says can_claim = true.
+       */
+      final claimResult =
+          await _socialTaskService.verifyAndClaim(
+        taskId: task.id,
+      );
+
+      final success =
+          claimResult['success'] == true;
+
+      if (!success) {
+        throw Exception(
+          claimResult['message'] ??
+              'Social reward could not be claimed.',
+        );
+      }
 
       await _loadTasks();
       await _loadProfile();
 
+      final reward = _toDouble(
+        claimResult['reward_fan'],
+      );
+
       if (mounted) {
         _showMessage(
-          '+${task.rewardFan.toStringAsFixed(0)} FAN earned.',
+          '+${reward > 0 ? reward.toStringAsFixed(0) : task.rewardFan.toStringAsFixed(0)} FAN earned.',
         );
       }
     } catch (e) {
@@ -453,6 +546,49 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     }
   }
 
+  DailySocialTask? _findTaskById(String id) {
+    for (final task in _tasks) {
+      if (task.id == id) {
+        return task;
+      }
+    }
+
+    return null;
+  }
+
+  void _showSocialVerificationMessage(
+    DailySocialTask task,
+  ) {
+    final missing = <String>[];
+
+    if (task.requiresFollow &&
+        !task.followVerified) {
+      missing.add('Follow');
+    }
+
+    if (task.requiresComment &&
+        !task.commentVerified) {
+      missing.add('Comment');
+    }
+
+    if (task.requiresShare &&
+        !task.shareVerified) {
+      missing.add('Share');
+    }
+
+    /*
+     * Your current Supabase claim function requires
+     * all three verification flags. Therefore, if the
+     * backend has not verified them yet, we simply tell
+     * the user that verification is still pending.
+     */
+    final message = missing.isEmpty
+        ? 'Verification is still pending. Please complete the task and try again.'
+        : 'Complete: ${missing.join(', ')}. Verification is still pending.';
+
+    _showMessage(message);
+  }
+
   String _miningStatusText() {
     if (_isMining) {
       return 'MINING';
@@ -466,23 +602,22 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     return 'READY';
   }
 
-  String _formatDuration(Duration duration) {
-    final hours =
-        duration.inHours
-            .toString()
-            .padLeft(2, '0');
+  String _formatDuration(
+    Duration duration,
+  ) {
+    final hours = duration.inHours
+        .toString()
+        .padLeft(2, '0');
 
-    final minutes =
-        duration.inMinutes
-            .remainder(60)
-            .toString()
-            .padLeft(2, '0');
+    final minutes = duration.inMinutes
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
 
-    final seconds =
-        duration.inSeconds
-            .remainder(60)
-            .toString()
-            .padLeft(2, '0');
+    final seconds = duration.inSeconds
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
 
     return '$hours:$minutes:$seconds';
   }
@@ -570,7 +705,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 'POWER FAN',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight: FontWeight.w800,
+                  fontWeight:
+                      FontWeight.w800,
                   color: deepPurple,
                   letterSpacing: 0.2,
                 ),
@@ -581,7 +717,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey,
-                  fontWeight: FontWeight.w500,
+                  fontWeight:
+                      FontWeight.w500,
                 ),
               ),
             ],
@@ -636,8 +773,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
             child: Container(
               width: 135,
               height: 135,
-              decoration:
-                  BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color:
                     Colors.white.withOpacity(0.06),
@@ -647,8 +783,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           Positioned(
             right: 18,
             bottom: 14,
-            child:
-                _buildMiningIllustration(),
+            child: _buildMiningIllustration(),
           ),
           Padding(
             padding:
@@ -667,7 +802,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight:
+                        FontWeight.w600,
                     letterSpacing: 1,
                   ),
                 ),
@@ -684,7 +820,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                       )
                     : Text(
                         '${_fanBalance.toStringAsFixed(4)} FAN',
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           color: Colors.white,
                           fontSize: 27,
                           fontWeight:
@@ -702,10 +839,12 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 const SizedBox(height: 2),
                 Text(
                   '${_afamBalance.toStringAsFixed(4)} AFAM',
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
               ],
@@ -749,8 +888,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   Widget _buildMiningCard() {
     final canClaim =
         !_isMining &&
-        _endsAt != null &&
-        _remaining == Duration.zero;
+            _endsAt != null &&
+            _remaining == Duration.zero;
 
     return Container(
       padding: const EdgeInsets.all(17),
@@ -849,7 +988,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           ClipRRect(
             borderRadius:
                 BorderRadius.circular(10),
-            child: LinearProgressIndicator(
+            child:
+                LinearProgressIndicator(
               value: _progressValue(),
               minHeight: 7,
               backgroundColor:
@@ -1004,20 +1144,20 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   Widget _buildDailyTaskSection() {
-    if (_tasks.isEmpty) {
-      return Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Daily Task',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight:
-                  FontWeight.w800,
-            ),
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Daily Task',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight:
+                FontWeight.w800,
           ),
-          const SizedBox(height: 11),
+        ),
+        const SizedBox(height: 11),
+        if (_tasks.isEmpty)
           Container(
             padding:
                 const EdgeInsets.all(18),
@@ -1035,27 +1175,11 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 ),
               ),
             ),
+          )
+        else
+          ..._tasks.map(
+            (task) => _socialTask(task),
           ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Daily Task',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight:
-                FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 11),
-        ..._tasks.map(
-          (task) => _socialTask(task),
-        ),
       ],
     );
   }
@@ -1063,6 +1187,10 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   Widget _socialTask(
     DailySocialTask task,
   ) {
+    final waitingForVerification =
+        !task.claimed &&
+            !task.canClaim;
+
     return InkWell(
       borderRadius:
           BorderRadius.circular(15),
@@ -1124,7 +1252,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                       maxLines: 1,
                       overflow:
                           TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         color: Colors.grey,
                         fontSize: 10,
                       ),
@@ -1134,18 +1263,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
               ),
             ),
             const SizedBox(width: 6),
-            Text(
-              task.claimed
-                  ? 'CLAIMED'
-                  : '${task.rewardFan.toStringAsFixed(0)} FAN',
-              style: TextStyle(
-                color: task.claimed
-                    ? Colors.green
-                    : primaryPurple,
-                fontSize: 11,
-                fontWeight:
-                    FontWeight.w800,
-              ),
+            _taskStatusWidget(
+              task,
+              waitingForVerification,
             ),
           ],
         ),
@@ -1153,17 +1273,80 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     );
   }
 
-  IconData _platformIcon(String platform) {
+  Widget _taskStatusWidget(
+    DailySocialTask task,
+    bool waitingForVerification,
+  ) {
+    if (task.claimed) {
+      return const Text(
+        'CLAIMED',
+        style: TextStyle(
+          color: Colors.green,
+          fontSize: 11,
+          fontWeight:
+              FontWeight.w800,
+        ),
+      );
+    }
+
+    if (task.canClaim) {
+      return Text(
+        'CLAIM ${task.rewardFan.toStringAsFixed(0)} FAN',
+        style: const TextStyle(
+          color: primaryPurple,
+          fontSize: 10,
+          fontWeight:
+              FontWeight.w800,
+        ),
+      );
+    }
+
+    if (waitingForVerification) {
+      return const Text(
+        'OPEN',
+        style: TextStyle(
+          color: primaryPurple,
+          fontSize: 11,
+          fontWeight:
+              FontWeight.w800,
+        ),
+      );
+    }
+
+    return Text(
+      '${task.rewardFan.toStringAsFixed(0)} FAN',
+      style: const TextStyle(
+        color: primaryPurple,
+        fontSize: 11,
+        fontWeight:
+            FontWeight.w800,
+      ),
+    );
+  }
+
+  IconData _platformIcon(
+    String platform,
+  ) {
     switch (platform.toLowerCase()) {
+      case 'facebook':
+        return Icons.facebook_rounded;
+
       case 'telegram':
         return Icons.send_rounded;
+
       case 'instagram':
         return Icons.camera_alt_rounded;
+
       case 'youtube':
         return Icons.play_arrow_rounded;
+
+      case 'tiktok':
+        return Icons.music_note_rounded;
+
       case 'x':
       case 'twitter':
         return Icons.close_rounded;
+
       default:
         return Icons.public_rounded;
     }
@@ -1248,7 +1431,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   int _toInt(dynamic value) {
     if (value == null) return 0;
 
-    if (value is int) return value;
+    if (value is int) {
+      return value;
+    }
 
     if (value is num) {
       return value.toInt();
@@ -1260,7 +1445,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         0;
   }
 
-  DateTime? _parseDateTime(dynamic value) {
+  DateTime? _parseDateTime(
+    dynamic value,
+  ) {
     if (value == null) return null;
 
     if (value is DateTime) {
@@ -1268,7 +1455,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     }
 
     final parsed =
-        DateTime.tryParse(value.toString());
+        DateTime.tryParse(
+      value.toString(),
+    );
 
     return parsed?.toLocal();
   }
@@ -1291,7 +1480,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     return 0;
   }
 
-  String _errorMessage(Object error) {
+  String _errorMessage(
+    Object error,
+  ) {
     final message = error.toString();
 
     if (message.startsWith(
@@ -1303,7 +1494,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     return message;
   }
 
-  void _showMessage(String message) {
+  void _showMessage(
+    String message,
+  ) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
