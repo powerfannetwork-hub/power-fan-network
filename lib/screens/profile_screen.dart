@@ -6,8 +6,12 @@ class ProfileScreen extends StatelessWidget {
   final double fanBalance;
   final double afamBalance;
   final int activeReferrals;
-  final bool kyc1Verified;
-  final bool kyc2Eligible;
+
+  // New KYC progress
+  final int checkInDays;
+  final int boostDays;
+  final bool faceVerificationUnlocked;
+  final bool faceVerified;
 
   const ProfileScreen({
     super.key,
@@ -16,8 +20,10 @@ class ProfileScreen extends StatelessWidget {
     this.fanBalance = 0.0,
     this.afamBalance = 0.0,
     this.activeReferrals = 0,
-    this.kyc1Verified = false,
-    this.kyc2Eligible = false,
+    this.checkInDays = 0,
+    this.boostDays = 0,
+    this.faceVerificationUnlocked = false,
+    this.faceVerified = false,
   });
 
   String get displayName {
@@ -30,24 +36,44 @@ class ProfileScreen extends StatelessWidget {
     return value.isEmpty ? 'No email available' : value;
   }
 
-  String get verificationStatus {
-    if (kyc2Eligible) {
-      return 'KYC 2 Eligible';
+  String get kycStatus {
+    if (faceVerified) {
+      return 'Face Verified';
     }
 
-    if (kyc1Verified) {
-      return 'KYC 1 Verified';
+    if (faceVerificationUnlocked) {
+      return 'Ready for Face Verification';
     }
 
-    return 'KYC 1 In Progress';
+    return 'Coming Soon';
   }
 
-  Color get verificationColor {
-    if (kyc2Eligible || kyc1Verified) {
+  Color get kycStatusColor {
+    if (faceVerified) {
       return const Color(0xFF159B61);
     }
 
+    if (faceVerificationUnlocked) {
+      return const Color(0xFF3B159B);
+    }
+
     return Colors.orange;
+  }
+
+  int get checkInProgress {
+    if (checkInDays < 0) return 0;
+    if (checkInDays > 30) return 30;
+    return checkInDays;
+  }
+
+  int get boostProgress {
+    if (boostDays < 0) return 0;
+    if (boostDays > 30) return 30;
+    return boostDays;
+  }
+
+  double get referralMiningBonus {
+    return activeReferrals * 0.02;
   }
 
   @override
@@ -63,26 +89,39 @@ class ProfileScreen extends StatelessWidget {
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        foregroundColor: const Color(0xFF241064),
         elevation: 0,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              _buildProfileHeader(),
-              const SizedBox(height: 16),
-              _buildBalances(),
-              const SizedBox(height: 16),
-              _buildAccountInfo(),
-              const SizedBox(height: 16),
-              _buildVerification(),
-              const SizedBox(height: 16),
-              _buildReferralInfo(),
-              const SizedBox(height: 16),
-              _buildMigrationInfo(),
-            ],
+        child: RefreshIndicator(
+          color: const Color(0xFF3B159B),
+          onRefresh: () async {
+            // Profile data is supplied by the parent.
+            // Refresh can be connected later if needed.
+            await Future<void>.delayed(
+              const Duration(milliseconds: 300),
+            );
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _buildProfileHeader(),
+                const SizedBox(height: 16),
+                _buildBalances(),
+                const SizedBox(height: 16),
+                _buildAccountInfo(),
+                const SizedBox(height: 16),
+                _buildKycSection(),
+                const SizedBox(height: 16),
+                _buildReferralInfo(),
+                const SizedBox(height: 16),
+                _buildMigrationInfo(),
+                const SizedBox(height: 16),
+                _buildSecurityInfo(),
+              ],
+            ),
           ),
         ),
       ),
@@ -111,14 +150,10 @@ class ProfileScreen extends StatelessWidget {
             height: 76,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.15,
-              ),
+              color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withValues(
-                  alpha: 0.30,
-                ),
+                color: Colors.white.withValues(alpha: 0.30),
                 width: 2,
               ),
             ),
@@ -146,9 +181,7 @@ class ProfileScreen extends StatelessWidget {
             displayEmail,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(
-                alpha: 0.80,
-              ),
+              color: Colors.white.withValues(alpha: 0.80),
               fontSize: 12,
             ),
           ),
@@ -159,9 +192,7 @@ class ProfileScreen extends StatelessWidget {
               vertical: 6,
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(
-                alpha: 0.12,
-              ),
+              color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Row(
@@ -196,23 +227,20 @@ class ProfileScreen extends StatelessWidget {
       return 'PF';
     }
 
-    final parts = value.split(
-      RegExp(r'\s+'),
-    );
+    final parts = value.split(RegExp(r'\s+'));
 
     if (parts.length == 1) {
-      return parts.first
+      final text = parts.first;
+
+      return text
           .substring(
             0,
-            parts.first.length > 2
-                ? 2
-                : parts.first.length,
+            text.length > 2 ? 2 : text.length,
           )
           .toUpperCase();
     }
 
-    return '${parts.first[0]}${parts.last[0]}'
-        .toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
   Widget _buildBalances() {
@@ -255,8 +283,7 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
@@ -318,45 +345,127 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildVerification() {
+  Widget _buildKycSection() {
+    final checkInComplete = checkInProgress >= 30;
+    final boostComplete = boostProgress >= 30;
+
     return _buildSection(
-      title: 'Verification',
-      icon: Icons.verified_outlined,
+      title: 'KYC Face Verification',
+      icon: Icons.face_retouching_natural,
       children: [
-        _buildInfoRow(
-          icon: Icons.looks_one,
-          title: 'KYC 1',
-          value: kyc1Verified
-              ? 'Verified'
-              : 'In Progress',
-          valueColor: kyc1Verified
-              ? const Color(0xFF159B61)
-              : Colors.orange,
+        _buildProgressRow(
+          icon: Icons.calendar_month,
+          title: 'Daily Check-in',
+          value: '$checkInProgress / 30 days',
+          progress: checkInProgress / 30,
+          completed: checkInComplete,
+        ),
+        _buildProgressRow(
+          icon: Icons.bolt,
+          title: 'Daily Boost',
+          value: '$boostProgress / 30 days',
+          progress: boostProgress / 30,
+          completed: boostComplete,
         ),
         _buildInfoRow(
-          icon: Icons.looks_two,
-          title: 'KYC 2',
-          value: kyc2Eligible
-              ? 'Eligible'
-              : 'In Progress',
-          valueColor: kyc2Eligible
-              ? const Color(0xFF159B61)
-              : Colors.orange,
+          icon: Icons.face,
+          title: 'Face Verification',
+          value: kycStatus,
+          valueColor: kycStatusColor,
         ),
-        _buildInfoRow(
-          icon: Icons.verified_user,
-          title: 'Current Status',
-          value: verificationStatus,
-          valueColor: verificationColor,
+        const SizedBox(height: 4),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3B159B).withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Text(
+            'KYC Face Verification becomes available after '
+            '30 consecutive daily check-ins and at least one '
+            'boost every day for 30 days.',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.black54,
+              height: 1.4,
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildReferralInfo() {
-    final bonus =
-        activeReferrals * 0.02;
+  Widget _buildProgressRow({
+    required IconData icon,
+    required String title,
+    required String value,
+    required double progress,
+    required bool completed,
+  }) {
+    final safeProgress = progress.clamp(0.0, 1.0);
 
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: Colors.grey.shade500,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: completed
+                      ? const Color(0xFF159B61)
+                      : Colors.black87,
+                ),
+              ),
+              if (completed) ...[
+                const SizedBox(width: 5),
+                const Icon(
+                  Icons.check_circle,
+                  size: 16,
+                  color: Color(0xFF159B61),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 7),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: safeProgress,
+              minHeight: 6,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                completed
+                    ? const Color(0xFF159B61)
+                    : const Color(0xFF3B159B),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReferralInfo() {
     return _buildSection(
       title: 'Referral Information',
       icon: Icons.people_outline,
@@ -370,13 +479,12 @@ class ProfileScreen extends StatelessWidget {
           icon: Icons.bolt,
           title: 'Mining Bonus',
           value:
-              '+${bonus.toStringAsFixed(2)} FAN/H',
-          valueColor:
-              const Color(0xFF159B61),
+              '+${referralMiningBonus.toStringAsFixed(2)} FAN/H',
+          valueColor: const Color(0xFF159B61),
         ),
         _buildInfoRow(
           icon: Icons.card_giftcard,
-          title: 'Referral Reward',
+          title: 'Your Referral Reward',
           value: '5 FAN',
         ),
         _buildInfoRow(
@@ -405,10 +513,8 @@ class ProfileScreen extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFF3B159B)
-                  .withValues(alpha: 0.08),
-              borderRadius:
-                  BorderRadius.circular(12),
+              color: const Color(0xFF3B159B).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.swap_horiz,
@@ -418,8 +524,7 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(width: 12),
           const Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Migration',
@@ -438,11 +543,19 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Coming Soon • 2027 Q1',
+                  '100 FAN = 1 AFAM',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF3B159B),
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Coming Soon • 2027 Q1',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey,
                   ),
                 ),
               ],
@@ -454,10 +567,8 @@ class ProfileScreen extends StatelessWidget {
               vertical: 6,
             ),
             decoration: BoxDecoration(
-              color: const Color(0xFF3B159B)
-                  .withValues(alpha: 0.08),
-              borderRadius:
-                  BorderRadius.circular(8),
+              color: const Color(0xFF3B159B).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
               'COMING SOON',
@@ -466,6 +577,56 @@ class ProfileScreen extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF3B159B),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecurityInfo() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.security,
+            color: Color(0xFF159B61),
+            size: 22,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Account Security',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 5),
+                Text(
+                  'POWER FAN NETWORK uses one-device-per-account '
+                  'protection to help prevent multiple accounts '
+                  'from being used on the same device.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -489,8 +650,7 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -500,11 +660,13 @@ class ProfileScreen extends StatelessWidget {
                 color: const Color(0xFF3B159B),
               ),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -523,9 +685,7 @@ class ProfileScreen extends StatelessWidget {
     Color? valueColor,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 11,
-      ),
+      padding: const EdgeInsets.only(bottom: 11),
       child: Row(
         children: [
           Icon(
@@ -551,8 +711,7 @@ class ProfileScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: valueColor ??
-                    Colors.black87,
+                color: valueColor ?? Colors.black87,
               ),
             ),
           ),
