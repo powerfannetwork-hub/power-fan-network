@@ -41,25 +41,25 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
   Future<void> _loadAdsCount() async {
     if (!widget.isMining) {
-      if (mounted) {
-        setState(() {
-          _adsWatched = 0;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _adsWatched = 0;
+      });
+
       return;
     }
 
     try {
-      final count =
-          await MiningService.instance.getAdsWatched();
+      final count = await MiningService.instance.getAdsWatched();
 
       if (!mounted) return;
 
       setState(() {
-        _adsWatched = count.clamp(0, 7);
+        _adsWatched = count.clamp(0, 7).toInt();
       });
     } catch (_) {
-      // Kada a karya UI idan connection ya samu matsala.
+      // Kada connection ya samu matsala, kada a karya UI.
     }
   }
 
@@ -81,6 +81,27 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
     });
 
     try {
+      /*
+       * SAFE TEST MODE
+       *
+       * A yanzu ba mu haɗa AppLovin MAX ba.
+       *
+       * Idan an samar da onWatchAd daga parent screen,
+       * za a yi amfani da shi.
+       *
+       * Idan babu onWatchAd, za mu kira backend test/reward
+       * method ɗin MiningService.
+       *
+       * Daga baya, lokacin da AppLovin MAX ya shirya,
+       * za mu maye gurbin wannan section da:
+       *
+       * 1. Show Rewarded Ad
+       * 2. Jira user ya gama ad
+       * 3. Sai a kira recordRewardedAd()
+       *
+       * Ba za mu saka AppLovin App ID ko Ad Unit ID yanzu ba.
+       */
+
       if (widget.onWatchAd != null) {
         await widget.onWatchAd!();
       } else {
@@ -89,19 +110,21 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
       await _loadAdsCount();
 
-      if (mounted) {
-        widget.onRewarded?.call();
-      }
+      if (!mounted) return;
+
+      widget.onRewarded?.call();
+
+      _showMessage('+0.1 FAN/H boost an ƙara.');
     } catch (e) {
-      if (mounted) {
-        _showMessage(_cleanError(e));
-      }
+      if (!mounted) return;
+
+      _showMessage(_cleanError(e));
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
@@ -135,6 +158,10 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   @override
   Widget build(BuildContext context) {
     final remaining = 7 - _adsWatched;
+    final canWatch =
+        widget.isMining &&
+        !_loading &&
+        _adsWatched < 7;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -160,6 +187,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
               size: 27,
             ),
           ),
+
           const SizedBox(width: 12),
 
           Expanded(
@@ -173,7 +201,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+
                 const SizedBox(height: 4),
+
                 const Text(
                   '+0.1 FAN/H per ad',
                   style: TextStyle(
@@ -181,14 +211,26 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                     fontSize: 11,
                   ),
                 ),
+
                 if (widget.isMining && remaining > 0) ...[
                   const SizedBox(height: 3),
                   Text(
                     '$remaining ads remaining',
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: primaryPurple,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+
+                if (!widget.isMining) ...[
+                  const SizedBox(height: 3),
+                  const Text(
+                    'Start mining to boost your rate',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 10,
                     ),
                   ),
                 ],
@@ -219,16 +261,13 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 7),
+
               SizedBox(
                 height: 32,
                 child: ElevatedButton(
-                  onPressed:
-                      (!_loading &&
-                          widget.isMining &&
-                          _adsWatched < 7)
-                      ? _watchAd
-                      : null,
+                  onPressed: canWatch ? _watchAd : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryPurple,
                     disabledBackgroundColor:
