@@ -24,7 +24,6 @@ Future<void> main() async {
     publishableKey: supabasePublishableKey,
     authOptions: const FlutterAuthClientOptions(
       autoRefreshToken: true,
-      persistSession: true,
     ),
   );
 
@@ -118,7 +117,7 @@ class _PowerFanMaterialApp extends StatelessWidget {
               ),
             ),
 
-            cardTheme: CardThemeData(
+            cardTheme: CardTheme(
               elevation: 0,
               color: Colors.white,
               shape: RoundedRectangleBorder(
