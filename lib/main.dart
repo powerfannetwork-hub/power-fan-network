@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'globals/app_state.dart';
+import 'localization/app_localizations.dart';
+import 'localization/language_controller.dart';
 import 'pages/auth_page.dart';
 import 'screens/main_navigation_screen.dart';
 
@@ -34,24 +36,105 @@ class PowerFanApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppState(),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'POWER FAN',
-        theme: ThemeData(
-          useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF8F8FC),
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF3B159B),
-          ),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AppState>(
+          create: (_) => AppState(),
         ),
-        home: const AppRoot(),
-        routes: {
-          '/home': (_) => const MainNavigationScreen(),
-          '/auth': (_) => const AuthPage(),
-        },
-      ),
+        ChangeNotifierProvider<LanguageController>.value(
+          value: LanguageController.instance,
+        ),
+      ],
+      child: const _PowerFanMaterialApp(),
+    );
+  }
+}
+
+class _PowerFanMaterialApp extends StatelessWidget {
+  const _PowerFanMaterialApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<LanguageController>(
+      builder: (context, languageController, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+
+          title: 'POWER FAN NETWORK',
+
+          locale: languageController.locale,
+
+          supportedLocales: const [
+            Locale('en'),
+            Locale('zh'),
+            Locale('es'),
+            Locale('fr'),
+            Locale('ar'),
+            Locale('hi'),
+            Locale('bn'),
+            Locale('ru'),
+            Locale('tr'),
+            Locale('id'),
+          ],
+
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+          ],
+
+          theme: ThemeData(
+            useMaterial3: true,
+
+            scaffoldBackgroundColor:
+                const Color(0xFFF8F8FC),
+
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF3B159B),
+            ),
+
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Colors.white,
+              foregroundColor: Color(0xFF241064),
+              elevation: 0,
+              centerTitle: false,
+            ),
+
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: Color(0xFF3B159B),
+                  width: 1.5,
+                ),
+              ),
+            ),
+
+            cardTheme: CardThemeData(
+              elevation: 0,
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+          ),
+
+          home: const AppRoot(),
+
+          routes: {
+            '/home': (_) => const MainNavigationScreen(),
+            '/auth': (_) => const AuthPage(),
+          },
+        );
+      },
     );
   }
 }
@@ -105,7 +188,7 @@ class _AppRootState extends State<AppRoot> {
     try {
       await context.read<AppState>().refresh();
     } catch (_) {
-      // Session may still be valid even if network is temporarily unavailable.
+      // Session may still be valid if network is temporarily unavailable.
     }
 
     if (mounted) {
