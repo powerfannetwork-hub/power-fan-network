@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../services/mining_service.dart';
 import '../services/social_task_service.dart';
@@ -17,8 +16,7 @@ class MainNavigationScreen extends StatefulWidget {
       _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState
-    extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
   static const Color primaryPurple = Color(0xFF3B159B);
@@ -123,9 +121,8 @@ class _MainNavigationScreenState
               label,
               style: TextStyle(
                 fontSize: 10,
-                fontWeight: selected
-                    ? FontWeight.w800
-                    : FontWeight.w500,
+                fontWeight:
+                    selected ? FontWeight.w800 : FontWeight.w500,
                 color: selected
                     ? primaryPurple
                     : const Color(0xFF60616C),
@@ -142,19 +139,15 @@ class _HomeInterface extends StatefulWidget {
   const _HomeInterface();
 
   @override
-  State<_HomeInterface> createState() =>
-      _HomeInterfaceState();
+  State<_HomeInterface> createState() => _HomeInterfaceState();
 }
 
 class _HomeInterfaceState extends State<_HomeInterface> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
 
-  final MiningService _miningService =
-      MiningService.instance;
-
-  final SocialTaskService _socialTaskService =
-      SocialTaskService();
+  final MiningService _miningService = MiningService.instance;
+  final SocialTaskService _socialTaskService = SocialTaskService();
 
   Timer? _timer;
 
@@ -168,7 +161,6 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   bool _isMining = false;
 
   DateTime? _endsAt;
-
   Duration _remaining = Duration.zero;
 
   int _adsWatched = 0;
@@ -214,26 +206,19 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   Future<void> _loadProfile() async {
-    final profile =
-        await _miningService.getProfile();
+    final profile = await _miningService.getProfile();
 
     if (!mounted) return;
 
     setState(() {
-      _fanBalance =
-          _toDouble(profile['fan_balance']);
-
-      _afamBalance =
-          _toDouble(profile['afam_balance']);
+      _fanBalance = _toDouble(profile['fan_balance']);
+      _afamBalance = _toDouble(profile['afam_balance']);
     });
   }
 
   Future<void> _loadMining() async {
-    final active =
-        await _miningService.getActiveMining();
-
-    final rate =
-        await _miningService.getUserMiningRate();
+    final active = await _miningService.getActiveMining();
+    final rate = await _miningService.getUserMiningRate();
 
     final endsAt = _parseDateTime(
       active['ends_at'] ??
@@ -243,14 +228,14 @@ class _HomeInterfaceState extends State<_HomeInterface> {
 
     final mining =
         active['is_mining'] ??
-            active['is_active'] ??
-            false;
+        active['is_active'] ??
+        false;
 
     final ads =
         active['ads_watched'] ??
-            active['ad_count'] ??
-            active['ads_count'] ??
-            0;
+        active['ad_count'] ??
+        active['ads_count'] ??
+        0;
 
     if (!mounted) return;
 
@@ -258,14 +243,13 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       _isMining = mining == true;
       _endsAt = endsAt;
 
-      _miningRate =
-          rate <= 0 ? 0.20 : rate;
+      _miningRate = rate <= 0 ? 0.20 : rate;
 
-      _adsWatched =
-          _toInt(ads).clamp(0, 7);
+      // FIX:
+      // clamp() can return num, so convert back to int.
+      _adsWatched = _toInt(ads).clamp(0, 7).toInt();
 
-      _remaining =
-          _calculateRemaining();
+      _remaining = _calculateRemaining();
 
       if (_isMining && _endsAt != null) {
         _startCountdown();
@@ -277,8 +261,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
 
   Future<void> _loadTasks() async {
     final tasks =
-        await _socialTaskService
-            .getDailyTasksForCard();
+        await _socialTaskService.getDailyTasksForCard();
 
     if (!mounted) return;
 
@@ -310,8 +293,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       (_) {
         if (!mounted) return;
 
-        final remaining =
-            _calculateRemaining();
+        final remaining = _calculateRemaining();
 
         if (remaining <= Duration.zero) {
           _timer?.cancel();
@@ -435,17 +417,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         );
       }
 
-      final uri = Uri.tryParse(task.url);
-
-      if (uri == null) {
-        throw Exception(
-          'Invalid social task link.',
-        );
-      }
-
-      final opened = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
+      final opened =
+          await _socialTaskService.openTaskUrl(
+        task.url,
       );
 
       if (!opened) {
@@ -453,17 +427,6 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           'Unable to open the social task link.',
         );
       }
-
-      /*
-       * We do not fake verification here.
-       *
-       * Supabase must decide whether:
-       * follow_verified
-       * comment_verified
-       * share_verified
-       *
-       * are true.
-       */
 
       await Future.delayed(
         const Duration(milliseconds: 500),
@@ -489,6 +452,19 @@ class _HomeInterfaceState extends State<_HomeInterface> {
 
         return;
       }
+
+      /*
+       * IMPORTANT:
+       *
+       * We do NOT fake verification here.
+       *
+       * Supabase controls:
+       * follow_verified
+       * comment_verified
+       * share_verified
+       *
+       * The client can only claim when can_claim == true.
+       */
 
       if (!updatedTask.canClaim) {
         if (mounted) {
@@ -613,8 +589,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   double _progressValue() {
-    const totalSeconds =
-        24 * 60 * 60;
+    const totalSeconds = 24 * 60 * 60;
 
     final remainingSeconds =
         _remaining.inSeconds;
@@ -622,7 +597,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     final elapsed =
         totalSeconds - remainingSeconds;
 
-    if (elapsed <= 0) return 0;
+    if (elapsed <= 0) {
+      return 0;
+    }
 
     if (elapsed >= totalSeconds) {
       return 1;
@@ -919,8 +896,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   Widget _buildMiningCard() {
     final canClaim =
         !_isMining &&
-            _endsAt != null &&
-            _remaining == Duration.zero;
+        _endsAt != null &&
+        _remaining == Duration.zero;
 
     return Container(
       padding:
@@ -939,7 +916,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.025),
+            color:
+                Colors.black.withOpacity(0.025),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -991,7 +969,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                               : 'Start mining to earn FAN',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF646477),
+                        color:
+                            Color(0xFF646477),
                       ),
                     ),
                   ],
@@ -1029,7 +1008,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                     const SizedBox(height: 3),
                     Text(
                       '${_miningRate.toStringAsFixed(2)} FAN/H',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontSize: 16,
                         fontWeight:
                             FontWeight.w800,
@@ -1067,7 +1047,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                     const SizedBox(height: 3),
                     Text(
                       '${_formatDuration(_remaining)} / 24:00:00',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontSize: 13,
                         fontWeight:
                             FontWeight.w700,
@@ -1082,7 +1063,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           ClipRRect(
             borderRadius:
                 BorderRadius.circular(10),
-            child: LinearProgressIndicator(
+            child:
+                LinearProgressIndicator(
               value: _progressValue(),
               minHeight: 6,
               backgroundColor:
@@ -1108,7 +1090,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                           : _startMining,
               style:
                   ElevatedButton.styleFrom(
-                backgroundColor: primaryPurple,
+                backgroundColor:
+                    primaryPurple,
                 disabledBackgroundColor:
                     primaryPurple,
                 elevation: 0,
@@ -1182,7 +1165,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.025),
+            color:
+                Colors.black.withOpacity(0.025),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -1296,13 +1280,14 @@ class _HomeInterfaceState extends State<_HomeInterface> {
             width: double.infinity,
             height: 43,
             child: OutlinedButton.icon(
-              onPressed: limitReached || !_isMining
-                  ? null
-                  : () {
-                      _showMessage(
-                        'Rewarded Ad system will be connected next.',
-                      );
-                    },
+              onPressed:
+                  limitReached || !_isMining
+                      ? null
+                      : () {
+                          _showMessage(
+                            'Rewarded Ad system will be connected next.',
+                          );
+                        },
               icon: const Icon(
                 Icons.ondemand_video_rounded,
                 size: 20,
@@ -1321,9 +1306,10 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 disabledForegroundColor:
                     Colors.grey,
                 side: BorderSide(
-                  color: limitReached || !_isMining
-                      ? Colors.grey.shade300
-                      : primaryPurple,
+                  color:
+                      limitReached || !_isMining
+                          ? Colors.grey.shade300
+                          : primaryPurple,
                 ),
                 shape:
                     RoundedRectangleBorder(
@@ -1437,7 +1423,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                     maxLines: 1,
                     overflow:
                         TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       fontSize: 13,
                       fontWeight:
                           FontWeight.w800,
@@ -1450,7 +1437,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                       maxLines: 1,
                       overflow:
                           TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         color: Colors.grey,
                         fontSize: 10,
                       ),
@@ -1612,7 +1600,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+    if (value == null) {
+      return 0.0;
+    }
 
     if (value is num) {
       return value.toDouble();
@@ -1625,7 +1615,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   int _toInt(dynamic value) {
-    if (value == null) return 0;
+    if (value == null) {
+      return 0;
+    }
 
     if (value is int) {
       return value;
@@ -1644,7 +1636,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   DateTime? _parseDateTime(
     dynamic value,
   ) {
-    if (value == null) return null;
+    if (value == null) {
+      return null;
+    }
 
     if (value is DateTime) {
       return value.toLocal();
@@ -1676,8 +1670,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   String _errorMessage(
     Object error,
   ) {
-    final message =
-        error.toString();
+    final message = error.toString();
 
     if (message.startsWith(
       'Exception: ',
