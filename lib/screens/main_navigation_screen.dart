@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/mining_service.dart';
 import '../services/social_task_service.dart';
@@ -20,6 +21,10 @@ class _MainNavigationScreenState
     extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
+  static const Color primaryPurple = Color(0xFF3B159B);
+  static const Color deepPurple = Color(0xFF241064);
+  static const Color background = Color(0xFFF8F8FC);
+
   @override
   Widget build(BuildContext context) {
     final screens = <Widget>[
@@ -30,7 +35,7 @@ class _MainNavigationScreenState
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8FC),
+      backgroundColor: background,
       body: IndexedStack(
         index: _currentIndex,
         children: screens,
@@ -45,21 +50,17 @@ class _MainNavigationScreenState
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 15,
-            offset: const Offset(0, -3),
+            color: Colors.black.withOpacity(0.07),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 8,
-          ),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 7),
           child: Row(
-            mainAxisAlignment:
-                MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _navItem(
                 icon: Icons.home_rounded,
@@ -72,8 +73,7 @@ class _MainNavigationScreenState
                 index: 1,
               ),
               _navItem(
-                icon:
-                    Icons.account_balance_wallet_rounded,
+                icon: Icons.account_balance_wallet_rounded,
                 label: 'WALLET',
                 index: 2,
               ),
@@ -97,7 +97,7 @@ class _MainNavigationScreenState
     final selected = _currentIndex == index;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       onTap: () {
         setState(() {
           _currentIndex = index;
@@ -105,18 +105,18 @@ class _MainNavigationScreenState
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 5,
+          horizontal: 12,
+          vertical: 3,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 24,
+              size: 27,
               color: selected
-                  ? const Color(0xFF3B159B)
-                  : Colors.grey.shade500,
+                  ? primaryPurple
+                  : const Color(0xFF60616C),
             ),
             const SizedBox(height: 3),
             Text(
@@ -124,11 +124,11 @@ class _MainNavigationScreenState
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: selected
-                    ? FontWeight.w700
+                    ? FontWeight.w800
                     : FontWeight.w500,
                 color: selected
-                    ? const Color(0xFF3B159B)
-                    : Colors.grey.shade500,
+                    ? primaryPurple
+                    : const Color(0xFF60616C),
               ),
             ),
           ],
@@ -147,11 +147,8 @@ class _HomeInterface extends StatefulWidget {
 }
 
 class _HomeInterfaceState extends State<_HomeInterface> {
-  static const Color primaryPurple =
-      Color(0xFF3B159B);
-
-  static const Color deepPurple =
-      Color(0xFF241064);
+  static const Color primaryPurple = Color(0xFF3B159B);
+  static const Color deepPurple = Color(0xFF241064);
 
   final MiningService _miningService =
       MiningService.instance;
@@ -164,8 +161,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   bool _loading = true;
   bool _actionLoading = false;
 
-  double _fanBalance = 0;
-  double _afamBalance = 0;
+  double _fanBalance = 0.0;
+  double _afamBalance = 0.0;
   double _miningRate = 0.20;
 
   bool _isMining = false;
@@ -426,10 +423,6 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     });
 
     try {
-      /*
-       * Step 1:
-       * Register/start the task on Supabase.
-       */
       final startResult =
           await _socialTaskService.startTask(
         taskId: task.id,
@@ -442,13 +435,17 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         );
       }
 
-      /*
-       * Step 2:
-       * Open the social-media URL.
-       */
-      final opened =
-          await _socialTaskService.openTaskUrl(
-        task.url,
+      final uri = Uri.tryParse(task.url);
+
+      if (uri == null) {
+        throw Exception(
+          'Invalid social task link.',
+        );
+      }
+
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
       );
 
       if (!opened) {
@@ -458,28 +455,29 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       }
 
       /*
-       * Step 3:
-       * Reload the task status from Supabase.
+       * We do not fake verification here.
        *
-       * We intentionally DO NOT fake verification
-       * by waiting for 2 seconds.
+       * Supabase must decide whether:
+       * follow_verified
+       * comment_verified
+       * share_verified
+       *
+       * are true.
        */
+
+      await Future.delayed(
+        const Duration(milliseconds: 500),
+      );
+
       await _loadTasks();
 
       final updatedTask =
           _findTaskById(task.id);
 
       if (updatedTask == null) {
-        throw Exception(
-          'Task status could not be refreshed.',
-        );
+        return;
       }
 
-      /*
-       * Step 4:
-       * The backend decides whether this task can
-       * actually be claimed.
-       */
       if (updatedTask.claimed) {
         await _loadProfile();
 
@@ -502,19 +500,12 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         return;
       }
 
-      /*
-       * Step 5:
-       * Claim only when Supabase says can_claim = true.
-       */
       final claimResult =
           await _socialTaskService.verifyAndClaim(
         taskId: task.id,
       );
 
-      final success =
-          claimResult['success'] == true;
-
-      if (!success) {
+      if (claimResult['success'] != true) {
         throw Exception(
           claimResult['message'] ??
               'Social reward could not be claimed.',
@@ -524,7 +515,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       await _loadTasks();
       await _loadProfile();
 
-      final reward = _toDouble(
+      final reward =
+          _toDouble(
         claimResult['reward_fan'],
       );
 
@@ -535,7 +527,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       }
     } catch (e) {
       if (mounted) {
-        _showMessage(_errorMessage(e));
+        _showMessage(
+          _errorMessage(e),
+        );
       }
     } finally {
       if (mounted) {
@@ -546,7 +540,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     }
   }
 
-  DailySocialTask? _findTaskById(String id) {
+  DailySocialTask? _findTaskById(
+    String id,
+  ) {
     for (final task in _tasks) {
       if (task.id == id) {
         return task;
@@ -576,12 +572,6 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       missing.add('Share');
     }
 
-    /*
-     * Your current Supabase claim function requires
-     * all three verification flags. Therefore, if the
-     * backend has not verified them yet, we simply tell
-     * the user that verification is still pending.
-     */
     final message = missing.isEmpty
         ? 'Verification is still pending. Please complete the task and try again.'
         : 'Complete: ${missing.join(', ')}. Verification is still pending.';
@@ -633,7 +623,10 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         totalSeconds - remainingSeconds;
 
     if (elapsed <= 0) return 0;
-    if (elapsed >= totalSeconds) return 1;
+
+    if (elapsed >= totalSeconds) {
+      return 1;
+    }
 
     return elapsed / totalSeconds;
   }
@@ -651,21 +644,21 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
             16,
-            12,
+            10,
             16,
-            24,
+            28,
           ),
           children: [
             _buildHeader(),
-            const SizedBox(height: 18),
+            const SizedBox(height: 17),
             _buildBalanceCard(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 15),
             _buildMiningCard(),
             const SizedBox(height: 14),
             _buildBoostCard(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             _buildDailyTaskSection(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             _buildKycCard(),
           ],
         ),
@@ -680,7 +673,12 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           width: 45,
           height: 45,
           decoration: BoxDecoration(
-            color: primaryPurple,
+            gradient: const LinearGradient(
+              colors: [
+                primaryPurple,
+                deepPurple,
+              ],
+            ),
             borderRadius:
                 BorderRadius.circular(13),
           ),
@@ -690,12 +688,12 @@ class _HomeInterfaceState extends State<_HomeInterface> {
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 17,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),
         ),
-        const SizedBox(width: 11),
+        const SizedBox(width: 12),
         const Expanded(
           child: Column(
             crossAxisAlignment:
@@ -705,10 +703,8 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 'POWER FAN',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight:
-                      FontWeight.w800,
+                  fontWeight: FontWeight.w900,
                   color: deepPurple,
-                  letterSpacing: 0.2,
                 ),
               ),
               SizedBox(height: 1),
@@ -716,27 +712,42 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 'Mine FAN. Earn More',
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey,
-                  fontWeight:
-                      FontWeight.w500,
+                  color: deepPurple,
                 ),
               ),
             ],
           ),
         ),
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius:
-                BorderRadius.circular(12),
-          ),
-          child: const Icon(
-            Icons.notifications_none_rounded,
-            color: deepPurple,
-            size: 25,
-          ),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 43,
+              height: 43,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    BorderRadius.circular(13),
+              ),
+              child: const Icon(
+                Icons.notifications_none_rounded,
+                color: deepPurple,
+                size: 28,
+              ),
+            ),
+            Positioned(
+              top: 2,
+              right: 3,
+              child: Container(
+                width: 9,
+                height: 9,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -744,35 +755,35 @@ class _HomeInterfaceState extends State<_HomeInterface> {
 
   Widget _buildBalanceCard() {
     return Container(
-      height: 190,
+      height: 184,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
-            primaryPurple,
-            deepPurple,
+            Color(0xFF4520B6),
+            Color(0xFF28106D),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius:
-            BorderRadius.circular(22),
+            BorderRadius.circular(23),
         boxShadow: [
           BoxShadow(
             color:
                 primaryPurple.withOpacity(0.20),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            blurRadius: 17,
+            offset: const Offset(0, 7),
           ),
         ],
       ),
       child: Stack(
         children: [
           Positioned(
-            right: -25,
-            top: -30,
+            right: -35,
+            top: -40,
             child: Container(
-              width: 135,
-              height: 135,
+              width: 145,
+              height: 145,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color:
@@ -782,36 +793,35 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           ),
           Positioned(
             right: 18,
-            bottom: 14,
+            bottom: 10,
             child: _buildMiningIllustration(),
           ),
           Padding(
             padding:
                 const EdgeInsets.fromLTRB(
+              21,
               20,
-              18,
               20,
-              15,
+              16,
             ),
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'FAN BALANCE',
+                  'BALANCE',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight:
-                        FontWeight.w600,
-                    letterSpacing: 1,
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.7,
                   ),
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(height: 8),
                 _loading
                     ? const SizedBox(
                         width: 100,
-                        height: 31,
+                        height: 30,
                         child:
                             CircularProgressIndicator(
                           strokeWidth: 2,
@@ -823,28 +833,27 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                         style:
                             const TextStyle(
                           color: Colors.white,
-                          fontSize: 27,
+                          fontSize: 29,
                           fontWeight:
-                              FontWeight.w800,
+                              FontWeight.w900,
                         ),
                       ),
-                const SizedBox(height: 12),
-                const Text(
-                  'AFAM Balance',
+                const SizedBox(height: 8),
+                Text(
+                  '≈ \$0.00',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
+                    color:
+                        Colors.white.withOpacity(0.95),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 7),
                 Text(
-                  '${_afamBalance.toStringAsFixed(4)} AFAM',
-                  style:
-                      const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight:
-                        FontWeight.w700,
+                  'AFAM ${_afamBalance.toStringAsFixed(4)}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -856,27 +865,49 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   Widget _buildMiningIllustration() {
-    return Container(
-      width: 90,
-      height: 90,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.10),
-        shape: BoxShape.circle,
-      ),
-      child: const Stack(
+    return SizedBox(
+      width: 135,
+      height: 115,
+      child: Stack(
         alignment: Alignment.center,
         children: [
-          Icon(
-            Icons.engineering_rounded,
-            color: Colors.white,
-            size: 51,
-          ),
           Positioned(
-            bottom: 8,
-            right: 11,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 82,
+              height: 82,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color:
+                    Colors.white.withOpacity(0.08),
+              ),
+            ),
+          ),
+          const Positioned(
+            left: 12,
+            bottom: 18,
             child: Icon(
-              Icons.bolt_rounded,
-              color: Colors.amber,
+              Icons.construction_rounded,
+              color: Colors.white,
+              size: 70,
+            ),
+          ),
+          const Positioned(
+            right: 5,
+            bottom: 10,
+            child: Icon(
+              Icons.diamond_rounded,
+              color: Color(0xFF9B7BFF),
+              size: 32,
+            ),
+          ),
+          const Positioned(
+            right: 34,
+            top: 8,
+            child: Icon(
+              Icons.stars_rounded,
+              color: Color(0xFFFFD54F),
               size: 22,
             ),
           ),
@@ -892,58 +923,152 @@ class _HomeInterfaceState extends State<_HomeInterface> {
             _remaining == Duration.zero;
 
     return Container(
-      padding: const EdgeInsets.all(17),
+      padding:
+          const EdgeInsets.fromLTRB(
+        18,
+        18,
+        18,
+        17,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(20),
         border: Border.all(
           color: Colors.grey.shade100,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         children: [
           Row(
             children: [
               Container(
-                width: 43,
-                height: 43,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
                   color:
-                      primaryPurple.withOpacity(0.08),
-                  borderRadius:
-                      BorderRadius.circular(12),
+                      primaryPurple.withOpacity(0.09),
+                  shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.bolt_rounded,
+                  Icons.hardware_rounded,
                   color: primaryPurple,
-                  size: 25,
+                  size: 28,
                 ),
               ),
-              const SizedBox(width: 11),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'STATUS: ${_miningStatusText()}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight:
+                            FontWeight.w800,
+                        color: _isMining
+                            ? Colors.orange
+                            : canClaim
+                                ? Colors.blue
+                                : Colors.green,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _isMining
+                          ? 'Mining FAN is active'
+                          : canClaim
+                              ? 'Your mining session has ended'
+                              : 'Start mining to earn FAN',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF646477),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Divider(
+            height: 1,
+            color: Color(0xFFEAE8F1),
+          ),
+          const SizedBox(height: 15),
+          Row(
+            children: [
+              const Icon(
+                Icons.speed_rounded,
+                color: primaryPurple,
+                size: 29,
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Mining Status',
+                      'MINING RATE',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight:
                             FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      _miningStatusText(),
+                      '${_miningRate.toStringAsFixed(2)} FAN/H',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            FontWeight.w800,
+                        color: primaryPurple,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 47,
+                color: const Color(0xFFE4E1EC),
+              ),
+              const SizedBox(width: 18),
+              const Icon(
+                Icons.access_time_rounded,
+                color: primaryPurple,
+                size: 29,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'SESSION TIME',
                       style: TextStyle(
                         fontSize: 12,
-                        color: _isMining
-                            ? Colors.orange
-                            : canClaim
-                                ? Colors.blue
-                                : Colors.green,
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_formatDuration(_remaining)} / 24:00:00',
+                      style: const TextStyle(
+                        fontSize: 13,
                         fontWeight:
                             FontWeight.w700,
                       ),
@@ -951,47 +1076,15 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                   ],
                 ),
               ),
-              Text(
-                '${_miningRate.toStringAsFixed(2)} FAN/H',
-                style: const TextStyle(
-                  color: primaryPurple,
-                  fontSize: 14,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: 17),
-          Row(
-            mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Session Time',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-              Text(
-                '${_formatDuration(_remaining)} / 24:00:00',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight:
-                      FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 11),
+          const SizedBox(height: 14),
           ClipRRect(
             borderRadius:
                 BorderRadius.circular(10),
-            child:
-                LinearProgressIndicator(
+            child: LinearProgressIndicator(
               value: _progressValue(),
-              minHeight: 7,
+              minHeight: 6,
               backgroundColor:
                   const Color(0xFFEDEAF7),
               valueColor:
@@ -1001,10 +1094,10 @@ class _HomeInterfaceState extends State<_HomeInterface> {
               ),
             ),
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            height: 48,
+            height: 49,
             child: ElevatedButton(
               onPressed: _actionLoading
                   ? null
@@ -1015,16 +1108,15 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                           : _startMining,
               style:
                   ElevatedButton.styleFrom(
-                backgroundColor:
-                    primaryPurple,
+                backgroundColor: primaryPurple,
                 disabledBackgroundColor:
                     primaryPurple,
+                elevation: 0,
                 shape:
                     RoundedRectangleBorder(
                   borderRadius:
                       BorderRadius.circular(13),
                 ),
-                elevation: 0,
               ),
               child: _actionLoading
                   ? const SizedBox(
@@ -1036,20 +1128,32 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                         color: Colors.white,
                       ),
                     )
-                  : Text(
-                      canClaim
-                          ? 'CLAIM MINING'
-                          : _isMining
-                              ? 'MINING...'
-                              : 'START MINING',
-                      style:
-                          const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight:
-                            FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
+                  : Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.hardware_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 9),
+                        Text(
+                          canClaim
+                              ? 'CLAIM MINING'
+                              : _isMining
+                                  ? 'MINING...'
+                                  : 'START MINING',
+                          style:
+                              const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight:
+                                FontWeight.w800,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ],
                     ),
             ),
           ),
@@ -1062,79 +1166,170 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     final limitReached =
         _adsWatched >= 7;
 
+    final boost =
+        (_adsWatched * 0.1)
+            .clamp(0.0, 0.7);
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding:
+          const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(19),
         border: Border.all(
           color: Colors.grey.shade100,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 45,
-            height: 45,
-            decoration: BoxDecoration(
-              color:
-                  Colors.orange.withOpacity(0.10),
-              borderRadius:
-                  BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.play_circle_fill_rounded,
-              color: Colors.orange,
-              size: 27,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Boost by Watching Ads',
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color:
+                      Colors.orange.withOpacity(0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.rocket_launch_rounded,
+                  color: Colors.deepOrange,
+                  size: 27,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'BOOST BY WATCHING ADS',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Each ad adds +0.1 FAN/H',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      primaryPurple.withOpacity(0.08),
+                  borderRadius:
+                      BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$_adsWatched / 7',
                   style: TextStyle(
-                    fontSize: 14,
+                    color: limitReached
+                        ? Colors.grey
+                        : primaryPurple,
+                    fontSize: 12,
                     fontWeight:
-                        FontWeight.w700,
+                        FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
-                  '+0.1 FAN/H per ad',
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 7,
-            ),
-            decoration: BoxDecoration(
-              color:
-                  primaryPurple.withOpacity(0.08),
-              borderRadius:
-                  BorderRadius.circular(10),
-            ),
-            child: Text(
-              '$_adsWatched / 7',
-              style: TextStyle(
-                color: limitReached
-                    ? Colors.grey
-                    : primaryPurple,
-                fontSize: 12,
-                fontWeight:
-                    FontWeight.w800,
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius:
+                      BorderRadius.circular(10),
+                  child:
+                      LinearProgressIndicator(
+                    value:
+                        _adsWatched / 7,
+                    minHeight: 7,
+                    backgroundColor:
+                        const Color(0xFFEDEAF7),
+                    valueColor:
+                        const AlwaysStoppedAnimation<
+                            Color>(
+                      primaryPurple,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '+${boost.toStringAsFixed(1)} FAN/H',
+                style: const TextStyle(
+                  color: primaryPurple,
+                  fontSize: 12,
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          SizedBox(
+            width: double.infinity,
+            height: 43,
+            child: OutlinedButton.icon(
+              onPressed: limitReached || !_isMining
+                  ? null
+                  : () {
+                      _showMessage(
+                        'Rewarded Ad system will be connected next.',
+                      );
+                    },
+              icon: const Icon(
+                Icons.ondemand_video_rounded,
+                size: 20,
+              ),
+              label: Text(
+                limitReached
+                    ? 'DAILY LIMIT REACHED'
+                    : !_isMining
+                        ? 'START MINING TO WATCH ADS'
+                        : 'WATCH AD',
+              ),
+              style:
+                  OutlinedButton.styleFrom(
+                foregroundColor:
+                    primaryPurple,
+                disabledForegroundColor:
+                    Colors.grey,
+                side: BorderSide(
+                  color: limitReached || !_isMining
+                      ? Colors.grey.shade300
+                      : primaryPurple,
+                ),
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
@@ -1149,22 +1344,30 @@ class _HomeInterfaceState extends State<_HomeInterface> {
           CrossAxisAlignment.start,
       children: [
         const Text(
-          'Daily Task',
+          'DAILY TASK',
           style: TextStyle(
-            fontSize: 18,
-            fontWeight:
-                FontWeight.w800,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Complete social tasks and earn FAN',
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey,
           ),
         ),
         const SizedBox(height: 11),
         if (_tasks.isEmpty)
           Container(
+            width: double.infinity,
             padding:
-                const EdgeInsets.all(18),
+                const EdgeInsets.all(19),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius:
-                  BorderRadius.circular(15),
+                  BorderRadius.circular(17),
             ),
             child: const Center(
               child: Text(
@@ -1187,13 +1390,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   Widget _socialTask(
     DailySocialTask task,
   ) {
-    final waitingForVerification =
-        !task.claimed &&
-            !task.canClaim;
-
     return InkWell(
       borderRadius:
-          BorderRadius.circular(15),
+          BorderRadius.circular(16),
       onTap: task.claimed
           ? null
           : () => _openSocialTask(task),
@@ -1201,14 +1400,11 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         margin:
             const EdgeInsets.only(bottom: 9),
         padding:
-            const EdgeInsets.symmetric(
-          horizontal: 13,
-          vertical: 11,
-        ),
+            const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius:
-              BorderRadius.circular(15),
+              BorderRadius.circular(16),
           border: Border.all(
             color: Colors.grey.shade100,
           ),
@@ -1216,18 +1412,18 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color:
                     primaryPurple.withOpacity(0.08),
                 borderRadius:
-                    BorderRadius.circular(10),
+                    BorderRadius.circular(12),
               ),
               child: Icon(
                 _platformIcon(task.platform),
                 color: primaryPurple,
-                size: 20,
+                size: 22,
               ),
             ),
             const SizedBox(width: 11),
@@ -1238,35 +1434,32 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                 children: [
                   Text(
                     task.title,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight:
-                          FontWeight.w700,
+                          FontWeight.w800,
                     ),
                   ),
-                  if (task.description
-                      .isNotEmpty) ...[
-                    const SizedBox(height: 2),
+                  const SizedBox(height: 3),
+                  if (task.description.isNotEmpty)
                     Text(
                       task.description,
                       maxLines: 1,
                       overflow:
                           TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         color: Colors.grey,
                         fontSize: 10,
                       ),
                     ),
-                  ],
                 ],
               ),
             ),
-            const SizedBox(width: 6),
-            _taskStatusWidget(
-              task,
-              waitingForVerification,
-            ),
+            const SizedBox(width: 7),
+            _taskStatusWidget(task),
           ],
         ),
       ),
@@ -1275,16 +1468,14 @@ class _HomeInterfaceState extends State<_HomeInterface> {
 
   Widget _taskStatusWidget(
     DailySocialTask task,
-    bool waitingForVerification,
   ) {
     if (task.claimed) {
       return const Text(
         'CLAIMED',
         style: TextStyle(
           color: Colors.green,
-          fontSize: 11,
-          fontWeight:
-              FontWeight.w800,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
         ),
       );
     }
@@ -1294,32 +1485,18 @@ class _HomeInterfaceState extends State<_HomeInterface> {
         'CLAIM ${task.rewardFan.toStringAsFixed(0)} FAN',
         style: const TextStyle(
           color: primaryPurple,
-          fontSize: 10,
-          fontWeight:
-              FontWeight.w800,
-        ),
-      );
-    }
-
-    if (waitingForVerification) {
-      return const Text(
-        'OPEN',
-        style: TextStyle(
-          color: primaryPurple,
-          fontSize: 11,
-          fontWeight:
-              FontWeight.w800,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
         ),
       );
     }
 
     return Text(
-      '${task.rewardFan.toStringAsFixed(0)} FAN',
+      '+${task.rewardFan.toStringAsFixed(0)} FAN',
       style: const TextStyle(
         color: primaryPurple,
-        fontSize: 11,
-        fontWeight:
-            FontWeight.w800,
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
       ),
     );
   }
@@ -1367,18 +1544,17 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       child: Row(
         children: [
           Container(
-            width: 45,
-            height: 45,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               color:
                   primaryPurple.withOpacity(0.08),
-              borderRadius:
-                  BorderRadius.circular(12),
+              shape: BoxShape.circle,
             ),
             child: const Icon(
-              Icons.verified_user_rounded,
+              Icons.shield_rounded,
               color: primaryPurple,
-              size: 25,
+              size: 28,
             ),
           ),
           const SizedBox(width: 12),
@@ -1388,27 +1564,47 @@ class _HomeInterfaceState extends State<_HomeInterface> {
                   CrossAxisAlignment.start,
               children: [
                 Text(
-                  'KYC Verification',
+                  'KYC VERIFICATION',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight:
-                        FontWeight.w700,
+                        FontWeight.w800,
                   ),
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Coming Soon',
+                  'Verify your identity to secure your account',
+                  maxLines: 2,
                   style: TextStyle(
                     color: Colors.grey,
-                    fontSize: 12,
+                    fontSize: 11,
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.grey,
+          Container(
+            padding:
+                const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: primaryPurple,
+              ),
+              borderRadius:
+                  BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'COMING SOON',
+              style: TextStyle(
+                color: primaryPurple,
+                fontSize: 9,
+                fontWeight:
+                    FontWeight.w800,
+              ),
+            ),
           ),
         ],
       ),
@@ -1416,7 +1612,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
   }
 
   double _toDouble(dynamic value) {
-    if (value == null) return 0;
+    if (value == null) return 0.0;
 
     if (value is num) {
       return value.toDouble();
@@ -1425,7 +1621,7 @@ class _HomeInterfaceState extends State<_HomeInterface> {
     return double.tryParse(
           value.toString(),
         ) ??
-        0;
+        0.0;
   }
 
   int _toInt(dynamic value) {
@@ -1454,12 +1650,9 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       return value.toLocal();
     }
 
-    final parsed =
-        DateTime.tryParse(
+    return DateTime.tryParse(
       value.toString(),
-    );
-
-    return parsed?.toLocal();
+    )?.toLocal();
   }
 
   double _extractNumber(
@@ -1477,13 +1670,14 @@ class _HomeInterfaceState extends State<_HomeInterface> {
       }
     }
 
-    return 0;
+    return 0.0;
   }
 
   String _errorMessage(
     Object error,
   ) {
-    final message = error.toString();
+    final message =
+        error.toString();
 
     if (message.startsWith(
       'Exception: ',
