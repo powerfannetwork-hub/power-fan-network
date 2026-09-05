@@ -1,44 +1,26 @@
 name: powerfannetwork
-description: "POWER FAN NETWORK"
-publish_to: "none"
-
+description: "Power Fan Network App"
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ^3.5.0
 
 dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
-  shared_preferences: ^2.5.3
-  # Authentication + Database
-  supabase_flutter: ^2.15.4
+  flutter_localizations:
+    sdk: flutter
 
-  # State management
+  supabase_flutter: 2.15.4
   provider: ^6.1.2
-
-  # Rewarded ads
-  applovin_max: ^4.6.4
-
-  # Open official social links
-  url_launcher: ^6.3.0
-
-  # Live camera for KYC face verification
-  camera: ^0.11.0+2
-
-  # Share referral code/link
-  share_plus: ^11.0.0
-
-  # Notifications
   flutter_local_notifications: ^17.2.2
-
-  # Network requests
   http: ^1.2.2
-
-  # App version/update information
+  applovin_max: ^4.6.4
   package_info_plus: ^8.0.2
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:
