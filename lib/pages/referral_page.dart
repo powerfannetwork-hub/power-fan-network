@@ -54,19 +54,10 @@ class _ReferralPageState extends State<ReferralPage> {
 
       setState(() {
         _code = (data['referralCode'] ?? '').toString();
-
-        _activeReferrals =
-            _toInt(data['activeReferrals']);
-
-        _totalReferrals =
-            _toInt(data['totalReferrals']);
-
-        _earnings =
-            _toDouble(data['earnings']);
-
-        _miningBonus =
-            _toDouble(data['miningBonus']);
-
+        _activeReferrals = _toInt(data['activeReferrals']);
+        _totalReferrals = _toInt(data['totalReferrals']);
+        _earnings = _toDouble(data['earnings']);
+        _miningBonus = _toDouble(data['miningBonus']);
         _bonusPerReferral =
             _toDouble(data['miningBonusPerActiveReferral']);
 
@@ -98,24 +89,14 @@ class _ReferralPageState extends State<ReferralPage> {
   }
 
   String _cleanError(Object error) {
-    final message = error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .trim();
+    final message =
+        error.toString().replaceFirst('Exception: ', '').trim();
 
     if (message.isEmpty) {
       return 'Unable to load referral information.';
     }
 
     return message;
-  }
-
-  String get _referralLink {
-    if (_code.isEmpty) {
-      return '';
-    }
-
-    return 'POWER FAN referral code: $_code';
   }
 
   void _copyCode() {
@@ -127,10 +108,7 @@ class _ReferralPageState extends State<ReferralPage> {
       return;
     }
 
-    Clipboard.setData(
-      ClipboardData(text: _code),
-    );
-
+    Clipboard.setData(ClipboardData(text: _code));
     _showMessage('Referral code copied.');
   }
 
@@ -145,8 +123,7 @@ class _ReferralPageState extends State<ReferralPage> {
 
     Clipboard.setData(
       ClipboardData(
-        text:
-            'Join POWER FAN NETWORK using my referral code: $_code',
+        text: 'Join POWER FAN NETWORK using my referral code: $_code',
       ),
     );
 
@@ -166,7 +143,9 @@ class _ReferralPageState extends State<ReferralPage> {
         'Join POWER FAN NETWORK using my referral code: $_code\n\n'
         'Earn FAN and start mining with POWER FAN NETWORK.';
 
-    await Share.share(message);
+    await SharePlus.instance.share(
+      ShareParams(text: message),
+    );
   }
 
   void _showMessage(
@@ -221,38 +200,20 @@ class _ReferralPageState extends State<ReferralPage> {
               color: primaryColor,
               onRefresh: () => _load(refresh: true),
               child: ListView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  30,
-                ),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
                 children: [
-                  if (_error != null)
-                    _buildErrorCard(),
-
+                  if (_error != null) _buildErrorCard(),
                   _buildReferralHeader(),
-
                   const SizedBox(height: 16),
-
                   _buildReferralCodeCard(),
-
                   const SizedBox(height: 16),
-
                   _buildStats(),
-
                   const SizedBox(height: 16),
-
                   _buildRewardInfo(),
-
                   const SizedBox(height: 16),
-
                   _buildMiningBonus(),
-
                   const SizedBox(height: 16),
-
                   _buildHowItWorks(),
                 ],
               ),
@@ -272,8 +233,7 @@ class _ReferralPageState extends State<ReferralPage> {
         ),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.error_outline,
@@ -358,8 +318,7 @@ class _ReferralPageState extends State<ReferralPage> {
   Widget _buildReferralCodeCard() {
     return _card(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Your Referral Code',
@@ -372,28 +331,22 @@ class _ReferralPageState extends State<ReferralPage> {
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 15,
               vertical: 14,
             ),
             decoration: BoxDecoration(
-              color:
-                  primaryColor.withOpacity(0.06),
-              borderRadius:
-                  BorderRadius.circular(14),
+              color: primaryColor.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color:
-                    primaryColor.withOpacity(0.15),
+                color: primaryColor.withOpacity(0.15),
               ),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    _code.isEmpty
-                        ? 'Not available'
-                        : _code,
+                    _code.isEmpty ? 'Not available' : _code,
                     style: const TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.bold,
@@ -403,8 +356,7 @@ class _ReferralPageState extends State<ReferralPage> {
                   ),
                 ),
                 IconButton(
-                  onPressed:
-                      _code.isEmpty ? null : _copyCode,
+                  onPressed: _code.isEmpty ? null : _copyCode,
                   icon: const Icon(
                     Icons.copy,
                     color: primaryColor,
@@ -419,9 +371,8 @@ class _ReferralPageState extends State<ReferralPage> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _code.isEmpty
-                      ? null
-                      : _copyReferralInfo,
+                  onPressed:
+                      _code.isEmpty ? null : _copyReferralInfo,
                   icon: const Icon(
                     Icons.copy_all,
                     size: 19,
@@ -432,12 +383,8 @@ class _ReferralPageState extends State<ReferralPage> {
                     side: const BorderSide(
                       color: primaryColor,
                     ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        12,
-                      ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -445,25 +392,18 @@ class _ReferralPageState extends State<ReferralPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: _code.isEmpty
-                      ? null
-                      : _shareReferral,
+                  onPressed:
+                      _code.isEmpty ? null : _shareReferral,
                   icon: const Icon(
                     Icons.share,
                     size: 19,
                   ),
                   label: const Text('SHARE'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        primaryColor,
-                    foregroundColor:
-                        Colors.white,
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        12,
-                      ),
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -560,8 +500,7 @@ class _ReferralPageState extends State<ReferralPage> {
   Widget _buildRewardInfo() {
     return _card(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
@@ -602,10 +541,8 @@ class _ReferralPageState extends State<ReferralPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color:
-                  greenColor.withOpacity(0.07),
-              borderRadius:
-                  BorderRadius.circular(14),
+              color: greenColor.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
               children: [
@@ -639,17 +576,14 @@ class _ReferralPageState extends State<ReferralPage> {
     required String description,
   }) {
     return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color:
-                primaryColor.withOpacity(0.08),
-            borderRadius:
-                BorderRadius.circular(12),
+            color: primaryColor.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             icon,
@@ -659,8 +593,7 @@ class _ReferralPageState extends State<ReferralPage> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
@@ -701,8 +634,7 @@ class _ReferralPageState extends State<ReferralPage> {
   Widget _buildMiningBonus() {
     return _card(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
@@ -727,10 +659,8 @@ class _ReferralPageState extends State<ReferralPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color:
-                  primaryColor.withOpacity(0.06),
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: primaryColor.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
               children: [
@@ -778,8 +708,7 @@ class _ReferralPageState extends State<ReferralPage> {
   Widget _buildHowItWorks() {
     return _card(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'How Referral Works',
@@ -827,8 +756,7 @@ class _ReferralPageState extends State<ReferralPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 34,
@@ -849,8 +777,7 @@ class _ReferralPageState extends State<ReferralPage> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
