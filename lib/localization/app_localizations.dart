@@ -1252,7 +1252,7 @@ class AppLocalizations {
       'no_daily_tasks': 'कोई दैनिक टास्क उपलब्ध नहीं है।',
       'rewarded_ad_not_connected': 'रिवार्डेड विज्ञापन अभी कनेक्ट नहीं हैं।',
     },
-  )     'bn': {
+      'bn': {
       'appName': 'POWER FAN',
       'brandName': 'POWER FAN',
       'mineFan': 'FAN মাইন করুন',
@@ -2148,7 +2148,7 @@ class AppLocalizations {
           'Iklan berhadiah belum terhubung.',
     },
   };
-)   static const List<Map<String, String>> languages = [
+    static const List<Map<String, String>> languages = [
     {'code': 'en', 'name': 'English'},
     {'code': 'zh', 'name': '中文'},
     {'code': 'es', 'name': 'Español'},
