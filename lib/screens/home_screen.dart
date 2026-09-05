@@ -17,6 +17,9 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
 
+  static const Duration miningDuration =
+      Duration(hours: 24);
+
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
 
@@ -53,7 +56,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  String _t(String key, [String fallback = '']) {
+  String _t(
+    String key, [
+    String fallback = '',
+  ]) {
     final value =
         AppLocalizations.of(context).translate(key);
 
@@ -63,6 +69,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return value;
   }
+
+  // ============================================================
+  // LOAD EVERYTHING
+  // ============================================================
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -88,6 +98,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // PROFILE
+  // ============================================================
+
   Future<void> _loadProfile() async {
     final data = await _mining.getProfile();
 
@@ -99,19 +113,27 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ============================================================
+  // MINING
+  // ============================================================
+
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
+
     final serverRate =
         await _mining.getUserMiningRate();
 
     final started = _date(
-      data['started_at'] ?? data['start_time'],
+      data['started_at'] ??
+          data['start_time'] ??
+          data['started'],
     );
 
     final ends = _date(
       data['ends_at'] ??
           data['end_time'] ??
-          data['expires_at'],
+          data['expires_at'] ??
+          data['ended_at'],
     );
 
     final active =
@@ -135,97 +157,118 @@ class _HomeScreenState extends State<HomeScreen> {
           serverRate,
     );
 
+    final serverRemaining =
+        _int(data['remaining_seconds']);
+
+    final serverElapsed =
+        _int(data['elapsed_seconds']);
+
     if (!mounted) return;
 
     _timer?.cancel();
+
+    DateTime? finalStarted = started;
+    DateTime? finalEnds = ends;
+
+    /*
+     * If Supabase gives only ends_at, calculate started_at.
+     */
+    if (finalStarted == null &&
+        finalEnds != null) {
+      finalStarted =
+          finalEnds.subtract(miningDuration);
+    }
+
+    /*
+     * If Supabase gives only started_at,
+     * calculate ends_at.
+     */
+    if (finalEnds == null &&
+        finalStarted != null) {
+      finalEnds =
+          finalStarted.add(miningDuration);
+    }
 
     setState(() {
       _isMining = active == true;
       _canClaim = claimable == true;
 
-      _startedAt = started;
-      _endsAt = ends;
+      _startedAt = finalStarted;
+      _endsAt = finalEnds;
 
-      _rate = rate > 0 ? rate : serverRate;
+      _rate =
+          rate > 0 ? rate : serverRate;
+
       _ads = _int(ads).clamp(0, 7);
 
-      _updateTime();
+      if (serverRemaining > 0) {
+        _remaining = Duration(
+          seconds: serverRemaining,
+        );
+      } else {
+        _updateTime();
+      }
 
-      if (_isMining && _endsAt != null) {
-        _startTimer();
+      if (serverElapsed > 0) {
+        _elapsed = Duration(
+          seconds: serverElapsed.clamp(
+            0,
+            miningDuration.inSeconds,
+          ),
+        );
+      } else {
+        _updateTime();
       }
     });
+
+    if (_isMining) {
+      _startTimer();
+    }
   }
 
-  Future<void> _loadTasks() async {
-    final tasks =
-        await _social.getDailyTasksForCard();
-
-    if (!mounted) return;
-
-    setState(() {
-      _tasks = tasks;
-    });
-  }
+  // ============================================================
+  // TIMER
+  // ============================================================
 
   void _startTimer() {
     _timer?.cancel();
 
     _timer = Timer.periodic(
       const Duration(seconds: 1),
-      (_) async {
+      (_) {
         if (!mounted) return;
+
+        if (!_isMining) {
+          _timer?.cancel();
+          return;
+        }
 
         _updateTime();
 
-        if (_remaining <= Duration.zero &&
-            _isMining) {
+        if (_remaining <= Duration.zero) {
           _timer?.cancel();
 
-          try {
-            final data =
-                await _mining.getActiveMining();
+          _finishMiningLocally();
 
-            if (!mounted) return;
-
-            final active =
-                data['active'] ??
-                data['is_mining'] ??
-                data['is_active'] ??
-                false;
-
-            final claimable =
-                data['claimable'] ?? false;
-
-            setState(() {
-              _isMining = active == true;
-              _canClaim = claimable == true;
-              _remaining = Duration.zero;
-              _elapsed =
-                  const Duration(hours: 24);
-            });
-          } catch (_) {
-            if (!mounted) return;
-
-            setState(() {
-              _isMining = false;
-              _canClaim = true;
-              _remaining = Duration.zero;
-              _elapsed =
-                  const Duration(hours: 24);
-            });
-          }
-        } else {
-          setState(() {});
+          /*
+           * Reload from Supabase after the local UI
+           * has already changed to zero.
+           */
+          _refreshMiningAfterEnd();
+          return;
         }
+
+        setState(() {});
       },
     );
   }
 
   void _updateTime() {
+    final now = DateTime.now();
+
     if (_endsAt != null) {
       final remaining =
-          _endsAt!.difference(DateTime.now());
+          _endsAt!.difference(now);
 
       _remaining = remaining.isNegative
           ? Duration.zero
@@ -236,33 +279,109 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_startedAt != null) {
       final elapsed =
-          DateTime.now().difference(_startedAt!);
+          now.difference(_startedAt!);
 
-      _elapsed = elapsed.isNegative
-          ? Duration.zero
-          : elapsed;
+      if (elapsed.isNegative) {
+        _elapsed = Duration.zero;
+      } else if (elapsed > miningDuration) {
+        _elapsed = miningDuration;
+      } else {
+        _elapsed = elapsed;
+      }
+    } else if (_endsAt != null) {
+      final calculatedStart =
+          _endsAt!.subtract(miningDuration);
 
-      if (_elapsed >
-          const Duration(hours: 24)) {
-        _elapsed =
-            const Duration(hours: 24);
+      final elapsed =
+          now.difference(calculatedStart);
+
+      if (elapsed.isNegative) {
+        _elapsed = Duration.zero;
+      } else if (elapsed > miningDuration) {
+        _elapsed = miningDuration;
+      } else {
+        _elapsed = elapsed;
       }
     }
   }
+
+  void _finishMiningLocally() {
+    if (!mounted) return;
+
+    setState(() {
+      _isMining = false;
+      _canClaim = true;
+      _remaining = Duration.zero;
+      _elapsed = miningDuration;
+    });
+  }
+
+  Future<void> _refreshMiningAfterEnd() async {
+    try {
+      final data =
+          await _mining.getActiveMining();
+
+      if (!mounted) return;
+
+      final active =
+          data['active'] ??
+          data['is_mining'] ??
+          data['is_active'] ??
+          false;
+
+      final claimable =
+          data['claimable'] ?? true;
+
+      if (mounted) {
+        setState(() {
+          _isMining = active == true;
+          _canClaim = claimable == true;
+
+          if (_isMining) {
+            _updateTime();
+            _startTimer();
+          } else {
+            _remaining = Duration.zero;
+            _elapsed = miningDuration;
+          }
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _isMining = false;
+        _canClaim = true;
+        _remaining = Duration.zero;
+        _elapsed = miningDuration;
+      });
+    }
+  }
+
+  // ============================================================
+  // LIVE FAN EARNINGS
+  // ============================================================
 
   double get _earned {
     if (!_isMining) {
       return 0;
     }
 
-    if (_rate <= 0 ||
-        _elapsed.inSeconds <= 0) {
+    if (_rate <= 0) {
+      return 0;
+    }
+
+    if (_elapsed.inSeconds <= 0) {
       return 0;
     }
 
     return _rate *
         (_elapsed.inSeconds / 3600.0);
   }
+
+  // ============================================================
+  // START MINING
+  // ============================================================
 
   Future<void> _startMining() async {
     if (_busy) return;
@@ -287,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _message(
         _t(
           'mining_started_successfully',
-          'Mining started successfully',
+          'Mining started successfully.',
         ),
       );
     } catch (e) {
@@ -300,6 +419,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
   }
+
+  // ============================================================
+  // CLAIM MINING
+  // ============================================================
 
   Future<void> _claimMining() async {
     if (_busy) return;
@@ -337,8 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _canClaim = true;
         _isMining = false;
         _remaining = Duration.zero;
-        _elapsed =
-            const Duration(hours: 24);
+        _elapsed = miningDuration;
       });
     } catch (e) {
       _message(_error(e));
@@ -370,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '${earned.toStringAsFixed(4)} FAN '
         '${_t(
           'claimed_successfully',
-          'claimed successfully',
+          'claimed successfully.',
         )}',
       );
     } catch (e) {
@@ -382,6 +504,33 @@ class _HomeScreenState extends State<HomeScreen> {
           _busy = false;
         });
       }
+    }
+  }
+
+  // ============================================================
+  // SOCIAL TASKS
+  // ============================================================
+
+  Future<void> _loadTasks() async {
+    try {
+      final tasks =
+          await _social.getDailyTasksForCard();
+
+      if (!mounted) return;
+
+      setState(() {
+        _tasks = tasks;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      /*
+       * Do not crash the whole Home screen if
+       * social tasks fail to load.
+       */
+      setState(() {
+        _tasks = [];
+      });
     }
   }
 
@@ -411,9 +560,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final opened =
-          await _social.openTaskUrl(
-        task.url,
-      );
+          await _social.openTaskUrl(task.url);
 
       if (!opened) {
         throw Exception(
@@ -431,6 +578,9 @@ class _HomeScreenState extends State<HomeScreen> {
         orElse: () => task,
       );
 
+      /*
+       * Server decides whether the task can be claimed.
+       */
       if (updated.canClaim &&
           !updated.claimed) {
         final claim =
@@ -459,6 +609,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -476,6 +630,8 @@ class _HomeScreenState extends State<HomeScreen> {
         color: primaryPurple,
         onRefresh: _load,
         child: ListView(
+          physics:
+              const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(
             16,
             10,
@@ -499,6 +655,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // HEADER
+  // ============================================================
 
   Widget _header() {
     return Row(
@@ -572,6 +732,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // BALANCE
+  // ============================================================
+
   Widget _balanceCard() {
     final balance =
         _fan + (_isMining ? _earned : 0);
@@ -635,6 +799,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // MINING CARD
+  // ============================================================
 
   Widget _miningCard() {
     final status = _isMining
@@ -802,6 +970,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // BOOST
+  // ============================================================
+
   Widget _boostCard() {
     final limit = _ads >= 7;
 
@@ -869,14 +1041,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed:
                   limit || !_isMining || _busy
                       ? null
-                      : () {
-                          _message(
-                            _t(
-                              'rewarded_ad_not_connected',
-                              'Rewarded ads are not connected yet.',
-                            ),
-                          );
-                        },
+                      : _showBoostComingSoon,
               icon: const Icon(
                 Icons.ondemand_video_rounded,
               ),
@@ -902,6 +1067,19 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  void _showBoostComingSoon() {
+    _message(
+      _t(
+        'rewarded_ad_not_connected',
+        'Rewarded ads are not connected yet.',
+      ),
+    );
+  }
+
+  // ============================================================
+  // SOCIAL TASK SECTION
+  // ============================================================
 
   Widget _tasksSection() {
     return Column(
@@ -950,11 +1128,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _task(DailySocialTask task) {
+  Widget _task(
+    DailySocialTask task,
+  ) {
     return InkWell(
       onTap: task.claimed
           ? null
           : () => _openTask(task),
+      borderRadius:
+          BorderRadius.circular(19),
       child: _card(
         margin:
             const EdgeInsets.only(bottom: 9),
@@ -965,16 +1147,38 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(width: 11),
             Expanded(
-              child: Text(
-                task.title,
-                maxLines: 1,
-                overflow:
-                    TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (task.description
+                      .trim()
+                      .isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      task.description,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
+            const SizedBox(width: 8),
             Text(
               task.claimed
                   ? _t(
@@ -996,6 +1200,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // KYC
+  // ============================================================
 
   Widget _kycCard() {
     return _card(
@@ -1031,6 +1239,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // UI HELPERS
+  // ============================================================
 
   Widget _card({
     required Widget child,
@@ -1116,55 +1328,81 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  IconData _platformIcon(String platform) {
+  IconData _platformIcon(
+    String platform,
+  ) {
     switch (platform.toLowerCase()) {
       case 'facebook':
         return Icons.facebook_rounded;
+
       case 'telegram':
         return Icons.send_rounded;
+
       case 'instagram':
         return Icons.camera_alt_rounded;
+
       case 'youtube':
         return Icons.play_arrow_rounded;
+
       case 'tiktok':
         return Icons.music_note_rounded;
+
       case 'x':
       case 'twitter':
         return Icons.close_rounded;
+
       default:
         return Icons.public_rounded;
     }
   }
 
+  // ============================================================
+  // PROGRESS
+  // ============================================================
+
   double _progress() {
-    const total = 86400;
+    final total =
+        miningDuration.inSeconds;
 
     final elapsed =
-        total - _remaining.inSeconds;
+        _elapsed.inSeconds;
 
-    if (elapsed <= 0) return 0;
-    if (elapsed >= total) return 1;
+    if (elapsed <= 0) {
+      return 0;
+    }
+
+    if (elapsed >= total) {
+      return 1;
+    }
 
     return elapsed / total;
   }
 
-  String _format(Duration d) {
-    final h = d.inHours
+  // ============================================================
+  // FORMAT TIME
+  // ============================================================
+
+  String _format(Duration duration) {
+    final h = duration.inHours
         .toString()
         .padLeft(2, '0');
 
-    final m = d.inMinutes
+    final m = duration.inMinutes
         .remainder(60)
         .toString()
         .padLeft(2, '0');
 
-    final s = d.inSeconds
+    final s = duration.inSeconds
         .remainder(60)
         .toString()
         .padLeft(2, '0');
 
     return '$h:$m:$s';
   }
+
+  // ============================================================
+  // NUMBER HELPERS
+  // ============================================================
 
   double _num(dynamic value) {
     if (value is num) {
@@ -1178,7 +1416,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _int(dynamic value) {
-    if (value is int) return value;
+    if (value is int) {
+      return value;
+    }
 
     if (value is num) {
       return value.toInt();
@@ -1190,17 +1430,75 @@ class _HomeScreenState extends State<HomeScreen> {
         0;
   }
 
+  // ============================================================
+  // DATE HELPER
+  // ============================================================
+
   DateTime? _date(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
     if (value is DateTime) {
       return value.toLocal();
     }
 
-    if (value == null) return null;
+    if (value is num) {
+      return _timestamp(value);
+    }
 
-    return DateTime.tryParse(
-      value.toString(),
-    )?.toLocal();
+    final text =
+        value.toString().trim();
+
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final iso =
+        DateTime.tryParse(text);
+
+    if (iso != null) {
+      return iso.toLocal();
+    }
+
+    final numeric =
+        num.tryParse(text);
+
+    if (numeric != null) {
+      return _timestamp(numeric);
+    }
+
+    return null;
   }
+
+  DateTime? _timestamp(num value) {
+    try {
+      final timestamp = value.toInt();
+
+      if (timestamp.abs() >=
+          100000000000) {
+        return DateTime
+            .fromMillisecondsSinceEpoch(
+          timestamp,
+          isUtc: true,
+        )
+            .toLocal();
+      }
+
+      return DateTime
+          .fromMillisecondsSinceEpoch(
+        timestamp * 1000,
+        isUtc: true,
+      )
+          .toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ============================================================
+  // ERROR
+  // ============================================================
 
   String _error(Object error) {
     var text = error.toString();
@@ -1209,13 +1507,19 @@ class _HomeScreenState extends State<HomeScreen> {
       text = text.substring(11);
     }
 
-    return text.trim().isEmpty
-        ? _t(
-            'somethingWentWrong',
-            'Something went wrong',
-          )
-        : text.trim();
+    if (text.trim().isEmpty) {
+      return _t(
+        'somethingWentWrong',
+        'Something went wrong.',
+      );
+    }
+
+    return text.trim();
   }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void _message(String text) {
     if (!mounted) return;
