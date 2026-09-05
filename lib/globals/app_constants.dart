@@ -79,29 +79,59 @@ class AppConfig {
   // DAILY SOCIAL TASK
   // ============================================================
 
-  /// Daily social-media reward.
+  /// Social task reward.
   static const double dailySocialReward = 10.0;
 
   // ============================================================
   // KYC
   // ============================================================
 
-  /// KYC 1 requires 14 consecutive daily check-ins.
-  static const int kyc1Days = 14;
+  /// New KYC requirement:
+  /// User must complete 30 Daily Check-ins.
+  static const int kycRequiredCheckInDays = 30;
 
-  /// KYC 2 requires 60 consecutive daily check-ins.
-  static const int kyc2Days = 60;
+  /// New KYC requirement:
+  /// User must complete 30 Daily Boost days.
+  static const int kycRequiredBoostDays = 30;
 
-  /// KYC 2 requires 5 active referrals.
-  static const int kyc2Referrals = 5;
+  /// Face verification becomes available after both
+  /// requirements above are completed.
+  static const String kycVerificationMethod = 'Face Verification';
 
-  /// KYC 1 verification method.
-  static const String kyc1VerificationMethod = 'Face Verification';
+  /// ----------------------------------------------------------
+  /// BACKWARD-COMPATIBILITY ALIASES
+  /// ----------------------------------------------------------
+  ///
+  /// These names are kept so older files in the project do not
+  /// break compilation while the project is being cleaned up.
+  /// They now point to the NEW KYC rules.
+  ///
 
-  /// KYC 2 verification method.
-  static const String kyc2VerificationMethod = 'Face Verification';
+  /// Legacy KYC1 days name.
+  /// New rule = 30 Daily Check-ins.
+  static const int kyc1Days = kycRequiredCheckInDays;
 
-  /// Migration status.
+  /// Legacy KYC2 days name.
+  /// New rule = 30 Daily Boost days.
+  static const int kyc2Days = kycRequiredBoostDays;
+
+  /// Legacy referral requirement.
+  /// New KYC system does NOT require referrals.
+  static const int kyc2Referrals = 0;
+
+  /// Legacy KYC1 verification method.
+  static const String kyc1VerificationMethod =
+      kycVerificationMethod;
+
+  /// Legacy KYC2 verification method.
+  static const String kyc2VerificationMethod =
+      kycVerificationMethod;
+
+  // ============================================================
+  // MIGRATION
+  // ============================================================
+
+  /// FAN -> AFAM migration remains unavailable for now.
   static const String migrationStatus = 'COMING SOON';
 
   /// Planned migration period.
@@ -135,9 +165,13 @@ class AppConfig {
   // ============================================================
 
   static const String storageUserId = 'power_fan_user_id';
-  static const String storageReferralCode = 'power_fan_referral_code';
+
+  static const String storageReferralCode =
+      'power_fan_referral_code';
+
   static const String storageSelectedLanguage =
       'power_fan_selected_language';
+
   static const String storageNotificationsEnabled =
       'power_fan_notifications_enabled';
 
@@ -157,10 +191,11 @@ class AppConfig {
   /// Firebase Authentication is NOT used.
   static const bool firebaseAuthenticationEnabled = false;
 
-  /// Authentication is handled through the current account system.
+  /// Authentication is handled through Supabase.
   static const bool supabaseAuthenticationEnabled = true;
 
-  /// Custom JWT authentication is not used directly by the Flutter client.
+  /// Custom JWT authentication is not used directly by the
+  /// Flutter client.
   static const bool customJwt = false;
 
   // ============================================================
@@ -177,10 +212,13 @@ class AppConfig {
   static const String comingSoon = 'COMING SOON';
 
   static const String activeStatus = 'ACTIVE';
+
   static const String inactiveStatus = 'INACTIVE';
 
   static const String miningStatusActive = 'MINING';
+
   static const String miningStatusStopped = 'STOPPED';
+
   static const String miningStatusReady = 'READY';
 
   // ============================================================
@@ -208,71 +246,116 @@ class AppConfig {
   // ============================================================
   // APP LOVIN
   // ============================================================
+  //
+  // NOTE:
+  // AppLovin is NOT being used for the new Boost Ads system.
+  // These empty compatibility values are temporarily kept so
+  // older files do not break compilation.
+  // They will be removed after all AppLovin references are
+  // audited and the dependency is removed safely.
+  //
 
-  /// AppLovin SDK key.
-  ///
-  /// Keep this value empty until the real production SDK key is available.
   static const String appLovinSdkKey = '';
 
-  /// Rewarded ad unit ID.
-  ///
-  /// Keep this value empty until the real Android rewarded ad unit is available.
   static const String appLovinRewardedAdUnitId = '';
 
   // ============================================================
   // API / RPC NAMES
   // ============================================================
 
-  static const String rpcGetUserMiningRate = 'get_user_mining_rate';
-  static const String rpcStartMining = 'start_mining';
-  static const String rpcGetActiveMining = 'get_active_mining';
-  static const String rpcClaimMining = 'claim_mining';
-  static const String rpcRecordRewardedAd = 'record_rewarded_ad';
-  static const String rpcVerifyRewardedAd = 'verify_rewarded_ad';
-  static const String rpcDailyCheckin = 'daily_checkin';
+  static const String rpcGetUserMiningRate =
+      'get_user_mining_rate';
+
+  static const String rpcStartMining =
+      'start_mining';
+
+  static const String rpcGetActiveMining =
+      'get_active_mining';
+
+  static const String rpcClaimMining =
+      'claim_mining';
+
+  static const String rpcRecordRewardedAd =
+      'record_rewarded_ad';
+
+  static const String rpcVerifyRewardedAd =
+      'verify_rewarded_ad';
+
+  static const String rpcDailyCheckin =
+      'daily_checkin';
+
   static const String rpcCompleteDailySocialTask =
       'complete_daily_social_task';
-  static const String rpcGetDashboard = 'get_dashboard';
+
+  static const String rpcGetDashboard =
+      'get_dashboard';
 
   // ============================================================
   // UI LABELS
   // ============================================================
 
-  static const String fanBalanceLabel = 'FAN Balance';
-  static const String afamBalanceLabel = 'AFAM Balance';
+  static const String fanBalanceLabel =
+      'FAN Balance';
 
-  static const String startMiningLabel = 'START MINING';
-  static const String claimMiningLabel = 'CLAIM MINING';
+  static const String afamBalanceLabel =
+      'AFAM Balance';
 
-  static const String watchAdLabel = 'WATCH AD';
+  static const String startMiningLabel =
+      'START MINING';
+
+  static const String claimMiningLabel =
+      'CLAIM MINING';
+
+  static const String watchAdLabel =
+      'WATCH AD';
+
   static const String adsWatchedSessionLabel =
       'Ads watched this session';
 
-  static const String dailyCheckinLabel = 'DAILY CHECK-IN';
-  static const String dailySocialTaskLabel = 'DAILY SOCIAL TASK';
+  static const String dailyCheckinLabel =
+      'DAILY CHECK-IN';
 
-  static const String referralLabel = 'REFERRALS';
-  static const String activeReferralsLabel = 'Active Referrals';
+  static const String dailySocialTaskLabel =
+      'DAILY SOCIAL TASK';
 
-  static const String kycLabel = 'KYC';
-  static const String faceVerificationLabel = 'Face Verification';
+  static const String referralLabel =
+      'REFERRALS';
 
-  static const String walletLabel = 'WALLET';
-  static const String migrationLabel = 'MIGRATION';
+  static const String activeReferralsLabel =
+      'Active Referrals';
+
+  static const String kycLabel =
+      'KYC';
+
+  static const String faceVerificationLabel =
+      'Face Verification';
+
+  static const String walletLabel =
+      'WALLET';
+
+  static const String migrationLabel =
+      'MIGRATION';
 
   // ============================================================
   // DEFAULT VALUES
   // ============================================================
 
   static const double defaultFanBalance = 0.0;
+
   static const double defaultAfamBalance = 0.0;
 
   static const int defaultAdsWatched = 0;
+
   static const int defaultActiveReferrals = 0;
+
   static const int defaultCheckInDays = 0;
 
   static const bool defaultMiningActive = false;
+
   static const bool defaultFaceVerified = false;
+
+  // Legacy compatibility values.
   static const bool defaultKyc1Verified = false;
+
   static const bool defaultKyc2Eligible = false;
 }
