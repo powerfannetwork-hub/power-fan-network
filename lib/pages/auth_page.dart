@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../localization/app_localizations.dart';
 import 'login_page.dart';
 
 class AuthPage extends StatefulWidget {
