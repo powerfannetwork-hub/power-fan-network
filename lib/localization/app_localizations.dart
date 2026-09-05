@@ -2148,7 +2148,7 @@ class AppLocalizations {
           'Iklan berhadiah belum terhubung.',
     },
   };
-    static const List<Map<String, String>> languages = [
+    static const List<LanguageOption> languages =  [
     {'code': 'en', 'name': 'English'},
     {'code': 'zh', 'name': '中文'},
     {'code': 'es', 'name': 'Español'},
