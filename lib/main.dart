@@ -27,6 +27,9 @@ Future<void> main() async {
     ),
   );
 
+  // Load the language saved on the device.
+  await LanguageController.instance.loadSavedLanguage();
+
   runApp(const PowerFanApp());
 }
 
@@ -58,7 +61,6 @@ class _PowerFanMaterialApp extends StatelessWidget {
       builder: (context, languageController, _) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-
           title: 'POWER FAN NETWORK',
 
           locale: languageController.locale,
@@ -97,19 +99,23 @@ class _PowerFanMaterialApp extends StatelessWidget {
               centerTitle: false,
             ),
 
-            inputDecorationTheme: InputDecorationTheme(
+            inputDecorationTheme:
+                InputDecorationTheme(
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius:
+                    BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius:
+                    BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius:
+                    BorderRadius.circular(14),
                 borderSide: const BorderSide(
                   color: Color(0xFF3B159B),
                   width: 1.5,
@@ -121,7 +127,8 @@ class _PowerFanMaterialApp extends StatelessWidget {
               elevation: 0,
               color: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius:
+                    BorderRadius.circular(18),
               ),
             ),
           ),
@@ -129,7 +136,8 @@ class _PowerFanMaterialApp extends StatelessWidget {
           home: const AppRoot(),
 
           routes: {
-            '/home': (_) => const MainNavigationScreen(),
+            '/home': (_) =>
+                const MainNavigationScreen(),
             '/auth': (_) => const AuthPage(),
           },
         );
@@ -146,29 +154,35 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  StreamSubscription<AuthState>? _authSubscription;
+  StreamSubscription<AuthState>?
+      _authSubscription;
 
   @override
   void initState() {
     super.initState();
 
-    _authSubscription =
-        Supabase.instance.client.auth.onAuthStateChange.listen(
+    _authSubscription = Supabase
+        .instance.client.auth.onAuthStateChange
+        .listen(
       (AuthState state) {
         if (!mounted) return;
 
-        if (state.event == AuthChangeEvent.signedIn ||
-            state.event == AuthChangeEvent.tokenRefreshed) {
+        if (state.event ==
+                AuthChangeEvent.signedIn ||
+            state.event ==
+                AuthChangeEvent.tokenRefreshed) {
           _loadUserData();
         }
 
-        if (state.event == AuthChangeEvent.signedOut) {
+        if (state.event ==
+            AuthChangeEvent.signedOut) {
           setState(() {});
         }
       },
     );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) {
       _loadUserData();
     });
   }
@@ -176,8 +190,8 @@ class _AppRootState extends State<AppRoot> {
   Future<void> _loadUserData() async {
     if (!mounted) return;
 
-    final session =
-        Supabase.instance.client.auth.currentSession;
+    final session = Supabase
+        .instance.client.auth.currentSession;
 
     if (session == null) {
       setState(() {});
@@ -187,7 +201,8 @@ class _AppRootState extends State<AppRoot> {
     try {
       await context.read<AppState>().refresh();
     } catch (_) {
-      // Session may still be valid if network is temporarily unavailable.
+      // Keep the current session if the network
+      // is temporarily unavailable.
     }
 
     if (mounted) {
@@ -203,8 +218,8 @@ class _AppRootState extends State<AppRoot> {
 
   @override
   Widget build(BuildContext context) {
-    final session =
-        Supabase.instance.client.auth.currentSession;
+    final session = Supabase
+        .instance.client.auth.currentSession;
 
     if (session == null) {
       return const AuthPage();
