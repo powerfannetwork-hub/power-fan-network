@@ -209,7 +209,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   Widget _buildStatsCard() {
     final activeReferrals = _referralInfo?.activeReferrals ?? 0;
-    final earnings = _referralInfo?.earnings ?? 0;
+
+    // ReferralInfo uses totalInviterRewards for the referrer's FAN earnings.
+    final earnings = _referralInfo?.totalInviterRewards ?? 0;
 
     return _card(
       child: Column(
