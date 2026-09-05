@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../components/boost_ads_card.dart';
 import '../localization/app_localizations.dart';
+import '../pages/kyc_page.dart';
+import '../services/kyc_service.dart';
 import '../services/mining_service.dart';
 import '../services/social_task_service.dart';
 
@@ -22,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
+  final KycService _kyc = KycService();
 
   Timer? _timer;
 
@@ -41,6 +44,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _elapsed = Duration.zero;
 
   List<DailySocialTask> _tasks = [];
+
+  KycStatus _kycStatus = KycStatus.initial();
 
   @override
   void initState() {
@@ -83,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _loadProfile(),
         _loadMining(),
         _loadTasks(),
+        _loadKyc(),
       ]);
     } catch (e) {
       _message(_error(e));
@@ -108,6 +114,44 @@ class _HomeScreenState extends State<HomeScreen> {
       _fan = _num(data['fan_balance']);
       _afam = _num(data['afam_balance']);
     });
+  }
+
+  // ============================================================
+  // KYC
+  // ============================================================
+
+  Future<void> _loadKyc() async {
+    try {
+      final status = await _kyc.getStatus();
+
+      if (!mounted) return;
+
+      setState(() {
+        _kycStatus = status;
+      });
+    } catch (_) {
+      /*
+       * KYC should not stop the HomeScreen from loading.
+       *
+       * If the KYC RPC has a temporary network/session problem,
+       * keep the last known status instead of breaking the whole
+       * HomeScreen.
+       */
+    }
+  }
+
+  Future<void> _openKyc() async {
+    if (_busy) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const KycPage(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadKyc();
   }
 
   // ============================================================
@@ -226,7 +270,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
           _finishMiningLocally();
 
-          // Refresh from Supabase so server remains authoritative.
           _refreshMiningAfterEnd();
 
           return;
@@ -273,6 +316,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         _elapsed = elapsed;
       }
+    } else {
+      _elapsed = Duration.zero;
     }
   }
 
@@ -514,14 +559,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ------------------------------------------------------------
-  // OPEN SOCIAL TASK
-  //
-  // IMPORTANT:
-  // Opening the post NEVER claims the reward.
-  // User must return and press VERIFY & CLAIM.
-  // ------------------------------------------------------------
-
   Future<void> _openTask(
     DailySocialTask task,
   ) async {
@@ -579,14 +616,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      /*
-       * IMPORTANT FIX:
-       *
-       * Release _busy BEFORE opening the dialog.
-       *
-       * Otherwise _verifySocialTask() sees _busy == true
-       * and refuses to run.
-       */
       setState(() {
         _busy = false;
       });
@@ -615,10 +644,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return fallback;
   }
-
-  // ------------------------------------------------------------
-  // SOCIAL TASK VERIFY DIALOG
-  // ------------------------------------------------------------
 
   Future<void> _showSocialTaskDialog(
     DailySocialTask task,
@@ -653,10 +678,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Colors.grey,
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
-                // LIKE is required by the new social-post system.
                 _verificationRow(
                   _t(
                     'like_required',
@@ -664,8 +686,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   task.likeVerified,
                 ),
-
-                // COMMENT is required by the new social-post system.
                 _verificationRow(
                   _t(
                     'comment_required',
@@ -673,8 +693,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   task.commentVerified,
                 ),
-
-                // SHARE is required by the new social-post system.
                 _verificationRow(
                   _t(
                     'share_required',
@@ -682,8 +700,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   task.shareVerified,
                 ),
-
-                // FOLLOW is only shown when the task requires it.
                 if (task.requiresFollow)
                   _verificationRow(
                     _t(
@@ -692,9 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     task.followVerified,
                   ),
-
                 const SizedBox(height: 10),
-
                 if (task.canClaim)
                   _verificationRow(
                     _t(
@@ -703,9 +717,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     true,
                   ),
-
                 const SizedBox(height: 12),
-
                 Text(
                   '+${task.rewardFan.toStringAsFixed(0)} FAN',
                   style: const TextStyle(
@@ -754,13 +766,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ------------------------------------------------------------
-  // SOCIAL TASK VERIFICATION / CLAIM
-  //
-  // The server is authoritative.
-  // No FAN is added locally.
-  // ------------------------------------------------------------
-
   Future<void> _verifySocialTask(
     String taskId,
   ) async {
@@ -771,11 +776,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      /*
-       * Always refresh first.
-       *
-       * This prevents stale task state from being used.
-       */
       await _loadTasks();
 
       if (!mounted) return;
@@ -802,15 +802,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      /*
-       * We intentionally do NOT add FAN locally.
-       *
-       * claim_daily_social_reward() performs the authoritative
-       * server-side verification and reward credit.
-       *
-       * If trusted verification has not happened yet, the RPC
-       * returns failure and no FAN is credited.
-       */
       final claim = await _social.verifyAndClaim(
         taskId: taskId,
       );
@@ -1315,21 +1306,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _onRewardedAdCompleted() async {
     if (!mounted) return;
 
-    /*
-     * IMPORTANT:
-     *
-     * HomeScreen does NOT award FAN locally.
-     *
-     * When the real rewarded-ad provider is connected,
-     * BoostAdsCard must call this callback only after the
-     * provider confirms a completed rewarded ad.
-     *
-     * The actual +0.1 FAN/H reward must then be verified
-     * server-side with a unique ad event/reward reference.
-     *
-     * No ad IDs, account IDs, or fake rewards are placed here.
-     */
-
     if (!_isMining) {
       _message(
         _t(
@@ -1341,22 +1317,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      /*
-       * Refresh only.
-       *
-       * The server remains the source of truth for:
-       * - mining rate
-       * - ad count
-       * - reward
-       * - mining session
-       */
       await Future.wait([
         _loadProfile(),
         _loadMining(),
       ]);
-    } catch (_) {
-      // Do not show a false reward if refresh fails.
-    }
+    } catch (_) {}
 
     if (!mounted) return;
 
@@ -1534,41 +1499,238 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _kycCard() {
-    return _card(
-      child: Row(
-        children: [
-          _circleIcon(
-            Icons.shield_rounded,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _t(
-                'kyc_verification',
-                'KYC Verification',
+    final checkInDays =
+        _kycStatus.checkInDays.clamp(0, 30);
+
+    final boostDays =
+        _kycStatus.boostDays.clamp(0, 30);
+
+    final faceVerified =
+        _kycStatus.faceVerified;
+
+    final requirementsComplete =
+        _kycStatus.requirementsComplete;
+
+    final faceUnlocked =
+        _kycStatus.faceVerificationUnlocked;
+
+    String statusText;
+    Color statusColor;
+    IconData statusIcon;
+
+    if (faceVerified) {
+      statusText = _t(
+        'verified',
+        'VERIFIED',
+      );
+      statusColor = Colors.green;
+      statusIcon = Icons.verified_rounded;
+    } else if (requirementsComplete ||
+        faceUnlocked) {
+      statusText = _t(
+        'kyc_ready',
+        'KYC READY',
+      );
+      statusColor = primaryPurple;
+      statusIcon = Icons.lock_open_rounded;
+    } else {
+      statusText =
+          '$checkInDays/30 • $boostDays/30';
+      statusColor = Colors.orange.shade800;
+      statusIcon = Icons.hourglass_top_rounded;
+    }
+
+    return InkWell(
+      onTap: _busy ? null : _openKyc,
+      borderRadius:
+          BorderRadius.circular(19),
+      child: _card(
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _circleIcon(
+                  statusIcon,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _t(
+                          'kyc_verification',
+                          'KYC Verification',
+                        ),
+                        style:
+                            const TextStyle(
+                          fontWeight:
+                              FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        faceVerified
+                            ? _t(
+                                'kyc_verified_message',
+                                'Your KYC verification is complete.',
+                              )
+                            : requirementsComplete
+                                ? _t(
+                                    'kyc_face_ready_message',
+                                    'Your 30-day requirements are complete. Face verification is ready.',
+                                  )
+                                : _t(
+                                    'kyc_progress_message',
+                                    'Complete 30 Check-in days and 30 Boost days.',
+                                  ),
+                        style:
+                            const TextStyle(
+                          fontSize: 11,
+                          color:
+                              Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight:
+                        FontWeight.w900,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+
+            if (!faceVerified) ...[
+              const SizedBox(height: 17),
+
+              _kycProgressRow(
+                label: _t(
+                  'daily_checkin',
+                  'Daily Check-in',
+                ),
+                current: checkInDays,
+                total: 30,
               ),
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.w800,
+
+              const SizedBox(height: 12),
+
+              _kycProgressRow(
+                label: _t(
+                  'daily_boost',
+                  'Daily Boost',
+                ),
+                current: boostDays,
+                total: 30,
+              ),
+            ],
+
+            const SizedBox(height: 14),
+
+            SizedBox(
+              width: double.infinity,
+              child: Text(
+                faceVerified
+                    ? _t(
+                        'open_kyc',
+                        'OPEN KYC',
+                      )
+                    : requirementsComplete
+                        ? _t(
+                            'start_face_verification',
+                            'START FACE VERIFICATION',
+                          )
+                        : _t(
+                            'view_kyc_progress',
+                            'VIEW KYC PROGRESS',
+                          ),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: primaryPurple,
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w900,
+                ),
               ),
             ),
-          ),
-          Text(
-            _t(
-              'coming_soon',
-              'COMING SOON',
-            ),
-            style:
-                const TextStyle(
-              color: primaryPurple,
-              fontWeight:
-                  FontWeight.w800,
-              fontSize: 10,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _kycProgressRow({
+    required String label,
+    required int current,
+    required int total,
+  }) {
+    final safeCurrent =
+        current.clamp(0, total);
+
+    final progress =
+        total <= 0
+            ? 0.0
+            : safeCurrent / total;
+
+    final complete =
+        safeCurrent >= total;
+
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              '$safeCurrent/$total',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight:
+                    FontWeight.w900,
+                color: complete
+                    ? Colors.green
+                    : primaryPurple,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius:
+              BorderRadius.circular(10),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 7,
+            backgroundColor:
+                const Color(0xFFEDEAF7),
+            valueColor:
+                AlwaysStoppedAnimation<Color>(
+              complete
+                  ? Colors.green
+                  : primaryPurple,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1670,23 +1832,17 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (platform.toLowerCase()) {
       case 'facebook':
         return Icons.facebook_rounded;
-
       case 'telegram':
         return Icons.send_rounded;
-
       case 'instagram':
         return Icons.camera_alt_rounded;
-
       case 'youtube':
         return Icons.play_arrow_rounded;
-
       case 'tiktok':
         return Icons.music_note_rounded;
-
       case 'x':
       case 'twitter':
         return Icons.close_rounded;
-
       default:
         return Icons.public_rounded;
     }
