@@ -28,7 +28,6 @@ Future<void> main() async {
     ),
   );
 
-  // Load the language saved on the device.
   await LanguageController.instance.loadSavedLanguage();
 
   runApp(const PowerFanApp());
@@ -78,7 +77,6 @@ class _PowerFanMaterialApp extends StatelessWidget {
 
           theme: ThemeData(
             useMaterial3: true,
-
             scaffoldBackgroundColor:
                 const Color(0xFFF8F8FC),
 
@@ -120,7 +118,7 @@ class _PowerFanMaterialApp extends StatelessWidget {
               ),
             ),
 
-            cardTheme: CardThemeData(
+            cardTheme: CardTheme(
               elevation: 0,
               color: Colors.white,
               shape: RoundedRectangleBorder(
