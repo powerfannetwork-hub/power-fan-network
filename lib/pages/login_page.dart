@@ -47,7 +47,8 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      final session = Supabase.instance.client.auth.currentSession;
+      final session =
+          Supabase.instance.client.auth.currentSession;
 
       if (session == null) {
         throw Exception('Login failed. Please try again.');
@@ -96,7 +97,8 @@ class _LoginPageState extends State<LoginPage> {
             padding: const EdgeInsets.only(bottom: 16),
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+                padding:
+                    const EdgeInsets.fromLTRB(24, 8, 24, 12),
                 child: Text(
                   localization.translate('selectLanguage'),
                   style: const TextStyle(
@@ -154,6 +156,14 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  void _openRegisterPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const _RegisterPage(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -162,11 +172,13 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: const Color(0xFFF8F8FC),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          padding:
+              const EdgeInsets.fromLTRB(24, 20, 24, 32),
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment:
+                  CrossAxisAlignment.stretch,
               children: [
                 Align(
                   alignment: Alignment.topRight,
@@ -174,28 +186,31 @@ class _LoginPageState extends State<LoginPage> {
                     onPressed: _loading
                         ? null
                         : _showLanguageSelector,
-                    icon: const Icon(Icons.language, size: 20),
-                    label: Text(t.translate('language')),
+                    icon:
+                        const Icon(Icons.language, size: 20),
+                    label:
+                        Text(t.translate('language')),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF3B159B),
+                      foregroundColor:
+                          const Color(0xFF3B159B),
                       side: const BorderSide(
                         color: Color(0xFF3B159B),
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(12),
                       ),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 34),
-
                 Container(
                   width: 82,
                   height: 82,
                   decoration: BoxDecoration(
                     color: const Color(0xFF3B159B),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius:
+                        BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFF3B159B)
@@ -217,9 +232,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 22),
-
                 Text(
                   t.translate('brandName'),
                   style: const TextStyle(
@@ -228,9 +241,7 @@ class _LoginPageState extends State<LoginPage> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-
                 const SizedBox(height: 6),
-
                 Text(
                   t.translate('powerFanNetwork'),
                   style: TextStyle(
@@ -239,9 +250,7 @@ class _LoginPageState extends State<LoginPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-
                 const SizedBox(height: 42),
-
                 Text(
                   t.translate('welcomeBack'),
                   style: const TextStyle(
@@ -250,9 +259,7 @@ class _LoginPageState extends State<LoginPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
                 Text(
                   t.translate('loginToContinue'),
                   style: TextStyle(
@@ -260,27 +267,26 @@ class _LoginPageState extends State<LoginPage> {
                     fontSize: 15,
                   ),
                 ),
-
                 const SizedBox(height: 28),
-
                 TextFormField(
                   controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
+                  keyboardType:
+                      TextInputType.emailAddress,
+                  textInputAction:
+                      TextInputAction.next,
                   enabled: !_loading,
                   decoration: InputDecoration(
                     labelText: t.translate('email'),
-                    hintText: t.translate('enterEmail'),
-                    prefixIcon: const Icon(Icons.email_outlined),
+                    hintText:
+                        t.translate('enterEmail'),
+                    prefixIcon:
+                        const Icon(Icons.email_outlined),
                   ),
                   validator: (value) {
                     final email = value?.trim() ?? '';
 
-                    if (email.isEmpty) {
-                      return t.translate('invalidEmail');
-                    }
-
-                    if (!email.contains('@') ||
+                    if (email.isEmpty ||
+                        !email.contains('@') ||
                         !email.contains('.')) {
                       return t.translate('invalidEmail');
                     }
@@ -288,23 +294,26 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-
                 const SizedBox(height: 16),
-
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
+                  textInputAction:
+                      TextInputAction.done,
                   enabled: !_loading,
                   onFieldSubmitted: (_) => _login(),
                   decoration: InputDecoration(
-                    labelText: t.translate('password'),
-                    hintText: t.translate('enterPassword'),
-                    prefixIcon: const Icon(Icons.lock_outline),
+                    labelText:
+                        t.translate('password'),
+                    hintText:
+                        t.translate('enterPassword'),
+                    prefixIcon:
+                        const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
                       onPressed: () {
                         setState(() {
-                          _obscurePassword = !_obscurePassword;
+                          _obscurePassword =
+                              !_obscurePassword;
                         });
                       },
                       icon: Icon(
@@ -316,98 +325,107 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   validator: (value) {
                     if ((value ?? '').length < 6) {
-                      return t.translate('invalidPassword');
+                      return t.translate(
+                        'invalidPassword',
+                      );
                     }
 
                     return null;
                   },
                 ),
-
                 const SizedBox(height: 12),
-
                 Align(
-                  alignment: Alignment.centerRight,
+                  alignment:
+                      Alignment.centerRight,
                   child: TextButton(
-                    onPressed: _loading ? null : _resetPassword,
+                    onPressed:
+                        _loading ? null : _resetPassword,
                     child: Text(
                       t.translate('forgotPassword'),
                       style: const TextStyle(
                         color: Color(0xFF3B159B),
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 SizedBox(
                   height: 54,
                   child: FilledButton(
-                    onPressed: _loading ? null : _login,
+                    onPressed:
+                        _loading ? null : _login,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF3B159B),
+                      backgroundColor:
+                          const Color(0xFF3B159B),
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
+                        borderRadius:
+                            BorderRadius.circular(15),
                       ),
                     ),
                     child: _loading
                         ? const SizedBox(
                             width: 23,
                             height: 23,
-                            child: CircularProgressIndicator(
+                            child:
+                                CircularProgressIndicator(
                               strokeWidth: 2.5,
                               color: Colors.white,
                             ),
                           )
                         : Text(
                             t.translate('signIn'),
-                            style: const TextStyle(
+                            style:
+                                const TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                   ),
                 ),
-
                 const SizedBox(height: 22),
-
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment:
+                      MainAxisAlignment.center,
                   children: [
                     Text(
-                      t.translate('dontHaveAccount'),
+                      t.translate(
+                        'dontHaveAccount',
+                      ),
                       style: TextStyle(
-                        color: Colors.grey.shade700,
+                        color:
+                            Colors.grey.shade700,
                       ),
                     ),
                     TextButton(
                       onPressed: _loading
                           ? null
-                          : () {
-                              Navigator.of(context).pop();
-                            },
+                          : _openRegisterPage,
                       child: Text(
                         t.translate('register'),
-                        style: const TextStyle(
-                          color: Color(0xFF3B159B),
-                          fontWeight: FontWeight.bold,
+                        style:
+                            const TextStyle(
+                          color:
+                              Color(0xFF3B159B),
+                          fontWeight:
+                              FontWeight.bold,
                         ),
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 20),
-
                 Text(
                   'POWER FAN NETWORK',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.grey.shade500,
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight:
+                        FontWeight.w600,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -426,9 +444,11 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            AppLocalizations.of(context).translate('invalidEmail'),
+            AppLocalizations.of(context)
+                .translate('invalidEmail'),
           ),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
       return;
@@ -445,7 +465,8 @@ class _LoginPageState extends State<LoginPage> {
             AppLocalizations.of(context)
                 .translate('operationSuccessful'),
           ),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
@@ -460,9 +481,504 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// REGISTER PAGE
+// -----------------------------------------------------------------------------
+
+class _RegisterPage extends StatefulWidget {
+  const _RegisterPage();
+
+  @override
+  State<_RegisterPage> createState() =>
+      _RegisterPageState();
+}
+
+class _RegisterPageState
+    extends State<_RegisterPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  final _usernameController =
+      TextEditingController();
+  final _emailController =
+      TextEditingController();
+  final _passwordController =
+      TextEditingController();
+  final _confirmPasswordController =
+      TextEditingController();
+  final _referralController =
+      TextEditingController();
+
+  bool _loading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _referralController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _register() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    setState(() => _loading = true);
+
+    try {
+      await AuthService.instance.register(
+        username: _usernameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        referralCode:
+            _referralController.text.trim().isEmpty
+                ? null
+                : _referralController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      final session =
+          Supabase.instance.client.auth.currentSession;
+
+      if (session == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).translate(
+                'operationSuccessful',
+              ),
+            ),
+            behavior:
+                SnackBarBehavior.floating,
+          ),
+        );
+
+        Navigator.of(context).pop();
+        return;
+      }
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) =>
+              const MainNavigationScreen(),
+        ),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      String message = e.toString();
+
+      if (message.startsWith('Exception: ')) {
+        message = message.substring(11);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior:
+              SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+
+    return Scaffold(
+      backgroundColor:
+          const Color(0xFFF8F8FC),
+      appBar: AppBar(
+        backgroundColor:
+            const Color(0xFFF8F8FC),
+        elevation: 0,
+        foregroundColor:
+            const Color(0xFF241064),
+        title: Text(
+          t.translate('register'),
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding:
+              const EdgeInsets.fromLTRB(
+            24,
+            10,
+            24,
+            30,
+          ),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 76,
+                  height: 76,
+                  alignment:
+                      Alignment.center,
+                  decoration: BoxDecoration(
+                    color:
+                        const Color(0xFF3B159B),
+                    borderRadius:
+                        BorderRadius.circular(22),
+                  ),
+                  child: const Text(
+                    'PF',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  t.translate(
+                    'createAccount',
+                  ),
+                  style: const TextStyle(
+                    color:
+                        Color(0xFF241064),
+                    fontSize: 28,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  t.translate(
+                    'joinPowerFanNetwork',
+                  ),
+                  style: TextStyle(
+                    color:
+                        Colors.grey.shade600,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                TextFormField(
+                  controller:
+                      _usernameController,
+                  enabled: !_loading,
+                  textInputAction:
+                      TextInputAction.next,
+                  decoration:
+                      InputDecoration(
+                    labelText:
+                        t.translate(
+                      'username',
+                    ),
+                    hintText:
+                        t.translate(
+                      'enterUsername',
+                    ),
+                    prefixIcon:
+                        const Icon(
+                      Icons.person_outline,
+                    ),
+                  ),
+                  validator: (value) {
+                    final username =
+                        value?.trim() ?? '';
+
+                    if (username.length < 3) {
+                      return t.translate(
+                        'invalidUsername',
+                      );
+                    }
+
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller:
+                      _emailController,
+                  enabled: !_loading,
+                  keyboardType:
+                      TextInputType
+                          .emailAddress,
+                  textInputAction:
+                      TextInputAction.next,
+                  decoration:
+                      InputDecoration(
+                    labelText:
+                        t.translate(
+                      'email',
+                    ),
+                    hintText:
+                        t.translate(
+                      'enterEmail',
+                    ),
+                    prefixIcon:
+                        const Icon(
+                      Icons.email_outlined,
+                    ),
+                  ),
+                  validator: (value) {
+                    final email =
+                        value?.trim() ?? '';
+
+                    if (email.isEmpty ||
+                        !email.contains('@') ||
+                        !email.contains('.')) {
+                      return t.translate(
+                        'invalidEmail',
+                      );
+                    }
+
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller:
+                      _passwordController,
+                  enabled: !_loading,
+                  obscureText:
+                      _obscurePassword,
+                  textInputAction:
+                      TextInputAction.next,
+                  decoration:
+                      InputDecoration(
+                    labelText:
+                        t.translate(
+                      'password',
+                    ),
+                    hintText:
+                        t.translate(
+                      'enterPassword',
+                    ),
+                    prefixIcon:
+                        const Icon(
+                      Icons.lock_outline,
+                    ),
+                    suffixIcon:
+                        IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword =
+                              !_obscurePassword;
+                        });
+                      },
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons
+                                .visibility_outlined
+                            : Icons
+                                .visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                  validator: (value) {
+                    if ((value ?? '').length <
+                        6) {
+                      return t.translate(
+                        'invalidPassword',
+                      );
+                    }
+
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller:
+                      _confirmPasswordController,
+                  enabled: !_loading,
+                  obscureText:
+                      _obscureConfirmPassword,
+                  textInputAction:
+                      TextInputAction.next,
+                  decoration:
+                      InputDecoration(
+                    labelText:
+                        t.translate(
+                      'confirmPassword',
+                    ),
+                    prefixIcon:
+                        const Icon(
+                      Icons.lock_reset_outlined,
+                    ),
+                    suffixIcon:
+                        IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _obscureConfirmPassword =
+                              !_obscureConfirmPassword;
+                        });
+                      },
+                      icon: Icon(
+                        _obscureConfirmPassword
+                            ? Icons
+                                .visibility_outlined
+                            : Icons
+                                .visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value !=
+                        _passwordController.text) {
+                      return t.translate(
+                        'passwordsDoNotMatch',
+                      );
+                    }
+
+                    return null;
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller:
+                      _referralController,
+                  enabled: !_loading,
+                  textInputAction:
+                      TextInputAction.done,
+                  decoration:
+                      InputDecoration(
+                    labelText:
+                        t.translate(
+                      'referralCodeOptional',
+                    ),
+                    hintText:
+                        t.translate(
+                      'enterReferralCode',
+                    ),
+                    prefixIcon:
+                        const Icon(
+                      Icons.people_outline,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 26),
+
+                SizedBox(
+                  height: 54,
+                  child: FilledButton(
+                    onPressed:
+                        _loading
+                            ? null
+                            : _register,
+                    style:
+                        FilledButton.styleFrom(
+                      backgroundColor:
+                          const Color(
+                        0xFF3B159B,
+                      ),
+                      foregroundColor:
+                          Colors.white,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          15,
+                        ),
+                      ),
+                    ),
+                    child: _loading
+                        ? const SizedBox(
+                            width: 23,
+                            height: 23,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color:
+                                  Colors.white,
+                            ),
+                          )
+                        : Text(
+                            t.translate(
+                              'signUp',
+                            ),
+                            style:
+                                const TextStyle(
+                              fontSize: 16,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      t.translate(
+                        'alreadyHaveAccount',
+                      ),
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade700,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              Navigator.of(
+                                context,
+                              ).pop();
+                            },
+                      child: Text(
+                        t.translate('signIn'),
+                        style:
+                            const TextStyle(
+                          color:
+                              Color(0xFF3B159B),
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
