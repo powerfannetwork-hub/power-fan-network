@@ -8,6 +8,9 @@ class MiningService {
 
   final SupabaseClient _client = SupabaseService.client;
 
+  static const int miningDurationSeconds = 86400;
+  static const double defaultMiningRate = 0.20;
+
   String get _userId {
     final user = _client.auth.currentUser;
 
@@ -45,14 +48,7 @@ class MiningService {
       );
 
       if (result == null) {
-        return {
-          'active': false,
-          'expired': false,
-          'claimable': false,
-          'remaining_seconds': 0,
-          'elapsed_seconds': 0,
-          'ads_watched': 0,
-        };
+        return _emptyMining();
       }
 
       if (result is Map) {
@@ -65,15 +61,19 @@ class MiningService {
         return Map<String, dynamic>.from(result.first);
       }
 
-      return {
-        'active': false,
-        'expired': false,
-        'claimable': false,
-        'remaining_seconds': 0,
-        'elapsed_seconds': 0,
-        'ads_watched': 0,
-      };
+      return _emptyMining();
     });
+  }
+
+  Map<String, dynamic> _emptyMining() {
+    return {
+      'active': false,
+      'expired': false,
+      'claimable': false,
+      'remaining_seconds': 0,
+      'elapsed_seconds': 0,
+      'ads_watched': 0,
+    };
   }
 
   // ============================================================
@@ -89,7 +89,7 @@ class MiningService {
       final rate = _toDouble(result);
 
       if (rate <= 0) {
-        return 0.20;
+        return defaultMiningRate;
       }
 
       return double.parse(
@@ -160,9 +160,6 @@ class MiningService {
 
   // ============================================================
   // RECORD REWARDED AD
-  //
-  // This creates the ad record and returns ad_id.
-  // It does NOT verify the ad yet.
   // ============================================================
 
   Future<Map<String, dynamic>> recordRewardedAd({
@@ -198,8 +195,6 @@ class MiningService {
 
   // ============================================================
   // VERIFY REWARDED AD
-  //
-  // Must receive the ad_id returned by recordRewardedAd().
   // ============================================================
 
   Future<Map<String, dynamic>> verifyRewardedAd(
@@ -239,10 +234,6 @@ class MiningService {
 
   // ============================================================
   // WATCH + VERIFY
-  //
-  // This helper is useful for the development/test flow.
-  // Production AppLovin flow should call record first,
-  // then verify ONLY after the rewarded ad is actually completed.
   // ============================================================
 
   Future<Map<String, dynamic>> recordAndVerifyRewardedAd({
@@ -282,9 +273,7 @@ class MiningService {
         activeMining['ads_count'] ??
         0;
 
-    final count = _toInt(value);
-
-    return count.clamp(0, 7);
+    return _toInt(value).clamp(0, 7);
   }
 
   // ============================================================
@@ -310,10 +299,7 @@ class MiningService {
   Future<bool> isClaimable() async {
     final activeMining = await getActiveMining();
 
-    final claimable =
-        activeMining['claimable'] ?? false;
-
-    return claimable == true;
+    return activeMining['claimable'] == true;
   }
 
   // ============================================================
@@ -323,10 +309,7 @@ class MiningService {
   Future<bool> isExpired() async {
     final activeMining = await getActiveMining();
 
-    final expired =
-        activeMining['expired'] ?? false;
-
-    return expired == true;
+    return activeMining['expired'] == true;
   }
 
   // ============================================================
@@ -336,11 +319,12 @@ class MiningService {
   Future<DateTime?> getMiningEndsAt() async {
     final activeMining = await getActiveMining();
 
-    return _parseDateTime(
-      activeMining['ends_at'] ??
-          activeMining['end_time'] ??
-          activeMining['expires_at'],
-    );
+    final value =
+        activeMining['ends_at'] ??
+        activeMining['end_time'] ??
+        activeMining['expires_at'];
+
+    return _parseDateTime(value);
   }
 
   // ============================================================
@@ -350,10 +334,11 @@ class MiningService {
   Future<DateTime?> getMiningStartedAt() async {
     final activeMining = await getActiveMining();
 
-    return _parseDateTime(
-      activeMining['started_at'] ??
-          activeMining['start_time'],
-    );
+    final value =
+        activeMining['started_at'] ??
+        activeMining['start_time'];
+
+    return _parseDateTime(value);
   }
 
   // ============================================================
@@ -374,21 +359,39 @@ class MiningService {
     }
 
     final endsAt = _parseDateTime(
-      activeMining['ends_at'],
+      activeMining['ends_at'] ??
+          activeMining['end_time'] ??
+          activeMining['expires_at'],
     );
 
     if (endsAt == null) {
-      return Duration.zero;
+      final startedAt = _parseDateTime(
+        activeMining['started_at'] ??
+            activeMining['start_time'],
+      );
+
+      if (startedAt == null) {
+        return Duration.zero;
+      }
+
+      final calculatedEnd = startedAt.add(
+        const Duration(seconds: miningDurationSeconds),
+      );
+
+      final remaining =
+          calculatedEnd.difference(DateTime.now());
+
+      return remaining.isNegative
+          ? Duration.zero
+          : remaining;
     }
 
     final remaining =
         endsAt.difference(DateTime.now());
 
-    if (remaining.isNegative) {
-      return Duration.zero;
-    }
-
-    return remaining;
+    return remaining.isNegative
+        ? Duration.zero
+        : remaining;
   }
 
   // ============================================================
@@ -404,15 +407,45 @@ class MiningService {
 
     if (elapsedSeconds > 0) {
       return Duration(
-        seconds: elapsedSeconds,
+        seconds: elapsedSeconds.clamp(
+          0,
+          miningDurationSeconds,
+        ),
       );
     }
 
     final startedAt = _parseDateTime(
-      activeMining['started_at'],
+      activeMining['started_at'] ??
+          activeMining['start_time'],
     );
 
     if (startedAt == null) {
+      final endsAt = _parseDateTime(
+        activeMining['ends_at'] ??
+            activeMining['end_time'] ??
+            activeMining['expires_at'],
+      );
+
+      if (endsAt != null) {
+        final calculatedStart = endsAt.subtract(
+          const Duration(seconds: miningDurationSeconds),
+        );
+
+        final elapsed =
+            DateTime.now().difference(calculatedStart);
+
+        if (elapsed.isNegative) {
+          return Duration.zero;
+        }
+
+        return Duration(
+          seconds: elapsed.inSeconds.clamp(
+            0,
+            miningDurationSeconds,
+          ),
+        );
+      }
+
       return Duration.zero;
     }
 
@@ -423,35 +456,92 @@ class MiningService {
       return Duration.zero;
     }
 
-    return elapsed;
+    return Duration(
+      seconds: elapsed.inSeconds.clamp(
+        0,
+        miningDurationSeconds,
+      ),
+    );
   }
 
   // ============================================================
   // FAN EARNED SO FAR
   //
-  // This is calculated locally for display only.
-  // The database remains the final source of truth.
+  // DISPLAY ESTIMATE ONLY.
+  // DATABASE REMAINS SOURCE OF TRUTH.
   // ============================================================
 
   Future<double> getEstimatedEarned() async {
     final mining = await getActiveMining();
 
-    final rate = _toDouble(
-      mining['rate'],
+    var rate = _toDouble(
+      mining['rate'] ??
+          mining['mining_rate'],
     );
+
+    if (rate <= 0) {
+      rate = await getUserMiningRate();
+    }
 
     final elapsedSeconds = _toInt(
       mining['elapsed_seconds'],
     );
 
-    if (rate <= 0 || elapsedSeconds <= 0) {
+    if (elapsedSeconds > 0) {
+      return rate *
+          (elapsedSeconds / 3600.0);
+    }
+
+    final startedAt = _parseDateTime(
+      mining['started_at'] ??
+          mining['start_time'],
+    );
+
+    if (startedAt == null) {
+      final endsAt = _parseDateTime(
+        mining['ends_at'] ??
+            mining['end_time'] ??
+            mining['expires_at'],
+      );
+
+      if (endsAt == null) {
+        return 0.0;
+      }
+
+      final calculatedStart = endsAt.subtract(
+        const Duration(seconds: miningDurationSeconds),
+      );
+
+      final elapsed =
+          DateTime.now().difference(calculatedStart);
+
+      if (elapsed.isNegative) {
+        return 0.0;
+      }
+
+      final seconds = elapsed.inSeconds.clamp(
+        0,
+        miningDurationSeconds,
+      );
+
+      return rate *
+          (seconds / 3600.0);
+    }
+
+    final elapsed =
+        DateTime.now().difference(startedAt);
+
+    if (elapsed.isNegative) {
       return 0.0;
     }
 
-    final earned =
-        rate * (elapsedSeconds / 3600.0);
+    final seconds = elapsed.inSeconds.clamp(
+      0,
+      miningDurationSeconds,
+    );
 
-    return earned;
+    return rate *
+        (seconds / 3600.0);
   }
 
   // ============================================================
@@ -496,6 +586,17 @@ class MiningService {
         0.0;
   }
 
+  // ============================================================
+  // DATE / TIMESTAMP PARSER
+  //
+  // Supports:
+  // - DateTime
+  // - ISO strings
+  // - Unix seconds
+  // - Unix milliseconds
+  // - numeric strings
+  // ============================================================
+
   DateTime? _parseDateTime(dynamic value) {
     if (value == null) {
       return null;
@@ -505,8 +606,50 @@ class MiningService {
       return value.toLocal();
     }
 
-    return DateTime.tryParse(
-      value.toString(),
-    )?.toLocal();
+    if (value is num) {
+      return _fromTimestamp(value);
+    }
+
+    final text = value.toString().trim();
+
+    if (text.isEmpty) {
+      return null;
+    }
+
+    final parsedIso = DateTime.tryParse(text);
+
+    if (parsedIso != null) {
+      return parsedIso.toLocal();
+    }
+
+    final numeric = num.tryParse(text);
+
+    if (numeric != null) {
+      return _fromTimestamp(numeric);
+    }
+
+    return null;
+  }
+
+  DateTime? _fromTimestamp(num timestamp) {
+    try {
+      final value = timestamp.toInt();
+
+      // Milliseconds timestamp.
+      if (value.abs() >= 100000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(
+          value,
+          isUtc: true,
+        ).toLocal();
+      }
+
+      // Seconds timestamp.
+      return DateTime.fromMillisecondsSinceEpoch(
+        value * 1000,
+        isUtc: true,
+      ).toLocal();
+    } catch (_) {
+      return null;
+    }
   }
 }
