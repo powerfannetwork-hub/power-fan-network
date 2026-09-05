@@ -17,17 +17,15 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
 
-  final MiningService _mining =
-      MiningService.instance;
-
-  final SocialTaskService _social =
-      SocialTaskService();
+  final MiningService _mining = MiningService.instance;
+  final SocialTaskService _social = SocialTaskService();
 
   Timer? _timer;
 
   bool _loading = true;
   bool _busy = false;
   bool _isMining = false;
+  bool _canClaim = false;
 
   double _fan = 0;
   double _afam = 0;
@@ -56,14 +54,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _t(String key) {
-    return AppLocalizations.of(context)
-        .translate(key);
+    return AppLocalizations.of(context).translate(key);
   }
 
   Future<void> _load() async {
     if (!mounted) return;
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+    });
 
     try {
       await Future.wait([
@@ -75,7 +74,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _message(_error(e));
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+        });
       }
     }
   }
@@ -93,8 +94,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
-    final serverRate =
-        await _mining.getUserMiningRate();
+
+    final serverRate = await _mining.getUserMiningRate();
 
     final started = _date(
       data['started_at'] ?? data['start_time'],
@@ -112,6 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
         data['is_active'] ??
         false;
 
+    final claimable =
+        data['claimable'] ?? false;
+
     final ads =
         data['ads_watched'] ??
         data['ad_count'] ??
@@ -126,25 +130,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
+    _timer?.cancel();
+
     setState(() {
       _isMining = active == true;
+      _canClaim = claimable == true;
+
       _startedAt = started;
       _endsAt = ends;
+
       _rate = rate > 0 ? rate : serverRate;
       _ads = _int(ads).clamp(0, 7);
+
       _updateTime();
 
       if (_isMining && _endsAt != null) {
         _startTimer();
-      } else {
-        _timer?.cancel();
       }
     });
   }
 
   Future<void> _loadTasks() async {
-    final tasks =
-        await _social.getDailyTasksForCard();
+    final tasks = await _social.getDailyTasksForCard();
 
     if (!mounted) return;
 
@@ -158,21 +165,53 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _timer = Timer.periodic(
       const Duration(seconds: 1),
-      (_) {
+      (_) async {
         if (!mounted) return;
 
-        setState(() {
-          _updateTime();
-        });
+        _updateTime();
 
-        if (_remaining <= Duration.zero) {
+        if (_remaining <= Duration.zero && _isMining) {
           _timer?.cancel();
 
-          setState(() {
-            _remaining = Duration.zero;
-            _elapsed = const Duration(hours: 24);
-            _isMining = false;
-          });
+          /*
+           * Ask Supabase again.
+           * Supabase is the authority for claimable status.
+           */
+          try {
+            final data = await _mining.getActiveMining();
+
+            if (!mounted) return;
+
+            final active =
+                data['active'] ??
+                data['is_mining'] ??
+                data['is_active'] ??
+                false;
+
+            final claimable =
+                data['claimable'] ?? false;
+
+            setState(() {
+              _isMining = active == true;
+              _canClaim = claimable == true;
+              _remaining = Duration.zero;
+
+              if (!_isMining) {
+                _elapsed = const Duration(hours: 24);
+              }
+            });
+          } catch (_) {
+            if (!mounted) return;
+
+            setState(() {
+              _isMining = false;
+              _canClaim = true;
+              _remaining = Duration.zero;
+              _elapsed = const Duration(hours: 24);
+            });
+          }
+        } else {
+          setState(() {});
         }
       },
     );
@@ -180,21 +219,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _updateTime() {
     if (_endsAt != null) {
-      final r =
+      final remaining =
           _endsAt!.difference(DateTime.now());
 
-      _remaining =
-          r.isNegative ? Duration.zero : r;
+      _remaining = remaining.isNegative
+          ? Duration.zero
+          : remaining;
     } else {
       _remaining = Duration.zero;
     }
 
     if (_startedAt != null) {
-      final e =
+      final elapsed =
           DateTime.now().difference(_startedAt!);
 
-      _elapsed =
-          e.isNegative ? Duration.zero : e;
+      _elapsed = elapsed.isNegative
+          ? Duration.zero
+          : elapsed;
 
       if (_elapsed >
           const Duration(hours: 24)) {
@@ -203,32 +244,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  bool get _canClaim =>
-      !_isMining &&
-      _endsAt != null &&
-      _remaining == Duration.zero;
-
   double get _earned {
+    if (!_isMining) {
+      return 0;
+    }
+
     if (_rate <= 0 || _elapsed.inSeconds <= 0) {
       return 0;
     }
 
-    return _rate *
-        (_elapsed.inSeconds / 3600);
+    return _rate * (_elapsed.inSeconds / 3600.0);
   }
 
   Future<void> _startMining() async {
     if (_busy) return;
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+    });
 
     try {
-      final result =
-          await _mining.startMining();
+      final result = await _mining.startMining();
 
       if (result['success'] == false) {
         throw Exception(
-          result['message'] ?? 'Unable to start mining.',
+          result['message'] ??
+              'Unable to start mining.',
         );
       }
 
@@ -241,19 +282,60 @@ class _HomeScreenState extends State<HomeScreen> {
       _message(_error(e));
     } finally {
       if (mounted) {
-        setState(() => _busy = false);
+        setState(() {
+          _busy = false;
+        });
       }
     }
   }
 
   Future<void> _claimMining() async {
-    if (_busy || !_canClaim) return;
+    if (_busy) return;
 
-    setState(() => _busy = true);
+    /*
+     * Refresh from server immediately before claiming.
+     * This prevents the UI from claiming too early.
+     */
+    try {
+      final latest = await _mining.getActiveMining();
+
+      if (!mounted) return;
+
+      final active =
+          latest['active'] ??
+          latest['is_mining'] ??
+          latest['is_active'] ??
+          false;
+
+      final claimable =
+          latest['claimable'] ?? false;
+
+      if (active == true || claimable != true) {
+        await _loadMining();
+
+        _message(
+          _t('mining_session_still_active'),
+        );
+
+        return;
+      }
+
+      setState(() {
+        _canClaim = true;
+        _isMining = false;
+        _remaining = Duration.zero;
+      });
+    } catch (e) {
+      _message(_error(e));
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+    });
 
     try {
-      final result =
-          await _mining.claimMining();
+      final result = await _mining.claimMining();
 
       if (result['success'] != true) {
         throw Exception(
@@ -262,19 +344,28 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      await _loadProfile();
+      final earned = _num(result['earned']);
 
+      await _loadProfile();
       await _loadMining();
 
       _message(
-        '${_num(result['earned']).toStringAsFixed(4)} FAN '
+        '${earned.toStringAsFixed(4)} FAN '
         '${_t('claimed_successfully')}',
       );
     } catch (e) {
       _message(_error(e));
+
+      /*
+       * Always reload after a failed claim.
+       * The server remains the source of truth.
+       */
+      await _loadMining();
     } finally {
       if (mounted) {
-        setState(() => _busy = false);
+        setState(() {
+          _busy = false;
+        });
       }
     }
   }
@@ -284,11 +375,12 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     if (_busy || task.claimed) return;
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+    });
 
     try {
-      final result =
-          await _social.startTask(
+      final result = await _social.startTask(
         taskId: task.id,
       );
 
@@ -315,6 +407,10 @@ class _HomeScreenState extends State<HomeScreen> {
         orElse: () => task,
       );
 
+      /*
+       * Claim only when Supabase says can_claim.
+       * No fake verification is performed here.
+       */
       if (updated.canClaim &&
           !updated.claimed) {
         final claim =
@@ -324,7 +420,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (claim['success'] == true) {
           await _loadProfile();
-
           await _loadTasks();
 
           _message(
@@ -337,23 +432,74 @@ class _HomeScreenState extends State<HomeScreen> {
       _message(_error(e));
     } finally {
       if (mounted) {
-        setState(() => _busy = false);
+        setState(() {
+          _busy = false;
+        });
       }
     }
   }
 
-  Future<void> _watchAd() async {
+  /*
+   * Rewarded Ad:
+   *
+   * The actual ad SDK is not called from this screen because
+   * MiningService already contains the server-side methods
+   * recordAndVerifyRewardedAd().
+   *
+   * This method records/verifies the completed reward with
+   * Supabase. The actual AppLovin/AdMob display should call
+   * this only after the ad has genuinely completed.
+   */
+  Future<void> _rewardAdCompleted({
+    String? adReference,
+  }) async {
     if (_busy || !_isMining || _ads >= 7) {
       return;
     }
 
-    _message(
-      _t('rewarded_ad_not_connected'),
-    );
+    setState(() {
+      _busy = true;
+    });
+
+    try {
+      final result =
+          await _mining.recordAndVerifyRewardedAd(
+        adReference: adReference,
+      );
+
+      if (result['success'] == false) {
+        throw Exception(
+          result['message'] ??
+              'Unable to verify rewarded ad.',
+        );
+      }
+
+      await _loadMining();
+
+      _message(
+        '+0.10 FAN/H ${_t('boost_added')}',
+      );
+    } catch (e) {
+      _message(_error(e));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const SafeArea(
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return SafeArea(
       child: RefreshIndicator(
         color: primaryPurple,
@@ -453,7 +599,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _balanceCard() {
-    final balance = _fan + (_isMining ? _earned : 0);
+    final balance =
+        _fan + (_isMining ? _earned : 0);
 
     return Container(
       height: 184,
@@ -722,7 +869,17 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed:
                   limit || !_isMining || _busy
                       ? null
-                      : _watchAd,
+                      : () {
+                          /*
+                           * This callback only verifies a
+                           * completed ad. The ad provider's
+                           * "reward earned" callback should
+                           * call _rewardAdCompleted().
+                           */
+                          _message(
+                            _t('rewarded_ad_not_connected'),
+                          );
+                        },
               icon: const Icon(
                 Icons.ondemand_video_rounded,
               ),
@@ -958,6 +1115,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   double _progress() {
     const total = 86400;
+
     final elapsed =
         total - _remaining.inSeconds;
 
@@ -971,10 +1129,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final h = d.inHours
         .toString()
         .padLeft(2, '0');
+
     final m = d.inMinutes
         .remainder(60)
         .toString()
         .padLeft(2, '0');
+
     final s = d.inSeconds
         .remainder(60)
         .toString()
@@ -996,7 +1156,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int _int(dynamic value) {
     if (value is int) return value;
-    if (value is num) return value.toInt();
+
+    if (value is num) {
+      return value.toInt();
+    }
 
     return int.tryParse(
           value?.toString() ?? '',
