@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../components/boost_ads_card.dart';
 import '../localization/app_localizations.dart';
 import '../services/mining_service.dart';
 import '../services/social_task_service.dart';
@@ -20,8 +21,11 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration miningDuration =
       Duration(hours: 24);
 
-  final MiningService _mining = MiningService.instance;
-  final SocialTaskService _social = SocialTaskService();
+  final MiningService _mining =
+      MiningService.instance;
+
+  final SocialTaskService _social =
+      SocialTaskService();
 
   Timer? _timer;
 
@@ -103,7 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Future<void> _loadProfile() async {
-    final data = await _mining.getProfile();
+    final data =
+        await _mining.getProfile();
 
     if (!mounted) return;
 
@@ -118,7 +123,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Future<void> _loadMining() async {
-    final data = await _mining.getActiveMining();
+    final data =
+        await _mining.getActiveMining();
 
     final serverRate =
         await _mining.getUserMiningRate();
@@ -170,19 +176,12 @@ class _HomeScreenState extends State<HomeScreen> {
     DateTime? finalStarted = started;
     DateTime? finalEnds = ends;
 
-    /*
-     * If Supabase gives only ends_at, calculate started_at.
-     */
     if (finalStarted == null &&
         finalEnds != null) {
       finalStarted =
           finalEnds.subtract(miningDuration);
     }
 
-    /*
-     * If Supabase gives only started_at,
-     * calculate ends_at.
-     */
     if (finalEnds == null &&
         finalStarted != null) {
       finalEnds =
@@ -250,11 +249,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
           _finishMiningLocally();
 
-          /*
-           * Reload from Supabase after the local UI
-           * has already changed to zero.
-           */
           _refreshMiningAfterEnd();
+
           return;
         }
 
@@ -332,20 +328,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final claimable =
           data['claimable'] ?? true;
 
-      if (mounted) {
-        setState(() {
-          _isMining = active == true;
-          _canClaim = claimable == true;
+      setState(() {
+        _isMining = active == true;
+        _canClaim = claimable == true;
 
-          if (_isMining) {
-            _updateTime();
-            _startTimer();
-          } else {
-            _remaining = Duration.zero;
-            _elapsed = miningDuration;
-          }
-        });
-      }
+        if (_isMining) {
+          _updateTime();
+          _startTimer();
+        } else {
+          _remaining = Duration.zero;
+          _elapsed = miningDuration;
+        }
+      });
     } catch (_) {
       if (!mounted) return;
 
@@ -363,17 +357,11 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   double get _earned {
-    if (!_isMining) {
-      return 0;
-    }
+    if (!_isMining) return 0;
 
-    if (_rate <= 0) {
-      return 0;
-    }
+    if (_rate <= 0) return 0;
 
-    if (_elapsed.inSeconds <= 0) {
-      return 0;
-    }
+    if (_elapsed.inSeconds <= 0) return 0;
 
     return _rate *
         (_elapsed.inSeconds / 3600.0);
@@ -521,13 +509,9 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _tasks = tasks;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
-      /*
-       * Do not crash the whole Home screen if
-       * social tasks fail to load.
-       */
       setState(() {
         _tasks = [];
       });
@@ -560,7 +544,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final opened =
-          await _social.openTaskUrl(task.url);
+          await _social.openTaskUrl(
+        task.url,
+      );
 
       if (!opened) {
         throw Exception(
@@ -578,9 +564,6 @@ class _HomeScreenState extends State<HomeScreen> {
         orElse: () => task,
       );
 
-      /*
-       * Server decides whether the task can be claimed.
-       */
       if (updated.canClaim &&
           !updated.claimed) {
         final claim =
@@ -971,110 +954,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // BOOST
+  // REAL REWARDED ADS BOOST
   // ============================================================
 
   Widget _boostCard() {
-    final limit = _ads >= 7;
-
-    return _card(
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _circleIcon(
-                Icons.rocket_launch_rounded,
-                orange: true,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _t(
-                    'boost_by_watching_ads',
-                    'Boost by Watching Ads',
-                  ),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              Text(
-                '$_ads / 7',
-                style: const TextStyle(
-                  color: primaryPurple,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: LinearProgressIndicator(
-                  value: _ads / 7,
-                  minHeight: 7,
-                  backgroundColor:
-                      const Color(0xFFEDEAF7),
-                  valueColor:
-                      const AlwaysStoppedAnimation(
-                    primaryPurple,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                '+${(_ads * .1).toStringAsFixed(1)} FAN/H',
-                style: const TextStyle(
-                  color: primaryPurple,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 13),
-          SizedBox(
-            width: double.infinity,
-            height: 43,
-            child: OutlinedButton.icon(
-              onPressed:
-                  limit || !_isMining || _busy
-                      ? null
-                      : _showBoostComingSoon,
-              icon: const Icon(
-                Icons.ondemand_video_rounded,
-              ),
-              label: Text(
-                limit
-                    ? _t(
-                        'daily_limit_reached',
-                        'Daily limit reached',
-                      )
-                    : !_isMining
-                        ? _t(
-                            'start_mining_watch_ads',
-                            'Start mining to watch ads',
-                          )
-                        : _t(
-                            'watch_ad',
-                            'WATCH AD',
-                          ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return BoostAdsCard(
+      isMining: _isMining,
+      onRewarded: _onRewardedAdCompleted,
     );
   }
 
-  void _showBoostComingSoon() {
-    _message(
-      _t(
-        'rewarded_ad_not_connected',
-        'Rewarded ads are not connected yet.',
-      ),
-    );
+  Future<void> _onRewardedAdCompleted() async {
+    if (!mounted) return;
+
+    /*
+     * AppLovin reward callback has already happened
+     * and BoostAdsCard has already called:
+     *
+     * recordRewardedAd()
+     * verifyRewardedAd(adId)
+     *
+     * Now refresh Home data from Supabase.
+     */
+    try {
+      await Future.wait([
+        _loadProfile(),
+        _loadMining(),
+      ]);
+    } catch (_) {
+      // Reward already verified; refresh failure
+      // should not remove the reward.
+    }
+
+    if (!mounted) return;
+
+    setState(() {});
   }
 
   // ============================================================
@@ -1367,13 +1281,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final elapsed =
         _elapsed.inSeconds;
 
-    if (elapsed <= 0) {
-      return 0;
-    }
+    if (elapsed <= 0) return 0;
 
-    if (elapsed >= total) {
-      return 1;
-    }
+    if (elapsed >= total) return 1;
 
     return elapsed / total;
   }
@@ -1481,16 +1391,14 @@ class _HomeScreenState extends State<HomeScreen> {
             .fromMillisecondsSinceEpoch(
           timestamp,
           isUtc: true,
-        )
-            .toLocal();
+        ).toLocal();
       }
 
       return DateTime
           .fromMillisecondsSinceEpoch(
         timestamp * 1000,
         isUtc: true,
-      )
-          .toLocal();
+      ).toLocal();
     } catch (_) {
       return null;
     }
