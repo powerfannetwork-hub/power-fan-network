@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -65,21 +66,14 @@ class _PowerFanMaterialApp extends StatelessWidget {
 
           locale: languageController.locale,
 
-          supportedLocales: const [
-            Locale('en'),
-            Locale('zh'),
-            Locale('es'),
-            Locale('fr'),
-            Locale('ar'),
-            Locale('hi'),
-            Locale('bn'),
-            Locale('ru'),
-            Locale('tr'),
-            Locale('id'),
-          ],
+          supportedLocales:
+              AppLocalizations.supportedLocales,
 
           localizationsDelegates: const [
             AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
           ],
 
           theme: ThemeData(
@@ -103,16 +97,19 @@ class _PowerFanMaterialApp extends StatelessWidget {
                 InputDecorationTheme(
               filled: true,
               fillColor: Colors.white,
+
               border: OutlineInputBorder(
                 borderRadius:
                     BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
+
               enabledBorder: OutlineInputBorder(
                 borderRadius:
                     BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
+
               focusedBorder: OutlineInputBorder(
                 borderRadius:
                     BorderRadius.circular(14),
@@ -123,7 +120,7 @@ class _PowerFanMaterialApp extends StatelessWidget {
               ),
             ),
 
-            cardTheme: CardTheme(
+            cardTheme: CardThemeData(
               elevation: 0,
               color: Colors.white,
               shape: RoundedRectangleBorder(
