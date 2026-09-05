@@ -452,7 +452,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _showAbout() async {
-    await showAboutDialog(
+      showAboutDialog(
       context: context,
       applicationName: _t(
         'powerFanNetwork',
