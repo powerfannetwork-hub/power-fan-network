@@ -1718,7 +1718,7 @@ class AppLocalizations {
       'rewarded_ad_not_connected':
           'Рекламные объявления с наградой ещё не подключены.',
     },
-  )     'tr': {
+     'tr': {
       'appName': 'POWER FAN',
       'brandName': 'POWER FAN',
       'mineFan': 'FAN Madenciliği',
