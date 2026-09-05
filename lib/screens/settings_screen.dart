@@ -38,10 +38,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadData();
   }
 
-  // ---------------------------------------------------------------------------
-  // LOCALIZATION HELPER
-  // ---------------------------------------------------------------------------
-
   String _t(String key, [String fallback = '']) {
     final value = AppLocalizations.of(context).translate(key);
 
@@ -51,10 +47,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return value;
   }
-
-  // ---------------------------------------------------------------------------
-  // LOAD DATA
-  // ---------------------------------------------------------------------------
 
   Future<void> _loadData() async {
     if (!mounted) return;
@@ -102,10 +94,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // PROFILE DATA
-  // ---------------------------------------------------------------------------
 
   String get _name {
     final name = _profile?['name']?.toString().trim() ?? '';
@@ -158,10 +146,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return int.tryParse(value.toString()) ?? 0;
   }
-
-  // ---------------------------------------------------------------------------
-  // LANGUAGE
-  // ---------------------------------------------------------------------------
 
   String get _languageName {
     final code = _languageController.languageCode;
@@ -331,7 +315,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    _languageController.setLanguage(selected);
+    // IMPORTANT: await the language change.
+    await _languageController.setLanguage(selected);
 
     if (!mounted) return;
 
@@ -344,10 +329,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // PROFILE SCREEN
-  // ---------------------------------------------------------------------------
 
   Future<void> _openProfile() async {
     final kyc = _kycStatus;
@@ -380,10 +361,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadData();
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // SECURITY
-  // ---------------------------------------------------------------------------
 
   Future<void> _showSecurity() async {
     await showDialog<void>(
@@ -447,12 +424,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // ABOUT
-  // ---------------------------------------------------------------------------
-
   Future<void> _showAbout() async {
-      showAboutDialog(
+    showAboutDialog(
       context: context,
       applicationName: _t(
         'powerFanNetwork',
@@ -482,10 +455,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // LOGOUT
-  // ---------------------------------------------------------------------------
 
   Future<void> _logout() async {
     final confirmed = await showDialog<bool>(
@@ -568,10 +537,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // HELPERS
-  // ---------------------------------------------------------------------------
-
   void _showMessage(String message) {
     if (!mounted) return;
 
@@ -602,10 +567,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           )
         : text.trim();
   }
-
-  // ---------------------------------------------------------------------------
-  // BUILD
-  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -726,10 +687,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // PROFILE CARD
-  // ---------------------------------------------------------------------------
 
   Widget _buildProfileCard() {
     final fanBalance =
@@ -856,10 +813,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
-  // ---------------------------------------------------------------------------
-  // SECTION
-  // ---------------------------------------------------------------------------
-
   Widget _buildSection({
     required String title,
     required List<Widget> children,
@@ -898,10 +851,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // SETTING TILE
-  // ---------------------------------------------------------------------------
 
   Widget _buildSettingTile({
     required IconData icon,
@@ -951,10 +900,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // NOTIFICATIONS
-  // ---------------------------------------------------------------------------
-
   Widget _buildNotificationTile() {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -1001,10 +946,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // LOGOUT BUTTON
-  // ---------------------------------------------------------------------------
 
   Widget _buildLogoutButton() {
     return SizedBox(
