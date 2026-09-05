@@ -2148,7 +2148,7 @@ class AppLocalizations {
           'Iklan berhadiah belum terhubung.',
     },
   };
-    static const List<LanguageOption> languages =  [
+    static const List<LanguageOption> languages =  (
     {'code': 'en', 'name': 'English'},
     {'code': 'zh', 'name': '中文'},
     {'code': 'es', 'name': 'Español'},
@@ -2159,9 +2159,9 @@ class AppLocalizations {
     {'code': 'ru', 'name': 'Русский'},
     {'code': 'tr', 'name': 'Türkçe'},
     {'code': 'id', 'name': 'Bahasa Indonesia'},
-  ];
+  );
 
-  static const Map<String, String> _legacyKeyAliases = {
+  static const Map<String, String> _legacyKeyAliases = (
     'mining_loading': 'miningNow',
     'mining_rate': 'miningRate',
     'session_time': 'remainingTime',
@@ -2190,9 +2190,9 @@ class AppLocalizations {
     'task_completed': 'taskCompleted',
     'task_claimed': 'taskClaimed',
     'task_not_ready': 'taskNotReady',
-  };
+  );
 
-  String translate(String key) {
+  String translate(String key) (
     final language =
         _translations[locale.languageCode] ?? _translations['en']!;
 
@@ -2204,18 +2204,19 @@ class AppLocalizations {
         language[key] ??
         _translations['en']![key] ??
         key;
-  }
+  )
 
-  static AppLocalizations of(BuildContext context) {
+  static AppLocalizations of(BuildContext context) (
     return Localizations.of<AppLocalizations>(
       context,
       AppLocalizations,
     )!;
-  }
-}
+  )
+)
 
 class AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+    extends LocalizationsDelegate<AppLocalizations>  {
+    
   const AppLocalizationsDelegate();
 
   @override
@@ -2227,9 +2228,9 @@ class AppLocalizationsDelegate
   }
 
   @override
-  Future<AppLocalizations> load(Locale locale) async {
+  Future<AppLocalizations> load(Locale locale) async (
     return AppLocalizations(locale);
-  }
+  )
 
   @override
   bool shouldReload(
