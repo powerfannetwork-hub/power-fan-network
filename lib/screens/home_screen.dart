@@ -173,10 +173,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_remaining <= Duration.zero && _isMining) {
           _timer?.cancel();
 
-          /*
-           * Ask Supabase again.
-           * Supabase is the authority for claimable status.
-           */
           try {
             final data = await _mining.getActiveMining();
 
@@ -292,10 +288,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _claimMining() async {
     if (_busy) return;
 
-    /*
-     * Refresh from server immediately before claiming.
-     * This prevents the UI from claiming too early.
-     */
     try {
       final latest = await _mining.getActiveMining();
 
@@ -356,10 +348,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       _message(_error(e));
 
-      /*
-       * Always reload after a failed claim.
-       * The server remains the source of truth.
-       */
       await _loadMining();
     } finally {
       if (mounted) {
@@ -407,10 +395,6 @@ class _HomeScreenState extends State<HomeScreen> {
         orElse: () => task,
       );
 
-      /*
-       * Claim only when Supabase says can_claim.
-       * No fake verification is performed here.
-       */
       if (updated.canClaim &&
           !updated.claimed) {
         final claim =
@@ -428,57 +412,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       }
-    } catch (e) {
-      _message(_error(e));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-        });
-      }
-    }
-  }
-
-  /*
-   * Rewarded Ad:
-   *
-   * The actual ad SDK is not called from this screen because
-   * MiningService already contains the server-side methods
-   * recordAndVerifyRewardedAd().
-   *
-   * This method records/verifies the completed reward with
-   * Supabase. The actual AppLovin/AdMob display should call
-   * this only after the ad has genuinely completed.
-   */
-  Future<void> _rewardAdCompleted({
-    String? adReference,
-  }) async {
-    if (_busy || !_isMining || _ads >= 7) {
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-    });
-
-    try {
-      final result =
-          await _mining.recordAndVerifyRewardedAd(
-        adReference: adReference,
-      );
-
-      if (result['success'] == false) {
-        throw Exception(
-          result['message'] ??
-              'Unable to verify rewarded ad.',
-        );
-      }
-
-      await _loadMining();
-
-      _message(
-        '+0.10 FAN/H ${_t('boost_added')}',
-      );
     } catch (e) {
       _message(_error(e));
     } finally {
@@ -870,12 +803,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   limit || !_isMining || _busy
                       ? null
                       : () {
-                          /*
-                           * This callback only verifies a
-                           * completed ad. The ad provider's
-                           * "reward earned" callback should
-                           * call _rewardAdCompleted().
-                           */
                           _message(
                             _t('rewarded_ad_not_connected'),
                           );
