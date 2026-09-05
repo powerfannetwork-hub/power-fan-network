@@ -20,7 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final LanguageController _languageController =
       LanguageController.instance;
 
-  final KycService _kycService = KycService.instance;
+  final KycService _kycService = KycService();
 
   Map<String, dynamic>? _profile;
   KycStatus? _kycStatus;
@@ -31,12 +31,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const Color purple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color background = Color(0xFFF8F8FC);
-  static const Color green = Color(0xFF159B61);
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  // ---------------------------------------------------------------------------
+  // LOCALIZATION HELPER
+  // ---------------------------------------------------------------------------
+
+  String _t(String key, [String fallback = '']) {
+    final value = AppLocalizations.of(context).translate(key);
+
+    if (value.isEmpty || value == key) {
+      return fallback.isEmpty ? key : fallback;
+    }
+
+    return value;
   }
 
   // ---------------------------------------------------------------------------
@@ -90,10 +103,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _loadProfile() async {
-    await _loadData();
-  }
-
   // ---------------------------------------------------------------------------
   // PROFILE DATA
   // ---------------------------------------------------------------------------
@@ -105,15 +114,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return name;
     }
 
-    final fullName =
-        _profile?['full_name']?.toString().trim() ?? '';
+    final fullName = _profile?['full_name']?.toString().trim() ?? '';
 
     if (fullName.isNotEmpty) {
       return fullName;
     }
 
-    final username =
-        _profile?['username']?.toString().trim() ?? '';
+    final username = _profile?['username']?.toString().trim() ?? '';
 
     if (username.isNotEmpty) {
       return username;
@@ -123,21 +130,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String get _email {
-    final email =
-        _profile?['email']?.toString().trim() ?? '';
+    final email = _profile?['email']?.toString().trim() ?? '';
 
     if (email.isNotEmpty) {
       return email;
     }
 
-    return _client.auth.currentUser?.email ??
-        'No email available';
+    return _client.auth.currentUser?.email ?? 'No email available';
   }
 
   double _number(dynamic value) {
-    if (value == null) {
-      return 0.0;
-    }
+    if (value == null) return 0.0;
 
     if (value is num) {
       return value.toDouble();
@@ -147,9 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   int _integer(dynamic value) {
-    if (value == null) {
-      return 0;
-    }
+    if (value == null) return 0;
 
     if (value is num) {
       return value.toInt();
@@ -175,8 +176,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _selectLanguage() async {
-    final l10n = AppLocalizations.of(context);
-
     final selected = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.white,
@@ -219,8 +218,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         height: 42,
                         decoration: BoxDecoration(
                           color: purple.withOpacity(0.08),
-                          borderRadius:
-                              BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
                           Icons.language_rounded,
@@ -230,7 +228,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          l10n.selectLanguage,
+                          _t(
+                            'selectLanguage',
+                            'Select Language',
+                          ),
                           style: const TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,
@@ -245,8 +246,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
-                    itemCount:
-                        AppLocalizations.languages.length,
+                    itemCount: AppLocalizations.languages.length,
                     itemBuilder: (context, index) {
                       final language =
                           AppLocalizations.languages[index];
@@ -338,7 +338,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {});
 
     _showMessage(
-      AppLocalizations.of(context).languageChanged,
+      _t(
+        'languageChanged',
+        'Language changed successfully',
+      ),
     );
   }
 
@@ -383,8 +386,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _showSecurity() async {
-    final l10n = AppLocalizations.of(context);
-
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -399,8 +400,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 height: 40,
                 decoration: BoxDecoration(
                   color: purple.withOpacity(0.08),
-                  borderRadius:
-                      BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.security_rounded,
@@ -410,7 +410,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  l10n.security,
+                  _t('security', 'Security'),
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     color: deepPurple,
@@ -420,9 +420,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           content: Text(
-            '${l10n.security}\n\n'
-            '${l10n.oneDeviceOneAccount}\n\n'
-            '${l10n.deviceSecurity}',
+            '${_t('security', 'Security')}\n\n'
+            '${_t('oneDeviceOneAccount', 'One device = one account')}\n\n'
+            '${_t('deviceSecurity', 'Device security')}',
             style: const TextStyle(
               fontSize: 14,
               height: 1.5,
@@ -434,7 +434,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.of(dialogContext).pop();
               },
               child: Text(
-                l10n.close.toUpperCase(),
+                _t('close', 'Close').toUpperCase(),
                 style: const TextStyle(
                   color: purple,
                   fontWeight: FontWeight.w800,
@@ -452,17 +452,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _showAbout() async {
-    final l10n = AppLocalizations.of(context);
-
     await showAboutDialog(
       context: context,
-      applicationName: l10n.powerFanNetwork,
+      applicationName: _t(
+        'powerFanNetwork',
+        'POWER FAN NETWORK',
+      ),
       applicationVersion: '1.0.0',
       applicationLegalese: 'Mine FAN. Earn More',
       children: [
         const SizedBox(height: 12),
         Text(
-          l10n.powerFanNetwork,
+          _t(
+            'powerFanNetwork',
+            'POWER FAN NETWORK',
+          ),
           style: const TextStyle(
             fontWeight: FontWeight.w800,
             color: deepPurple,
@@ -470,7 +474,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          '${l10n.fan} & ${l10n.afam}',
+          '${_t('fan', 'FAN')} & ${_t('afam', 'AFAM')}',
           style: const TextStyle(
             fontSize: 14,
           ),
@@ -484,8 +488,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _logout() async {
-    final l10n = AppLocalizations.of(context);
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -494,14 +496,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           title: Text(
-            l10n.logout,
+            _t('logout', 'Logout'),
             style: const TextStyle(
               fontWeight: FontWeight.w800,
               color: deepPurple,
             ),
           ),
           content: Text(
-            l10n.logoutConfirm,
+            _t(
+              'logoutConfirm',
+              'Are you sure you want to logout?',
+            ),
             style: const TextStyle(
               fontSize: 14,
               height: 1.4,
@@ -513,7 +518,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.of(dialogContext).pop(false);
               },
               child: Text(
-                l10n.cancel.toUpperCase(),
+                _t('cancel', 'Cancel').toUpperCase(),
                 style: const TextStyle(
                   color: Colors.grey,
                   fontWeight: FontWeight.w800,
@@ -533,7 +538,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               child: Text(
-                l10n.logout.toUpperCase(),
+                _t('logout', 'Logout').toUpperCase(),
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                 ),
@@ -591,7 +596,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     return text.trim().isEmpty
-        ? AppLocalizations.of(context).somethingWentWrong
+        ? _t(
+            'somethingWentWrong',
+            'Something went wrong',
+          )
         : text.trim();
   }
 
@@ -604,13 +612,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return AnimatedBuilder(
       animation: _languageController,
       builder: (context, _) {
-        final l10n = AppLocalizations.of(context);
-
         return Scaffold(
           backgroundColor: background,
           appBar: AppBar(
             title: Text(
-              l10n.settings,
+              _t('settings', 'Settings'),
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 color: deepPurple,
@@ -622,9 +628,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             elevation: 0,
             actions: [
               IconButton(
-                tooltip: l10n.refresh,
-                onPressed:
-                    _loading ? null : _loadData,
+                tooltip: _t('refresh', 'Refresh'),
+                onPressed: _loading ? null : _loadData,
                 icon: const Icon(
                   Icons.refresh_rounded,
                 ),
@@ -652,70 +657,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _buildProfileCard(),
                       const SizedBox(height: 16),
-
                       _buildSection(
-                        title: l10n.account,
+                        title: _t('account', 'Account'),
                         children: [
                           _buildSettingTile(
                             icon:
                                 Icons.person_outline_rounded,
-                            title: l10n.profile,
-                            subtitle: l10n.account,
+                            title: _t('profile', 'Profile'),
+                            subtitle:
+                                _t('account', 'Account'),
                             onTap: _openProfile,
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 16),
-
                       _buildSection(
-                        title: l10n.language,
+                        title: _t('language', 'Language'),
                         children: [
                           _buildNotificationTile(),
                           _buildSettingTile(
                             icon:
                                 Icons.language_rounded,
-                            title: l10n.language,
+                            title: _t('language', 'Language'),
                             subtitle: _languageName,
                             onTap: _selectLanguage,
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 16),
-
                       _buildSection(
-                        title: l10n.security,
+                        title: _t('security', 'Security'),
                         children: [
                           _buildSettingTile(
                             icon:
                                 Icons.security_rounded,
-                            title: l10n.security,
-                            subtitle:
-                                l10n.deviceSecurity,
+                            title:
+                                _t('security', 'Security'),
+                            subtitle: _t(
+                              'deviceSecurity',
+                              'Device security',
+                            ),
                             onTap: _showSecurity,
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 16),
-
                       _buildSection(
-                        title: l10n.about,
+                        title: _t('about', 'About'),
                         children: [
                           _buildSettingTile(
                             icon:
                                 Icons.info_outline_rounded,
-                            title:
-                                l10n.powerFanNetwork,
+                            title: _t(
+                              'powerFanNetwork',
+                              'POWER FAN NETWORK',
+                            ),
                             subtitle: 'Version 1.0.0',
                             onTap: _showAbout,
                           ),
                         ],
                       ),
-
                       const SizedBox(height: 18),
-
                       _buildLogoutButton(),
                     ],
                   ),
@@ -730,8 +732,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildProfileCard() {
-    final l10n = AppLocalizations.of(context);
-
     final fanBalance =
         _number(_profile?['fan_balance']);
 
@@ -814,7 +814,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      '${fanBalance.toStringAsFixed(4)} ${l10n.fan}',
+                      '${fanBalance.toStringAsFixed(4)} ${_t('fan', 'FAN')}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
@@ -853,8 +853,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ).toUpperCase();
     }
 
-    return '${parts.first[0]}${parts.last[0]}'
-        .toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
   // ---------------------------------------------------------------------------
@@ -957,8 +956,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildNotificationTile() {
-    final l10n = AppLocalizations.of(context);
-
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 16,
@@ -978,7 +975,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       title: Text(
-        l10n.notifications,
+        _t('notifications', 'Notifications'),
         style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
@@ -986,8 +983,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       subtitle: Text(
         _notificationsEnabled
-            ? l10n.enabled
-            : l10n.disabled,
+            ? _t('enabled', 'Enabled')
+            : _t('disabled', 'Disabled'),
         style: const TextStyle(
           fontSize: 10.5,
           color: Colors.grey,
@@ -1006,12 +1003,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // LOGOUT
+  // LOGOUT BUTTON
   // ---------------------------------------------------------------------------
 
   Widget _buildLogoutButton() {
-    final l10n = AppLocalizations.of(context);
-
     return SizedBox(
       width: double.infinity,
       height: 52,
@@ -1021,7 +1016,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Icons.logout_rounded,
         ),
         label: Text(
-          l10n.logout.toUpperCase(),
+          _t('logout', 'Logout').toUpperCase(),
           style: const TextStyle(
             fontWeight: FontWeight.w900,
           ),
