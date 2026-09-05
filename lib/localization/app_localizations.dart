@@ -342,16 +342,7 @@ class AppLocalizations {
       'dailyBoostCompleted':
           "Today's boost has been completed.",
     },
-
-    // PART 1 continues with the remaining
-    // translations in PART 2.
-    // PART 2/2
-// Ci gaba daga ƙarshen PART 1.
-
-// A nan ne translations na sauran languages suke ci gaba.
-// Kada ka ƙara wani class ko wani { a sama.
-// Ci gaba da code ɗin kai tsaye daga inda PART 1 ya tsaya.
-
+    
     'zh': {
       'appName': 'POWER FAN',
       'brandName': 'POWER FAN',
