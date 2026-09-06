@@ -62,77 +62,56 @@ class _PowerFanMaterialApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'POWER FAN NETWORK',
-
           locale: languageController.locale,
-
-          supportedLocales:
-              AppLocalizations.supportedLocales,
-
+          supportedLocales: AppLocalizations.supportedLocales,
           localizationsDelegates: const [
             AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-
           theme: ThemeData(
             useMaterial3: true,
-            scaffoldBackgroundColor:
-                const Color(0xFFF8F8FC),
-
+            scaffoldBackgroundColor: const Color(0xFFF8F8FC),
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF3B159B),
             ),
-
             appBarTheme: const AppBarTheme(
               backgroundColor: Colors.white,
               foregroundColor: Color(0xFF241064),
               elevation: 0,
               centerTitle: false,
             ),
-
-            inputDecorationTheme:
-                InputDecorationTheme(
+            inputDecorationTheme: InputDecorationTheme(
               filled: true,
               fillColor: Colors.white,
-
               border: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
-
               enabledBorder: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide.none,
               ),
-
               focusedBorder: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: const BorderSide(
                   color: Color(0xFF3B159B),
                   width: 1.5,
                 ),
               ),
             ),
-
             cardTheme: CardTheme(
               elevation: 0,
               color: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(18),
               ),
             ),
           ),
-
           home: const AppRoot(),
-
           routes: {
-            '/home': (_) =>
-                const MainNavigationScreen(),
+            '/home': (_) => const MainNavigationScreen(),
             '/auth': (_) => const AuthPage(),
           },
         );
@@ -149,35 +128,47 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  StreamSubscription<AuthState>?
-      _authSubscription;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
 
     _authSubscription = Supabase
-        .instance.client.auth.onAuthStateChange
-        .listen(
-      (AuthState state) {
-        if (!mounted) return;
+        .instance
+        .client
+        .auth
+        .onAuthStateChange
+        .listen((AuthState state) {
+      if (!mounted) return;
 
-        if (state.event ==
-                AuthChangeEvent.signedIn ||
-            state.event ==
-                AuthChangeEvent.tokenRefreshed) {
+      switch (state.event) {
+        case AuthChangeEvent.signedIn:
           _loadUserData();
-        }
+          break;
 
-        if (state.event ==
-            AuthChangeEvent.signedOut) {
+        case AuthChangeEvent.signedOut:
           setState(() {});
-        }
-      },
-    );
+          break;
 
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) {
+        case AuthChangeEvent.userUpdated:
+          _loadUserData();
+          break;
+
+        case AuthChangeEvent.passwordRecovery:
+          setState(() {});
+          break;
+
+        case AuthChangeEvent.tokenRefreshed:
+          // Token refresh does not require a full profile refresh.
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUserData();
     });
   }
@@ -185,11 +176,13 @@ class _AppRootState extends State<AppRoot> {
   Future<void> _loadUserData() async {
     if (!mounted) return;
 
-    final session = Supabase
-        .instance.client.auth.currentSession;
+    final session =
+        Supabase.instance.client.auth.currentSession;
 
     if (session == null) {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
       return;
     }
 
@@ -213,8 +206,8 @@ class _AppRootState extends State<AppRoot> {
 
   @override
   Widget build(BuildContext context) {
-    final session = Supabase
-        .instance.client.auth.currentSession;
+    final session =
+        Supabase.instance.client.auth.currentSession;
 
     if (session == null) {
       return const AuthPage();
