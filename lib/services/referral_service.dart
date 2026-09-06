@@ -30,7 +30,6 @@ class ReferralResult {
 
 class ReferralService {
   ReferralService._();
-
   static final ReferralService instance = ReferralService._();
 
   final SupabaseClient _client = Supabase.instance.client;
@@ -47,7 +46,6 @@ class ReferralService {
 
   Future<ReferralInfo> getReferralInfo() async {
     final userId = _userId;
-
     final profile = await _client
         .from('profiles')
         .select(
@@ -297,7 +295,6 @@ class ReferralService {
 
   int _toInt(dynamic value) {
     if (value == null) return 0;
-
     if (value is int) return value;
 
     if (value is num) {
@@ -312,7 +309,6 @@ class ReferralService {
 
   double _toDouble(dynamic value) {
     if (value == null) return 0.0;
-
     if (value is double) return value;
 
     if (value is num) {
