@@ -1,25 +1,16 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../globals/app_constants.dart';
-
-/// ===============================================================
-/// POWER FAN NETWORK
-/// KYC STATUS MODEL
-/// ===============================================================
-
 class KycStatus {
   final bool available;
   final bool comingSoon;
   final bool migrationAvailable;
 
-  /// 30-day requirements
   final int checkInDays;
   final int boostDays;
 
   final bool checkedInToday;
   final bool boostedToday;
 
-  /// Face verification
   final bool faceVerificationUnlocked;
   final bool faceVerified;
   final bool faceVerificationStarted;
@@ -37,11 +28,10 @@ class KycStatus {
     required this.faceVerificationStarted,
   });
 
-  /// Default status
   factory KycStatus.initial() {
     return const KycStatus(
       available: false,
-      comingSoon: true,
+      comingSoon: false,
       migrationAvailable: false,
       checkInDays: 0,
       boostDays: 0,
@@ -53,95 +43,119 @@ class KycStatus {
     );
   }
 
-  /// Convert Supabase response to KycStatus
-  factory KycStatus.fromMap(Map<String, dynamic> data) {
-    final bool faceUnlocked =
-        _toBool(data['face_verification_unlocked']) ||
-        _toBool(data['available']);
+  factory KycStatus.fromMap(Map<String, dynamic> map) {
+    final int checkInDays =
+        _toInt(map['kyc_checkin_days'] ?? map['checkin_days']);
 
-    final bool verified =
-        _toBool(data['face_verified']) ||
-        _toBool(data['verified']);
+    final int boostDays =
+        _toInt(map['kyc_boost_days'] ?? map['boost_days']);
 
-    final int checkInDays = _toInt(data['checkin_days']);
-    final int boostDays = _toInt(data['boost_days']);
+    final bool faceUnlocked = _toBool(
+      map['kyc_face_verification_unlocked'] ??
+          map['face_verification_unlocked'] ??
+          map['face_unlocked'],
+    );
 
-    final bool migrationAvailable =
-        _toBool(data['migration_available']);
+    final bool faceVerified = _toBool(
+      map['kyc_face_verified'] ??
+          map['face_verified'] ??
+          map['verified'],
+    );
+
+    final bool faceStarted = _toBool(
+      map['face_verification_started'] ??
+          map['face_verification_started_at'] != null,
+    );
+
+    final bool requirementsComplete =
+        checkInDays >= 30 && boostDays >= 30;
 
     return KycStatus(
-      available: faceUnlocked || verified,
-      comingSoon: !faceUnlocked && !verified,
-      migrationAvailable: migrationAvailable,
-
+      available: requirementsComplete || faceUnlocked || faceVerified,
+      comingSoon: _toBool(map['coming_soon']),
+      migrationAvailable: _toBool(
+        map['migration_available'] ?? map['migrationAvailable'],
+      ),
       checkInDays: checkInDays.clamp(0, 30),
       boostDays: boostDays.clamp(0, 30),
-
-      checkedInToday: _toBool(data['checked_in_today']),
-      boostedToday: _toBool(data['boosted_today']),
-
-      faceVerificationUnlocked: faceUnlocked,
-      faceVerified: verified,
-
-      faceVerificationStarted:
-          _toBool(data['face_verification_started']),
+      checkedInToday: _toBool(
+        map['checked_in_today'] ?? map['checkedInToday'],
+      ),
+      boostedToday: _toBool(
+        map['boosted_today'] ?? map['boostedToday'],
+      ),
+      faceVerificationUnlocked:
+          requirementsComplete || faceUnlocked || faceVerified,
+      faceVerified: faceVerified,
+      faceVerificationStarted: faceStarted,
     );
   }
 
-  /// =============================================================
-  /// 30-DAY REQUIREMENTS
-  /// =============================================================
-
-  bool get checkInRequirementComplete {
-    return checkInDays >= 30;
-  }
-
-  bool get boostRequirementComplete {
-    return boostDays >= 30;
-  }
-
   bool get requirementsComplete {
-    return checkInRequirementComplete &&
-        boostRequirementComplete;
+    return checkInDays >= 30 && boostDays >= 30;
   }
-
-  int get remainingCheckInDays {
-    return (30 - checkInDays).clamp(0, 30);
-  }
-
-  int get remainingBoostDays {
-    return (30 - boostDays).clamp(0, 30);
-  }
-
-  /// =============================================================
-  /// FACE VERIFICATION
-  /// =============================================================
 
   bool get canStartFaceVerification {
-    return faceVerificationUnlocked && !faceVerified;
+    return requirementsComplete &&
+        faceVerificationUnlocked &&
+        !faceVerified &&
+        !faceVerificationStarted;
   }
 
-  bool get faceVerifiedStatus {
-    return faceVerified;
+  bool get isVerified => faceVerified;
+
+  double get checkInProgress {
+    return (checkInDays / 30).clamp(0.0, 1.0);
   }
 
-  /// Old KYC compatibility getters.
-  /// These remain so older UI code will not break.
-  bool get canStartKyc1 => false;
+  double get boostProgress {
+    return (boostDays / 30).clamp(0.0, 1.0);
+  }
 
-  bool get canCompleteKyc1 => false;
+  String get statusLabel {
+    if (faceVerified) {
+      return 'KYC VERIFIED';
+    }
 
-  bool get canStartKyc2 => false;
+    if (requirementsComplete && faceVerificationUnlocked) {
+      return 'KYC READY';
+    }
 
-  bool get kyc1Verified => false;
+    return '30-Day KYC Requirement';
+  }
 
-  bool get kyc2Verified => false;
+  String get verificationMethod {
+    return 'Live Face Verification';
+  }
 
-  bool get kyc2Eligible => false;
-
-  /// =============================================================
-  /// HELPERS
-  /// =============================================================
+  KycStatus copyWith({
+    bool? available,
+    bool? comingSoon,
+    bool? migrationAvailable,
+    int? checkInDays,
+    int? boostDays,
+    bool? checkedInToday,
+    bool? boostedToday,
+    bool? faceVerificationUnlocked,
+    bool? faceVerified,
+    bool? faceVerificationStarted,
+  }) {
+    return KycStatus(
+      available: available ?? this.available,
+      comingSoon: comingSoon ?? this.comingSoon,
+      migrationAvailable:
+          migrationAvailable ?? this.migrationAvailable,
+      checkInDays: checkInDays ?? this.checkInDays,
+      boostDays: boostDays ?? this.boostDays,
+      checkedInToday: checkedInToday ?? this.checkedInToday,
+      boostedToday: boostedToday ?? this.boostedToday,
+      faceVerificationUnlocked:
+          faceVerificationUnlocked ?? this.faceVerificationUnlocked,
+      faceVerified: faceVerified ?? this.faceVerified,
+      faceVerificationStarted:
+          faceVerificationStarted ?? this.faceVerificationStarted,
+    );
+  }
 
   static int _toInt(dynamic value) {
     if (value == null) return 0;
@@ -168,383 +182,210 @@ class KycStatus {
 
     return text == 'true' ||
         text == '1' ||
-        text == 'yes';
+        text == 'yes' ||
+        text == 'verified';
   }
 }
 
-/// ===============================================================
-/// POWER FAN NETWORK
-/// KYC SERVICE
-/// ===============================================================
-
 class KycService {
-  KycService({
-    SupabaseClient? client,
-  }) : _supabase =
-            client ?? Supabase.instance.client;
+  KycService({SupabaseClient? client})
+      : _supabase = client ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
-  /// =============================================================
-  /// CURRENT USER CHECK
-  /// =============================================================
-
-  Future<void> _requireUser() async {
+  /// Gets the current KYC progress for the signed-in user.
+  ///
+  /// Server is the source of truth.
+  Future<KycStatus> getProgress() async {
     final user = _supabase.auth.currentUser;
 
     if (user == null) {
-      throw const AuthException(
-        'You must be logged in to use KYC.',
-      );
-    }
-  }
-
-  /// =============================================================
-  /// GET KYC STATUS
-  /// =============================================================
-
-  Future<KycStatus> getStatus() async {
-    await _requireUser();
-
-    try {
-      final response =
-          await _supabase.rpc('get_kyc_progress');
-
-      if (response is Map) {
-        return KycStatus.fromMap(
-          Map<String, dynamic>.from(response),
-        );
-      }
-
       return KycStatus.initial();
-    } catch (error) {
-      throw AuthException(
-        _cleanError(error),
-      );
     }
-  }
-
-  /// =============================================================
-  /// GET KYC PROGRESS
-  /// =============================================================
-
-  Future<Map<String, dynamic>> getKycProgress() async {
-    await _requireUser();
 
     try {
-      final response =
+      final dynamic response =
           await _supabase.rpc('get_kyc_progress');
 
-      if (response is Map) {
-        return Map<String, dynamic>.from(response);
+      if (response == null) {
+        return KycStatus.initial();
       }
 
-      return <String, dynamic>{
-        'success': false,
-        'message': 'Unable to load KYC progress.',
-      };
-    } catch (error) {
-      throw AuthException(
-        _cleanError(error),
-      );
+      Map<String, dynamic>? data;
+
+      if (response is Map<String, dynamic>) {
+        data = response;
+      } else if (response is List && response.isNotEmpty) {
+        final first = response.first;
+
+        if (first is Map<String, dynamic>) {
+          data = first;
+        } else if (first is Map) {
+          data = Map<String, dynamic>.from(first);
+        }
+      } else if (response is Map) {
+        data = Map<String, dynamic>.from(response);
+      }
+
+      if (data == null) {
+        return KycStatus.initial();
+      }
+
+      return KycStatus.fromMap(data);
+    } on PostgrestException {
+      rethrow;
     }
   }
 
-  /// =============================================================
-  /// DAILY CHECK-IN
-  /// =============================================================
-
-  Future<Map<String, dynamic>> claimDailyCheckIn() async {
-    await _requireUser();
-
-    try {
-      final response =
-          await _supabase.rpc('claim_daily_checkin');
-
-      if (response is Map) {
-        return Map<String, dynamic>.from(response);
-      }
-
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'Unable to complete daily check-in.',
-      };
-    } catch (error) {
-      throw AuthException(
-        _cleanError(error),
-      );
-    }
-  }
-
-  /// =============================================================
-  /// RECORD DAILY BOOST
+  /// Claims today's daily check-in.
   ///
-  /// One successful boost per day is enough
-  /// to count that day toward the 30-day KYC requirement.
-  /// =============================================================
+  /// The database prevents double claims for the same day.
+  Future<KycStatus> claimDailyCheckIn() async {
+    await _supabase.rpc('claim_daily_checkin');
 
-  Future<Map<String, dynamic>> recordDailyBoost() async {
-    await _requireUser();
-
-    try {
-      final response =
-          await _supabase.rpc('record_daily_boost');
-
-      if (response is Map) {
-        return Map<String, dynamic>.from(response);
-      }
-
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'Unable to record daily boost.',
-      };
-    } catch (error) {
-      throw AuthException(
-        _cleanError(error),
-      );
-    }
+    return getProgress();
   }
 
-  /// =============================================================
-  /// START LIVE FACE VERIFICATION
+  /// Records today's KYC boost.
   ///
-  /// The server starts the verification session.
-  /// The required minimum duration is 30 seconds.
-  /// =============================================================
+  /// The database prevents duplicate boost-day records.
+  Future<KycStatus> recordDailyBoost() async {
+    await _supabase.rpc('record_daily_boost');
 
-  Future<Map<String, dynamic>>
-      startFaceVerification() async {
-    await _requireUser();
-
-    try {
-      final response =
-          await _supabase.rpc(
-        'start_face_verification',
-      );
-
-      if (response is Map) {
-        return Map<String, dynamic>.from(response);
-      }
-
-      return <String, dynamic>{
-        'success': false,
-        'message':
-            'Unable to start face verification.',
-      };
-    } catch (error) {
-      throw AuthException(
-        _cleanError(error),
-      );
-    }
+    return getProgress();
   }
 
-  /// =============================================================
-  /// COMPLETE 30-SECOND FACE VERIFICATION
+  /// Starts the server-side face verification session.
   ///
   /// IMPORTANT:
-  /// Supabase checks that at least 30 seconds have passed
-  /// since the verification session started.
-  /// =============================================================
+  /// This does NOT itself verify the user's identity.
+  /// The real biometric/KYC provider will be integrated later.
+  Future<String?> startFaceVerification() async {
+    final user = _supabase.auth.currentUser;
 
-  Future<Map<String, dynamic>>
-      completeFaceVerification() async {
-    await _requireUser();
+    if (user == null) {
+      throw Exception('User is not signed in.');
+    }
 
-    try {
-      final response =
-          await _supabase.rpc(
-        'complete_face_verification',
+    final status = await getProgress();
+
+    if (!status.requirementsComplete) {
+      throw Exception(
+        'Complete 30 days of daily check-ins and 30 days of daily boosts first.',
       );
+    }
 
-      if (response is Map) {
-        return Map<String, dynamic>.from(response);
+    if (!status.faceVerificationUnlocked) {
+      throw Exception(
+        'Face verification is not unlocked yet.',
+      );
+    }
+
+    if (status.faceVerified) {
+      return null;
+    }
+
+    final dynamic response =
+        await _supabase.rpc('start_face_verification');
+
+    if (response == null) {
+      return null;
+    }
+
+    if (response is String) {
+      return response;
+    }
+
+    if (response is Map) {
+      final map = Map<String, dynamic>.from(response);
+
+      final value = map['id'] ??
+          map['session_id'] ??
+          map['verification_id'];
+
+      return value?.toString();
+    }
+
+    if (response is List && response.isNotEmpty) {
+      final first = response.first;
+
+      if (first is String) {
+        return first;
       }
 
-      return <String, dynamic>{
-        'success': false,
-        'completed': false,
-        'message':
-            'Unable to complete face verification.',
-      };
-    } catch (error) {
-      throw AuthException(
-        _cleanError(error),
-      );
+      if (first is Map) {
+        final map = Map<String, dynamic>.from(first);
+
+        final value = map['id'] ??
+            map['session_id'] ??
+            map['verification_id'];
+
+        return value?.toString();
+      }
     }
+
+    return null;
   }
 
-  /// =============================================================
-  /// CHECK IF KYC IS AVAILABLE
-  /// =============================================================
-
-  Future<bool> isKycAvailable() async {
-    final status = await getStatus();
-
-    return status.faceVerificationUnlocked ||
-        status.faceVerified;
-  }
-
-  /// =============================================================
-  /// KYC SUMMARY
-  /// =============================================================
-
-  Future<Map<String, dynamic>>
-      getKycSummary() async {
-    final status = await getStatus();
-
-    return <String, dynamic>{
-      'available': status.available,
-      'coming_soon': status.comingSoon,
-
-      'checkin_days': status.checkInDays,
-      'boost_days': status.boostDays,
-
-      'checked_in_today':
-          status.checkedInToday,
-
-      'boosted_today':
-          status.boostedToday,
-
-      'checkin_complete':
-          status.checkInRequirementComplete,
-
-      'boost_complete':
-          status.boostRequirementComplete,
-
-      'requirements_complete':
-          status.requirementsComplete,
-
-      'remaining_checkin_days':
-          status.remainingCheckInDays,
-
-      'remaining_boost_days':
-          status.remainingBoostDays,
-
-      'face_verification_unlocked':
-          status.faceVerificationUnlocked,
-
-      'face_verification_started':
-          status.faceVerificationStarted,
-
-      'face_verified':
-          status.faceVerified,
-
-      'migration_available':
-          status.migrationAvailable,
-    };
-  }
-
-  /// =============================================================
-  /// MIGRATION
+  /// Completes the server-side verification session.
   ///
-  /// Still Coming Soon.
-  /// =============================================================
-
-  Future<Map<String, dynamic>>
-      getMigrationStatus() async {
-    await _requireUser();
-
-    return <String, dynamic>{
-      'available': false,
-      'coming_soon': true,
-      'message':
-          'AFAM migration is coming soon.',
-      'conversion':
-          '100 FAN = 1 AFAM',
-    };
-  }
-
-  /// =============================================================
-  /// OLD KYC METHODS
+  /// This function should only be called after a real biometric/KYC
+  /// provider confirms the user's identity.
   ///
-  /// Kept for compatibility with any old UI code.
-  /// The old KYC1/KYC2 system is no longer used.
-  /// =============================================================
-
-  Future<Map<String, dynamic>>
-      startKyc1() async {
-    return <String, dynamic>{
-      'success': false,
-      'available': false,
-      'message':
-          'The old KYC1 system is no longer used.',
-    };
-  }
-
-  Future<Map<String, dynamic>>
-      completeKyc1() async {
-    return <String, dynamic>{
-      'success': false,
-      'available': false,
-      'message':
-          'The old KYC1 system is no longer used.',
-    };
-  }
-
-  Future<Map<String, dynamic>>
-      startKyc2() async {
-    return <String, dynamic>{
-      'success': false,
-      'available': false,
-      'message':
-          'The old KYC2 system is no longer used.',
-    };
-  }
-
-  Future<bool> isKyc2Eligible() async {
-    return false;
-  }
-
-  /// =============================================================
-  /// LABELS
-  /// =============================================================
-
-  String get statusLabel {
-    return '30-Day KYC Requirement';
-  }
-
-  String get verificationMethod {
-    return 'Live Face Verification';
-  }
-
-  String get migrationLabel {
-    return AppConfig.comingSoon;
-  }
-
-  /// =============================================================
-  /// ERROR CLEANUP
-  /// =============================================================
-
-  String _cleanError(Object error) {
-    final String message = error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .trim();
-
-    if (message.isEmpty) {
-      return 'Something went wrong. Please try again.';
+  /// Until that provider is integrated, the app must NOT pretend that
+  /// opening the camera alone means the user is verified.
+  Future<KycStatus> completeFaceVerification({
+    required String verificationId,
+  }) async {
+    if (verificationId.trim().isEmpty) {
+      throw Exception('Invalid verification session.');
     }
 
-    final String lower =
-        message.toLowerCase();
+    await _supabase.rpc(
+      'complete_face_verification',
+      params: {
+        'p_verification_id': verificationId,
+      },
+    );
 
-    if (lower.contains('jwt')) {
-      return 'Your session has expired. Please login again.';
-    }
+    return getProgress();
+  }
 
-    if (lower.contains('not authenticated') ||
-        lower.contains('unauthorized')) {
-      return 'You are not authenticated. Please login again.';
-    }
+  /// Convenience method for checking whether the user has completed
+  /// the 30-day requirements.
+  Future<bool> areRequirementsComplete() async {
+    final status = await getProgress();
+    return status.requirementsComplete;
+  }
 
-    if (lower.contains('network') ||
-        lower.contains('socket') ||
-        lower.contains('connection')) {
-      return 'Network connection problem. Please check your internet and try again.';
-    }
+  /// Convenience method for checking whether face verification
+  /// has already been completed.
+  Future<bool> isVerified() async {
+    final status = await getProgress();
+    return status.faceVerified;
+  }
 
-    return message;
+  /// Returns today's check-in state.
+  Future<bool> checkedInToday() async {
+    final status = await getProgress();
+    return status.checkedInToday;
+  }
+
+  /// Returns today's boost state.
+  Future<bool> boostedToday() async {
+    final status = await getProgress();
+    return status.boostedToday;
+  }
+
+  /// Returns the number of completed check-in days.
+  Future<int> getCheckInDays() async {
+    final status = await getProgress();
+    return status.checkInDays;
+  }
+
+  /// Returns the number of completed boost days.
+  Future<int> getBoostDays() async {
+    final status = await getProgress();
+    return status.boostDays;
   }
 }
