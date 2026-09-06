@@ -19,7 +19,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final AuthService _authService = AuthService.instance;
   final LanguageController _languageController =
       LanguageController.instance;
-
   final KycService _kycService = KycService();
 
   Map<String, dynamic>? _profile;
@@ -76,7 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             .select()
             .eq('id', user.id)
             .maybeSingle(),
-        _kycService.getStatus(),
+        _kycService.getProgress(),
       ]);
 
       if (!mounted) return;
@@ -102,13 +101,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return name;
     }
 
-    final fullName = _profile?['full_name']?.toString().trim() ?? '';
+    final fullName =
+        _profile?['full_name']?.toString().trim() ?? '';
 
     if (fullName.isNotEmpty) {
       return fullName;
     }
 
-    final username = _profile?['username']?.toString().trim() ?? '';
+    final username =
+        _profile?['username']?.toString().trim() ?? '';
 
     if (username.isNotEmpty) {
       return username;
@@ -124,7 +125,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return email;
     }
 
-    return _client.auth.currentUser?.email ?? 'No email available';
+    return _client.auth.currentUser?.email ??
+        'No email available';
   }
 
   double _number(dynamic value) {
@@ -202,7 +204,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         height: 42,
                         decoration: BoxDecoration(
                           color: purple.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius:
+                              BorderRadius.circular(12),
                         ),
                         child: const Icon(
                           Icons.language_rounded,
@@ -230,7 +233,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
-                    itemCount: AppLocalizations.languages.length,
+                    itemCount:
+                        AppLocalizations.languages.length,
                     itemBuilder: (context, index) {
                       final language =
                           AppLocalizations.languages[index];
@@ -315,7 +319,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    // IMPORTANT: await the language change.
     await _languageController.setLanguage(selected);
 
     if (!mounted) return;
@@ -351,8 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           boostDays: kyc?.boostDays ?? 0,
           faceVerificationUnlocked:
               kyc?.faceVerificationUnlocked ?? false,
-          faceVerified:
-              kyc?.faceVerified ?? false,
+          faceVerified: kyc?.faceVerified ?? false,
         ),
       ),
     );
@@ -387,7 +389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _t('security', 'Security'),
+                  'Security',
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     color: deepPurple,
@@ -396,13 +398,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          content: Text(
-            '${_t('security', 'Security')}\n\n'
-            '${_t('oneDeviceOneAccount', 'One device = one account')}\n\n'
-            '${_t('deviceSecurity', 'Device security')}',
-            style: const TextStyle(
-              fontSize: 14,
-              height: 1.5,
+          content: const SingleChildScrollView(
+            child: Text(
+              'POWER FAN NETWORK is designed to protect '
+              'the integrity of the network and its users.\n\n'
+              'One person = one account.\n'
+              'Multiple accounts, bots, automation, fake '
+              'activity, or attempts to abuse the system '
+              'are not allowed.\n\n'
+              'Accounts involved in suspicious or abusive '
+              'activity may lose access to rewards and '
+              'network features.\n\n'
+              'Please keep your account secure and use '
+              'POWER FAN NETWORK fairly and genuinely.',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.55,
+              ),
             ),
           ),
           actions: [
@@ -410,9 +422,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () {
                 Navigator.of(dialogContext).pop();
               },
-              child: Text(
-                _t('close', 'Close').toUpperCase(),
-                style: const TextStyle(
+              child: const Text(
+                'CLOSE',
+                style: TextStyle(
                   color: purple,
                   fontWeight: FontWeight.w800,
                 ),
@@ -425,34 +437,244 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showAbout() async {
-    showAboutDialog(
+    await showDialog<void>(
       context: context,
-      applicationName: _t(
-        'powerFanNetwork',
-        'POWER FAN NETWORK',
-      ),
-      applicationVersion: '1.0.0',
-      applicationLegalese: 'Mine FAN. Earn More',
-      children: [
-        const SizedBox(height: 12),
-        Text(
-          _t(
-            'powerFanNetwork',
-            'POWER FAN NETWORK',
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 28,
           ),
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-            color: deepPurple,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '${_t('fan', 'FAN')} & ${_t('afam', 'AFAM')}',
-          style: const TextStyle(
-            fontSize: 14,
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(
+                22,
+                24,
+                22,
+                20,
+              ),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            deepPurple,
+                            purple,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius:
+                            BorderRadius.circular(22),
+                      ),
+                      child: const Icon(
+                        Icons.bolt_rounded,
+                        color: Colors.white,
+                        size: 42,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Center(
+                    child: Text(
+                      'POWER FAN NETWORK',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                        color: deepPurple,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Center(
+                    child: Text(
+                      'THIS IS NOT JUST ANOTHER PROJECT.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: purple,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const Text(
+                    'POWER FAN NETWORK is not simply an app '
+                    'you open for a few days and then forget. '
+                    'It is being built around a different idea: '
+                    'consistency, patience, participation, '
+                    'community, and long-term commitment.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Our goal is to create an environment where '
+                    'real users can participate genuinely, build '
+                    'their activity history, and remain part of '
+                    'the journey as POWER FAN NETWORK continues '
+                    'to develop.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'At POWER FAN NETWORK, the small actions '
+                    'you complete consistently matter. Start '
+                    'your mining session, return when your '
+                    'session is ready, complete your daily '
+                    'activities, take part in eligible tasks, '
+                    'and invite genuine people who understand '
+                    'the project.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'We are not looking only for people who '
+                    'can start something. We are looking for '
+                    'people who can stay committed, follow the '
+                    'rules, remain patient, and continue building '
+                    'their journey over time.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'That is what makes POWER FAN NETWORK '
+                    'different. We believe a strong community '
+                    'should be built around real users, real '
+                    'participation, genuine referrals, and '
+                    'responsible activity — not bots, fake '
+                    'accounts, or attempts to manipulate the '
+                    'system.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Do not look only at what happens today. '
+                    'Look at the journey you are building from '
+                    'today forward. Every mining session, every '
+                    'check-in, every completed activity, and '
+                    'every genuine referral can become part of '
+                    'your account history.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'If you want to be part of this journey, '
+                    'stay active, stay genuine, follow the '
+                    'rules, and be patient. Do not forget why '
+                    'you started.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.65,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: purple.withOpacity(0.06),
+                      borderRadius:
+                          BorderRadius.circular(16),
+                      border: Border.all(
+                        color: purple.withOpacity(0.10),
+                      ),
+                    ),
+                    child: const Text(
+                      'POWER FAN NETWORK is not just about '
+                      'starting mining. It is about staying '
+                      'consistent and seeing where the journey '
+                      'can take you.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.6,
+                        fontWeight: FontWeight.w700,
+                        color: deepPurple,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Center(
+                    child: Text(
+                      'STAY ACTIVE. STAY GENUINE. '
+                      'STAY CONSISTENT.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: purple,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: purple,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text(
+                        'CLOSE',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -669,11 +891,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _buildSettingTile(
                             icon:
                                 Icons.info_outline_rounded,
-                            title: _t(
-                              'powerFanNetwork',
-                              'POWER FAN NETWORK',
-                            ),
-                            subtitle: 'Version 1.0.0',
+                            title:
+                                'About POWER FAN NETWORK',
+                            subtitle:
+                                'Learn what makes POWER FAN NETWORK different',
                             onTap: _showAbout,
                           ),
                         ],
@@ -771,7 +992,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      '${fanBalance.toStringAsFixed(4)} ${_t('fan', 'FAN')}',
+                      '${fanBalance.toStringAsFixed(4)} '
+                      '${_t('fan', 'FAN')}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
@@ -804,13 +1026,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (parts.length == 1) {
       final text = parts.first;
 
-      return text.substring(
-        0,
-        text.length > 2 ? 2 : text.length,
-      ).toUpperCase();
+      return text
+          .substring(
+            0,
+            text.length > 2 ? 2 : text.length,
+          )
+          .toUpperCase();
     }
 
-    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    return '${parts.first[0]}${parts.last[0]}'
+        .toUpperCase();
   }
 
   Widget _buildSection({
