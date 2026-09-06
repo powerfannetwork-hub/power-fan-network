@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/referral_service.dart';
 
@@ -13,11 +14,13 @@ class ReferralScreen extends StatefulWidget {
 class _ReferralScreenState extends State<ReferralScreen> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
+  static const Color lightBackground = Color(0xFFF8F8FC);
 
   final ReferralService _referralService = ReferralService.instance;
 
   ReferralInfo? _referralInfo;
   bool _loading = true;
+  bool _applying = false;
 
   @override
   void initState() {
@@ -26,7 +29,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Future<void> _loadReferralInfo() async {
-    setState(() => _loading = true);
+    if (mounted) {
+      setState(() => _loading = true);
+    }
 
     try {
       final info = await _referralService.getReferralInfo();
@@ -37,12 +42,17 @@ class _ReferralScreenState extends State<ReferralScreen> {
         _referralInfo = info;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
 
       setState(() {
         _loading = false;
       });
+
+      _showMessage(
+        _cleanError(error),
+        isError: true,
+      );
     }
   }
 
@@ -51,26 +61,204 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
     if (code.isEmpty) return;
 
-    await Clipboard.setData(ClipboardData(text: code));
+    await Clipboard.setData(
+      ClipboardData(text: code),
+    );
 
+    if (!mounted) return;
+
+    _showMessage('Referral code copied.');
+  }
+
+  Future<void> _shareReferralCode() async {
+    final code = _referralInfo?.referralCode ?? '';
+
+    if (code.isEmpty) {
+      _showMessage(
+        'Your referral code is not available yet.',
+        isError: true,
+      );
+      return;
+    }
+
+    final message =
+        'Join POWER FAN NETWORK and start mining FAN.\n\n'
+        'Use my referral code: $code\n\n'
+        'POWER FAN NETWORK';
+
+    await Share.share(message);
+  }
+
+  Future<void> _showApplyReferralDialog() async {
+    final controller = TextEditingController();
+    String? errorText;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'Apply Referral Code',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Enter a valid referral code from the person who invited you.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    textCapitalization:
+                        TextCapitalization.characters,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Referral Code',
+                      hintText: 'Enter code',
+                      errorText: errorText,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: _applying
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text('CANCEL'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryPurple,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _applying
+                      ? null
+                      : () async {
+                          final code =
+                              controller.text.trim();
+
+                          if (code.isEmpty) {
+                            setDialogState(() {
+                              errorText =
+                                  'Enter your referral code.';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            errorText = null;
+                          });
+
+                          if (mounted) {
+                            setState(() {
+                              _applying = true;
+                            });
+                          }
+
+                          final result =
+                              await _referralService
+                                  .applyReferralCode(code);
+
+                          if (!mounted) return;
+
+                          setState(() {
+                            _applying = false;
+                          });
+
+                          if (!result.success) {
+                            setDialogState(() {
+                              errorText = result.message;
+                            });
+                            return;
+                          }
+
+                          Navigator.of(dialogContext).pop();
+
+                          _showMessage(
+                            result.message.isEmpty
+                                ? 'Referral code applied successfully.'
+                                : result.message,
+                          );
+
+                          await _loadReferralInfo();
+                        },
+                  child: _applying
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('APPLY'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
-          content: Text('Referral code copied'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(message),
+          backgroundColor:
+              isError ? Colors.red.shade700 : Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
         ),
       );
+  }
+
+  String _cleanError(Object error) {
+    var text = error.toString();
+
+    if (text.startsWith('Exception: ')) {
+      text = text.substring(11);
+    }
+
+    if (text.startsWith('PostgrestException: ')) {
+      text = text.substring(19);
+    }
+
+    return text.trim().isEmpty
+        ? 'Unable to load referral information.'
+        : text.trim();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F8FC),
+      backgroundColor: lightBackground,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF8F8FC),
+        backgroundColor: lightBackground,
         elevation: 0,
         centerTitle: false,
         title: const Text(
@@ -92,12 +280,16 @@ class _ReferralScreenState extends State<ReferralScreen> {
               color: primaryPurple,
               onRefresh: _loadReferralInfo,
               child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.fromLTRB(16, 4, 16, 28),
                 children: [
                   _buildHeroCard(),
                   const SizedBox(height: 16),
                   _buildReferralCodeCard(),
+                  const SizedBox(height: 16),
+                  _buildApplyReferralCard(),
                   const SizedBox(height: 16),
                   _buildStatsCard(),
                   const SizedBox(height: 16),
@@ -143,7 +335,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           ),
           SizedBox(height: 6),
           Text(
-            'Invite your friends to join POWER FAN NETWORK.',
+            'Invite your friends to join POWER FAN NETWORK and earn FAN rewards.',
             style: TextStyle(
               color: Colors.white70,
               fontSize: 13,
@@ -193,7 +385,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   ),
                 ),
                 IconButton(
-                  onPressed: code.isEmpty ? null : _copyReferralCode,
+                  onPressed:
+                      code.isEmpty ? null : _copyReferralCode,
                   icon: const Icon(
                     Icons.copy_rounded,
                     color: primaryPurple,
@@ -202,16 +395,97 @@ class _ReferralScreenState extends State<ReferralScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed:
+                  code.isEmpty ? null : _shareReferralCode,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryPurple,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(13),
+                ),
+              ),
+              icon: const Icon(
+                Icons.share_rounded,
+              ),
+              label: const Text(
+                'SHARE REFERRAL CODE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApplyReferralCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Have a Referral Code?',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Apply the code from the person who invited you.',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 13),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed:
+                  _applying ? null : _showApplyReferralDialog,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primaryPurple,
+                side: const BorderSide(
+                  color: primaryPurple,
+                ),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(13),
+                ),
+              ),
+              icon: const Icon(
+                Icons.input_rounded,
+              ),
+              label: const Text(
+                'ENTER REFERRAL CODE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildStatsCard() {
-    final activeReferrals = _referralInfo?.activeReferrals ?? 0;
+    final activeReferrals =
+        _referralInfo?.activeReferrals ?? 0;
 
-    // ReferralInfo uses totalInviterRewards for the referrer's FAN earnings.
-    final earnings = _referralInfo?.totalInviterRewards ?? 0;
+    final earnings =
+        _referralInfo?.totalInviterRewards ?? 0;
 
     return _card(
       child: Column(
@@ -239,7 +513,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 child: _statItem(
                   icon: Icons.monetization_on_rounded,
                   title: 'Referral Earnings',
-                  value: '${earnings.toStringAsFixed(0)} FAN',
+                  value:
+                      '${earnings.toStringAsFixed(0)} FAN',
                 ),
               ),
             ],
@@ -257,11 +532,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F8FC),
+        color: lightBackground,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
@@ -292,7 +568,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
   Widget _buildRewardsCard() {
     return _card(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           const Text(
             'Referral Rewards',
@@ -310,7 +587,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
           const SizedBox(height: 10),
           _rewardRow(
             icon: Icons.card_giftcard_rounded,
-            title: 'Successful referral',
+            title: 'Inviter reward',
             value: '+5 FAN',
           ),
         ],
@@ -330,7 +607,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
           height: 40,
           decoration: BoxDecoration(
             color: primaryPurple.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(11),
+            borderRadius:
+                BorderRadius.circular(11),
           ),
           child: Icon(
             icon,
@@ -361,6 +639,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Widget _buildMiningBonusCard() {
+    final active =
+        _referralInfo?.activeReferrals ?? 0;
+
+    final bonus =
+        _referralInfo?.miningBonus ?? 0.0;
+
     return _card(
       child: Row(
         children: [
@@ -369,7 +653,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
             height: 45,
             decoration: BoxDecoration(
               color: Colors.green.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.speed_rounded,
@@ -378,23 +663,33 @@ class _ReferralScreenState extends State<ReferralScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Mining Rate Bonus',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  '+0.02 FAN/H for each active referral',
+                  '+0.02 FAN/H per active referral',
                   style: TextStyle(
-                    color: Colors.grey,
+                    color: Colors.grey.shade700,
                     fontSize: 11,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$active active • +${bonus.toStringAsFixed(2)} FAN/H',
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
