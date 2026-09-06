@@ -10,6 +10,7 @@ import 'localization/app_localizations.dart';
 import 'localization/language_controller.dart';
 import 'pages/auth_page.dart';
 import 'screens/main_navigation_screen.dart';
+import 'services/notification_service.dart';
 
 const String supabaseUrl =
     'https://fihtqejqpycuvebufjhc.supabase.co';
@@ -27,6 +28,8 @@ Future<void> main() async {
       autoRefreshToken: true,
     ),
   );
+
+  await NotificationService.instance.initialize();
 
   await LanguageController.instance.loadSavedLanguage();
 
@@ -160,7 +163,6 @@ class _AppRootState extends State<AppRoot> {
           break;
 
         case AuthChangeEvent.tokenRefreshed:
-          // Token refresh does not require a full profile refresh.
           break;
 
         default:
@@ -169,8 +171,24 @@ class _AppRootState extends State<AppRoot> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeNotifications();
       _loadUserData();
     });
+  }
+
+  Future<void> _initializeNotifications() async {
+    try {
+      await NotificationService.instance.initialize();
+
+      final enabled =
+          await NotificationService.instance.areNotificationsEnabled();
+
+      if (!enabled) {
+        await NotificationService.instance.requestPermission();
+      }
+    } catch (_) {
+      // Notifications must never prevent the app from starting.
+    }
   }
 
   Future<void> _loadUserData() async {
