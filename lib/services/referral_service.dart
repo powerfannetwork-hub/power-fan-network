@@ -30,6 +30,7 @@ class ReferralResult {
 
 class ReferralService {
   ReferralService._();
+
   static final ReferralService instance = ReferralService._();
 
   final SupabaseClient _client = Supabase.instance.client;
@@ -46,6 +47,7 @@ class ReferralService {
 
   Future<ReferralInfo> getReferralInfo() async {
     final userId = _userId;
+
     final profile = await _client
         .from('profiles')
         .select(
@@ -64,21 +66,29 @@ class ReferralService {
         .select('inviter_reward')
         .eq('inviter_id', userId);
 
-    final referralRows = List<Map<String, dynamic>>.from(
-      referrals as List,
-    );
+    final referralRows = referrals is List
+        ? referrals
+            .whereType<Map>()
+            .map(
+              (row) => Map<String, dynamic>.from(row),
+            )
+            .toList()
+        : <Map<String, dynamic>>[];
 
-    final rewardRows = List<Map<String, dynamic>>.from(
-      rewards as List,
-    );
-
-    final totalReferrals = referralRows.length;
+    final rewardRows = rewards is List
+        ? rewards
+            .whereType<Map>()
+            .map(
+              (row) => Map<String, dynamic>.from(row),
+            )
+            .toList()
+        : <Map<String, dynamic>>[];
 
     int activeReferrals = 0;
 
     for (final referral in referralRows) {
       final status =
-          referral['status']?.toString().toLowerCase();
+          referral['status']?.toString().toLowerCase().trim();
 
       if (status == 'active') {
         activeReferrals++;
@@ -92,38 +102,41 @@ class ReferralService {
       activeReferrals = profileActive;
     }
 
-    final miningBonusPerReferral =
-        _toDouble(profile['referral_boost_rate']) > 0
-            ? _toDouble(profile['referral_boost_rate'])
-            : 0.02;
+    final storedBonus =
+        _toDouble(profile['referral_boost_rate']);
+
+    final bonusPerReferral =
+        storedBonus > 0 ? storedBonus : 0.02;
 
     final miningBonus =
-        activeReferrals * miningBonusPerReferral;
+        activeReferrals * bonusPerReferral;
 
-    double totalInviterRewards = 0;
+    double totalRewards = 0;
 
     for (final reward in rewardRows) {
-      totalInviterRewards +=
+      totalRewards +=
           _toDouble(reward['inviter_reward']);
     }
 
     return ReferralInfo(
       referralCode:
           profile['referral_code']?.toString() ?? '',
-      totalReferrals: totalReferrals,
+      totalReferrals: referralRows.length,
       activeReferrals: activeReferrals,
       miningBonus: miningBonus,
       miningBonusPerActiveReferral:
-          miningBonusPerReferral,
-      totalInviterRewards: totalInviterRewards,
+          bonusPerReferral,
+      totalInviterRewards: totalRewards,
     );
   }
 
   Future<ReferralResult> applyReferralCode(
     String code,
   ) async {
-    final userId = _userId;
-    final referralCode = code.trim().toUpperCase();
+    _userId;
+
+    final referralCode =
+        code.trim().toUpperCase();
 
     if (referralCode.isEmpty) {
       return const ReferralResult(
@@ -133,111 +146,47 @@ class ReferralService {
     }
 
     try {
-      final currentProfile = await _client
-          .from('profiles')
-          .select('id, referral_code, referred_by')
-          .eq('id', userId)
-          .single();
+      final response = await _client.rpc(
+        'apply_referral_code',
+        params: {
+          'p_referral_code': referralCode,
+        },
+      );
 
-      final ownCode =
-          currentProfile['referral_code']
-              ?.toString()
-              .trim()
-              .toUpperCase();
+      Map<String, dynamic>? result;
 
-      if (ownCode == referralCode) {
-        return const ReferralResult(
-          success: false,
-          message: 'You cannot use your own referral code.',
+      if (response is Map) {
+        result = Map<String, dynamic>.from(response);
+      } else if (response is List &&
+          response.isNotEmpty &&
+          response.first is Map) {
+        result = Map<String, dynamic>.from(
+          response.first as Map,
         );
       }
 
-      final existingReferrer =
-          currentProfile['referred_by'];
-
-      if (existingReferrer != null &&
-          existingReferrer.toString().trim().isNotEmpty) {
+      if (result == null) {
         return const ReferralResult(
           success: false,
-          message: 'A referral code has already been applied.',
+          message: 'Invalid server response.',
         );
       }
 
-      final inviter = await _client
-          .from('profiles')
-          .select('id, referral_code')
-          .eq('referral_code', referralCode)
-          .maybeSingle();
+      final success =
+          _toBool(result['success']);
 
-      if (inviter == null) {
-        return const ReferralResult(
-          success: false,
-          message: 'Invalid referral code.',
-        );
-      }
+      final message =
+          result['message']?.toString().trim();
 
-      final inviterId =
-          inviter['id']?.toString();
-
-      if (inviterId == null ||
-          inviterId.isEmpty) {
-        return const ReferralResult(
-          success: false,
-          message: 'Invalid referral account.',
-        );
-      }
-
-      if (inviterId == userId) {
-        return const ReferralResult(
-          success: false,
-          message: 'You cannot use your own referral code.',
-        );
-      }
-
-      final existingReferral = await _client
-          .from('referrals')
-          .select('id')
-          .eq('referred_id', userId)
-          .maybeSingle();
-
-      if (existingReferral != null) {
-        return const ReferralResult(
-          success: false,
-          message: 'This account already has a referral.',
-        );
-      }
-
-      await _client
-          .from('profiles')
-          .update({
-            'referred_by': inviterId,
-          })
-          .eq('id', userId);
-
-      await _client.from('referrals').insert({
-        'referrer_id': inviterId,
-        'referred_id': userId,
-        'status': 'active',
-        'new_user_reward': 20,
-        'referrer_reward': 5,
-        'mining_rate_bonus': 0.02,
-      });
-
-      return const ReferralResult(
-        success: true,
-        message: 'Referral code applied successfully.',
+      return ReferralResult(
+        success: success,
+        message: message == null || message.isEmpty
+            ? success
+                ? 'Referral code applied successfully.'
+                : 'Unable to apply referral code.'
+            : message,
       );
     } on PostgrestException catch (error) {
-      final message = error.message.toLowerCase();
-
-      if (message.contains('duplicate') ||
-          message.contains('unique')) {
-        return const ReferralResult(
-          success: false,
-          message: 'This referral has already been applied.',
-        );
-      }
-
       return ReferralResult(
         success: false,
         message: error.message,
@@ -251,13 +200,11 @@ class ReferralService {
   }
 
   Future<double> getMiningBonus() async {
-    final userId = _userId;
-
     try {
       final result = await _client.rpc(
         'calculate_active_referrals',
         params: {
-          'p_user_id': userId,
+          'p_user_id': _userId,
         },
       );
 
@@ -269,33 +216,27 @@ class ReferralService {
   }
 
   Future<int> getActiveReferrals() async {
-    final userId = _userId;
+    try {
+      final result = await _client.rpc(
+        'calculate_active_referrals',
+        params: {
+          'p_user_id': _userId,
+        },
+      );
 
-    final result = await _client.rpc(
-      'calculate_active_referrals',
-      params: {
-        'p_user_id': userId,
-      },
-    );
-
-    final value = _toInt(result);
-
-    if (value >= 0) {
-      return value;
+      return _toInt(result);
+    } catch (_) {
+      final info = await getReferralInfo();
+      return info.activeReferrals;
     }
-
-    final profile = await _client
-        .from('profiles')
-        .select('active_referrals')
-        .eq('id', userId)
-        .single();
-
-    return _toInt(profile['active_referrals']);
   }
 
   int _toInt(dynamic value) {
     if (value == null) return 0;
-    if (value is int) return value;
+
+    if (value is int) {
+      return value;
+    }
 
     if (value is num) {
       return value.toInt();
@@ -309,7 +250,10 @@ class ReferralService {
 
   double _toDouble(dynamic value) {
     if (value == null) return 0.0;
-    if (value is double) return value;
+
+    if (value is double) {
+      return value;
+    }
 
     if (value is num) {
       return value.toDouble();
@@ -319,6 +263,26 @@ class ReferralService {
           value.toString(),
         ) ??
         0.0;
+  }
+
+  bool _toBool(dynamic value) {
+    if (value == null) return false;
+
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    final text =
+        value.toString().toLowerCase().trim();
+
+    return text == 'true' ||
+        text == '1' ||
+        text == 'yes' ||
+        text == 'success';
   }
 
   String _cleanError(Object error) {
