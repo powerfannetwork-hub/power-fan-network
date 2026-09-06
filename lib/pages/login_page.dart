@@ -530,12 +530,306 @@ class _RegisterPageState
     super.dispose();
   }
 
+  // ---------------------------------------------------------------------------
+  // REGISTRATION WARNING
+  // ---------------------------------------------------------------------------
+
+  Future<bool> _showRegistrationWarning() async {
+    bool accepted = false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              titlePadding:
+                  const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              contentPadding:
+                  const EdgeInsets.fromLTRB(24, 8, 24, 8),
+              actionsPadding:
+                  const EdgeInsets.fromLTRB(16, 8, 16, 18),
+              title: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF1F1),
+                      borderRadius:
+                          BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.security_rounded,
+                      color: Colors.redAccent,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'ONE PERSON • ONE ACCOUNT',
+                    style: TextStyle(
+                      color: Color(0xFF241064),
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Before you create your POWER FAN NETWORK account, please read this important warning.',
+                        style: TextStyle(
+                          color: Color(0xFF333333),
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      _warningItem(
+                        icon: Icons.person_outline_rounded,
+                        title: 'One person = one account',
+                        text:
+                            'Each person is allowed to have only one POWER FAN NETWORK account.',
+                      ),
+                      _warningItem(
+                        icon: Icons.smart_toy_outlined,
+                        title: 'No bots or automation',
+                        text:
+                            'Bots, scripts, automated activity, or any system designed to manipulate the app are not allowed.',
+                      ),
+                      _warningItem(
+                        icon: Icons.group_off_outlined,
+                        title: 'No fake or multiple accounts',
+                        text:
+                            'Creating multiple accounts or using fake accounts to gain additional rewards is prohibited.',
+                      ),
+                      _warningItem(
+                        icon: Icons.warning_amber_rounded,
+                        title: 'Protect your account',
+                        text:
+                            'If suspicious, abusive, fraudulent, or manipulated activity is detected, access to rewards, mining, or network features may be restricted or removed.',
+                      ),
+                      _warningItem(
+                        icon: Icons.verified_user_outlined,
+                        title: 'Use the network genuinely',
+                        text:
+                            'Use your real account, follow the rules, participate fairly, and do not attempt to exploit the system.',
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding:
+                            const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F2FF),
+                          borderRadius:
+                              BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFFE3DDF7),
+                          ),
+                        ),
+                        child: const Text(
+                          'POWER FAN NETWORK is built for real users and genuine participation. Your account history matters, so protect it and use the platform responsibly.',
+                          style: TextStyle(
+                            color: Color(0xFF3B159B),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            height: 1.45,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      InkWell(
+                        borderRadius:
+                            BorderRadius.circular(12),
+                        onTap: () {
+                          setDialogState(() {
+                            accepted = !accepted;
+                          });
+                        },
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.symmetric(
+                            vertical: 6,
+                          ),
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Checkbox(
+                                value: accepted,
+                                activeColor:
+                                    const Color(0xFF3B159B),
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    accepted =
+                                        value ?? false;
+                                  });
+                                },
+                              ),
+                              const Expanded(
+                                child: Padding(
+                                  padding:
+                                      EdgeInsets.only(
+                                    top: 12,
+                                    right: 4,
+                                  ),
+                                  child: Text(
+                                    'I understand and agree to follow the POWER FAN NETWORK one-person-one-account rules.',
+                                    style: TextStyle(
+                                      color:
+                                          Color(0xFF333333),
+                                      fontSize: 13.5,
+                                      height: 1.4,
+                                      fontWeight:
+                                          FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext)
+                        .pop(false);
+                  },
+                  child: const Text(
+                    'CANCEL',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: accepted
+                      ? () {
+                          Navigator.of(dialogContext)
+                              .pop(true);
+                        }
+                      : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor:
+                        const Color(0xFF3B159B),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        const Color(0xFFE0DCEB),
+                    disabledForegroundColor:
+                        Colors.grey,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'I AGREE & CONTINUE',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    return result == true;
+  }
+
+  Widget _warningItem({
+    required IconData icon,
+    required String title,
+    required String text,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1EEFA),
+              borderRadius:
+                  BorderRadius.circular(11),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFF3B159B),
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF241064),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
     FocusScope.of(context).unfocus();
+
+    // Show the rules before any registration request is sent.
+    final accepted = await _showRegistrationWarning();
+
+    if (!accepted || !mounted) {
+      return;
+    }
 
     setState(() => _loading = true);
 
