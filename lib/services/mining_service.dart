@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'supabase_service.dart';
 
 class MiningService {
@@ -67,12 +68,20 @@ class MiningService {
 
   Map<String, dynamic> _emptyMining() {
     return {
+      'success': true,
       'active': false,
+      'is_mining': false,
+      'mining_active': false,
       'expired': false,
       'claimable': false,
+      'session_finished': false,
       'remaining_seconds': 0,
       'elapsed_seconds': 0,
       'ads_watched': 0,
+      'ad_boost': 0.0,
+      'active_referrals': 0,
+      'mining_rate': defaultMiningRate,
+      'reward': 0.0,
     };
   }
 
@@ -92,6 +101,20 @@ class MiningService {
         return defaultMiningRate;
       }
 
+      /*
+       * Keep 2 decimal places because the current rules use:
+       *
+       * Base:
+       *   0.20 FAN/H
+       *
+       * Referral:
+       *   +0.02 FAN/H per active referral
+       *
+       * Ad:
+       *   +0.10 FAN/H per completed ad
+       *
+       * Referral bonus has NO maximum cap.
+       */
       return double.parse(
         rate.toStringAsFixed(2),
       );
@@ -161,16 +184,30 @@ class MiningService {
   // ============================================================
   // RECORD REWARDED AD
   // ============================================================
+  //
+  // IMPORTANT:
+  // The current Supabase RPC is:
+  //
+  //   record_rewarded_ad()
+  //
+  // It does NOT accept p_ad_reference.
+  //
+  // Therefore we intentionally call the RPC without parameters.
+  //
+  // Supabase/server remains responsible for:
+  //
+  //   Base rate       = 0.20 FAN/H
+  //   Referral bonus  = +0.02 FAN/H per active referral
+  //   Ad bonus        = +0.10 FAN/H per completed ad
+  //   Maximum ads     = 7/session
+  //
+  // Referral bonus is NOT capped.
+  // ============================================================
 
-  Future<Map<String, dynamic>> recordRewardedAd({
-    String? adReference,
-  }) async {
+  Future<Map<String, dynamic>> recordRewardedAd() async {
     return SupabaseService.safeCall(() async {
       final result = await _client.rpc(
         'record_rewarded_ad',
-        params: {
-          'p_ad_reference': adReference,
-        },
       );
 
       if (result == null) {
@@ -201,7 +238,9 @@ class MiningService {
     String adId,
   ) async {
     if (adId.trim().isEmpty) {
-      throw Exception('Ad ID is missing.');
+      throw Exception(
+        'Ad ID is missing.',
+      );
     }
 
     return SupabaseService.safeCall(() async {
@@ -235,13 +274,18 @@ class MiningService {
   // ============================================================
   // WATCH + VERIFY
   // ============================================================
+  //
+  // Called only after LevelPlay reports that the rewarded ad
+  // was actually rewarded.
+  //
+  // IMPORTANT:
+  // Flutter does NOT add FAN itself.
+  //
+  // The server records the ad and recalculates mining rate.
+  // ============================================================
 
-  Future<Map<String, dynamic>> recordAndVerifyRewardedAd({
-    String? adReference,
-  }) async {
-    final recorded = await recordRewardedAd(
-      adReference: adReference,
-    );
+  Future<Map<String, dynamic>> recordAndVerifyRewardedAd() async {
+    final recorded = await recordRewardedAd();
 
     final success = recorded['success'] == true;
 
@@ -257,7 +301,9 @@ class MiningService {
       );
     }
 
-    return verifyRewardedAd(adId);
+    return verifyRewardedAd(
+      adId,
+    );
   }
 
   // ============================================================
@@ -273,7 +319,39 @@ class MiningService {
         activeMining['ads_count'] ??
         0;
 
-    return _toInt(value).clamp(0, 7);
+    return _toInt(value).clamp(
+      0,
+      7,
+    );
+  }
+
+  // ============================================================
+  // ACTIVE REFERRALS
+  // ============================================================
+
+  Future<int> getActiveReferrals() async {
+    final activeMining = await getActiveMining();
+
+    final value =
+        activeMining['active_referrals'] ??
+        activeMining['referrals'] ??
+        0;
+
+    return _toInt(value);
+  }
+
+  // ============================================================
+  // AD BOOST
+  // ============================================================
+
+  Future<double> getAdBoost() async {
+    final activeMining = await getActiveMining();
+
+    final value =
+        activeMining['ad_boost'] ??
+        0.0;
+
+    return _toDouble(value);
   }
 
   // ============================================================
@@ -286,6 +364,7 @@ class MiningService {
     final active =
         activeMining['active'] ??
         activeMining['is_mining'] ??
+        activeMining['mining_active'] ??
         activeMining['is_active'] ??
         false;
 
@@ -309,7 +388,8 @@ class MiningService {
   Future<bool> isExpired() async {
     final activeMining = await getActiveMining();
 
-    return activeMining['expired'] == true;
+    return activeMining['expired'] == true ||
+        activeMining['session_finished'] == true;
   }
 
   // ============================================================
@@ -375,11 +455,15 @@ class MiningService {
       }
 
       final calculatedEnd = startedAt.add(
-        const Duration(seconds: miningDurationSeconds),
+        const Duration(
+          seconds: miningDurationSeconds,
+        ),
       );
 
       final remaining =
-          calculatedEnd.difference(DateTime.now());
+          calculatedEnd.difference(
+        DateTime.now(),
+      );
 
       return remaining.isNegative
           ? Duration.zero
@@ -387,7 +471,9 @@ class MiningService {
     }
 
     final remaining =
-        endsAt.difference(DateTime.now());
+        endsAt.difference(
+      DateTime.now(),
+    );
 
     return remaining.isNegative
         ? Duration.zero
@@ -428,11 +514,15 @@ class MiningService {
 
       if (endsAt != null) {
         final calculatedStart = endsAt.subtract(
-          const Duration(seconds: miningDurationSeconds),
+          const Duration(
+            seconds: miningDurationSeconds,
+          ),
         );
 
         final elapsed =
-            DateTime.now().difference(calculatedStart);
+            DateTime.now().difference(
+          calculatedStart,
+        );
 
         if (elapsed.isNegative) {
           return Duration.zero;
@@ -450,7 +540,9 @@ class MiningService {
     }
 
     final elapsed =
-        DateTime.now().difference(startedAt);
+        DateTime.now().difference(
+      startedAt,
+    );
 
     if (elapsed.isNegative) {
       return Duration.zero;
@@ -509,11 +601,15 @@ class MiningService {
       }
 
       final calculatedStart = endsAt.subtract(
-        const Duration(seconds: miningDurationSeconds),
+        const Duration(
+          seconds: miningDurationSeconds,
+        ),
       );
 
       final elapsed =
-          DateTime.now().difference(calculatedStart);
+          DateTime.now().difference(
+        calculatedStart,
+      );
 
       if (elapsed.isNegative) {
         return 0.0;
@@ -529,7 +625,9 @@ class MiningService {
     }
 
     final elapsed =
-        DateTime.now().difference(startedAt);
+        DateTime.now().difference(
+      startedAt,
+    );
 
     if (elapsed.isNegative) {
       return 0.0;
@@ -597,7 +695,9 @@ class MiningService {
   // - numeric strings
   // ============================================================
 
-  DateTime? _parseDateTime(dynamic value) {
+  DateTime? _parseDateTime(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
@@ -616,22 +716,30 @@ class MiningService {
       return null;
     }
 
-    final parsedIso = DateTime.tryParse(text);
+    final parsedIso = DateTime.tryParse(
+      text,
+    );
 
     if (parsedIso != null) {
       return parsedIso.toLocal();
     }
 
-    final numeric = num.tryParse(text);
+    final numeric = num.tryParse(
+      text,
+    );
 
     if (numeric != null) {
-      return _fromTimestamp(numeric);
+      return _fromTimestamp(
+        numeric,
+      );
     }
 
     return null;
   }
 
-  DateTime? _fromTimestamp(num timestamp) {
+  DateTime? _fromTimestamp(
+    num timestamp,
+  ) {
     try {
       final value = timestamp.toInt();
 
