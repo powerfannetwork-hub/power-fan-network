@@ -161,8 +161,6 @@ class ReferralService {
       );
     }
 
-    _userId;
-
     return SupabaseService.safeCall(() async {
       final result = await _client.rpc(
         'apply_referral_code',
