@@ -126,7 +126,7 @@ class ReferralService {
           .select('id')
           .eq('referred_by', userId);
 
-      if (referredUsers is List) {
+      if (referredUsers != null) {  // <-- AN GYARA NAN: an cire `is List`
         totalReferrals = referredUsers.length;
       }
 
@@ -157,9 +157,9 @@ class ReferralService {
             .select('inviter_reward')
             .eq('inviter_id', userId);
 
-        if (rewards is List) {
+        if (rewards != null) {  // <-- AN GYARA NAN: an cire `is List`
           for (final row in rewards) {
-            if (row is Map) {
+            if (row != null) {  // <-- AN GYARA NAN: an cire `is Map`
               totalInviterRewards += _toDouble(
                 row['inviter_reward'],
               );
@@ -182,167 +182,4 @@ class ReferralService {
         totalInviterRewards:
             totalInviterRewards,
         miningBonus: miningBonus,
-        miningBonusPerActiveReferral:
-            bonusPerReferral,
-      );
-    });
-  }
-
-  /// Applies another user's referral code.
-  ///
-  /// The database/RPC is responsible for validating
-  /// the code and preventing duplicate referral rewards.
-  Future<ReferralResult> applyReferralCode(
-    String code,
-  ) async {
-    final cleanCode = code.trim().toUpperCase();
-
-    if (cleanCode.isEmpty) {
-      return const ReferralResult.failure(
-        'Please enter a referral code.',
-      );
-    }
-
-    try {
-      final dynamic response =
-          await _client.rpc(
-        'apply_referral_code',
-        params: {
-          'p_referral_code': cleanCode,
-        },
-      );
-
-      if (response is Map) {
-        final map =
-            Map<String, dynamic>.from(response);
-
-        final success =
-            _toBool(map['success']);
-
-        final message =
-            map['message']?.toString() ??
-                (success
-                    ? 'Referral code applied successfully.'
-                    : 'Unable to apply referral code.');
-
-        return success
-            ? ReferralResult.success(message)
-            : ReferralResult.failure(message);
-      }
-
-      if (response is List &&
-          response.isNotEmpty &&
-          response.first is Map) {
-        final map =
-            Map<String, dynamic>.from(
-          response.first as Map,
-        );
-
-        final success =
-            _toBool(map['success']);
-
-        final message =
-            map['message']?.toString() ??
-                (success
-                    ? 'Referral code applied successfully.'
-                    : 'Unable to apply referral code.');
-
-        return success
-            ? ReferralResult.success(message)
-            : ReferralResult.failure(message);
-      }
-
-      return const ReferralResult.success(
-        'Referral code applied successfully.',
-      );
-    } on PostgrestException catch (error) {
-      return ReferralResult.failure(
-        _cleanPostgrestError(error),
-      );
-    } catch (error) {
-      return ReferralResult.failure(
-        _cleanError(error),
-      );
-    }
-  }
-
-  static int _toInt(dynamic value) {
-    if (value == null) {
-      return 0;
-    }
-
-    if (value is int) {
-      return value;
-    }
-
-    if (value is num) {
-      return value.toInt();
-    }
-
-    return int.tryParse(
-          value.toString(),
-        ) ??
-        0;
-  }
-
-  static double _toDouble(dynamic value) {
-    if (value == null) {
-      return 0;
-    }
-
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(
-          value.toString(),
-        ) ??
-        0;
-  }
-
-  static bool _toBool(dynamic value) {
-    if (value == null) {
-      return false;
-    }
-
-    if (value is bool) {
-      return value;
-    }
-
-    if (value is num) {
-      return value != 0;
-    }
-
-    final text =
-        value.toString().toLowerCase().trim();
-
-    return text == 'true' ||
-        text == '1' ||
-        text == 'yes' ||
-        text == 'success';
-  }
-
-  static String _cleanPostgrestError(
-    PostgrestException error,
-  ) {
-    final message = error.message.trim();
-
-    if (message.isNotEmpty) {
-      return message;
-    }
-
-    return 'Unable to apply referral code.';
-  }
-
-  static String _cleanError(Object error) {
-    var text = error.toString().trim();
-
-    if (text.startsWith('Exception: ')) {
-      text = text.substring(11).trim();
-    }
-
-    return text.isEmpty
-        ? 'Unable to apply referral code.'
-        : text;
-  }
-}
+       
