@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.5.0
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -20,14 +20,13 @@ dependencies:
   package_info_plus: ^8.0.2
   url_launcher: ^6.3.0
   shared_preferences: ^2.3.2
-  share_plus: 11.1.0
+  share_plus: 11.1.0  # <-- Daidai ka yi. Ba share ba
 
   unity_levelplay_mediation: '>=9.1.0 <9.2.0'
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^4.0.0
 
 dependency_overrides:
