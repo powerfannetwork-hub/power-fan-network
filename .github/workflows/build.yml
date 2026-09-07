@@ -1,479 +1,648 @@
 name: Build POWER FAN NETWORK APK
 
 on:
-  push:
-    branches:
-      - main
-      - master
+push:
+branches:
+- main
+- master
 
-  workflow_dispatch:
+workflow_dispatch:
 
 permissions:
-  contents: read
+contents: read
 
 jobs:
-  build:
-    name: Build Release APK
-    runs-on: ubuntu-latest
-
-    env:
-      FLUTTER_VERSION: "3.24.0"
-      GRADLE_VERSION: "8.13"
-      JAVA_VERSION: "17"
-      ANDROID_COMPILE_SDK: "36"
-
-    steps:
-      # ============================================================
-      # 1. CHECKOUT
-      # ============================================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ============================================================
-      # 2. JAVA 17
-      # ============================================================
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
-
-      # ============================================================
-      # 3. FLUTTER
-      # ============================================================
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      # ============================================================
-      # 4. GRADLE 8.13
-      # ============================================================
-      - name: Setup Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-
-      # ============================================================
-      # 5. BASIC ENVIRONMENT CHECK
-      # ============================================================
-      - name: Check build environment
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "POWER FAN NETWORK BUILD ENVIRONMENT"
-          echo "=========================================="
-
-          echo ""
-          echo "Java:"
-          java -version
-
-          echo ""
-          echo "Flutter:"
-          flutter --version
-
-          echo ""
-          echo "Gradle:"
-          gradle --version
-
-          echo ""
-          echo "Project:"
-          pwd
-
-          echo ""
-          echo "Android directory:"
-          ls -la android
-
-      # ============================================================
-      # 6. FLUTTER DOCTOR
-      # ============================================================
-      - name: Flutter Doctor
-        shell: bash
-        run: |
-          set -e
-          flutter doctor -v
-
-      # ============================================================
-      # 7. GET DEPENDENCIES
-      # ============================================================
-      - name: Flutter Pub Get
-        shell: bash
-        run: |
-          set -e
-
-          flutter clean
-          flutter pub get
-
-      # ============================================================
-      # 8. CREATE / REPAIR GRADLE WRAPPER
-      # ============================================================
-      - name: Prepare Gradle Wrapper
-        shell: bash
-        working-directory: android
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "PREPARING GRADLE WRAPPER"
-          echo "=========================================="
-
-          mkdir -p gradle/wrapper
-
-          echo ""
-          echo "Generating Gradle Wrapper ${GRADLE_VERSION}..."
-
-          gradle wrapper \
-            --gradle-version "${GRADLE_VERSION}" \
-            --distribution-type bin \
-            --no-validate-url
-
-          chmod +x gradlew
-
-          echo ""
-          echo "Wrapper files:"
-          ls -la
-
-          echo ""
-          echo "Wrapper directory:"
-          ls -la gradle/wrapper
-
-          echo ""
-          echo "Wrapper properties:"
-          cat gradle/wrapper/gradle-wrapper.properties
-
-          echo ""
-          echo "Testing Gradle Wrapper:"
-          ./gradlew --version
-
-      # ============================================================
-      # 9. DISABLE GRADLE VFS WATCHER
-      # ============================================================
-      - name: Configure Gradle for CI
-        shell: bash
-        run: |
-          set -e
-
-          if ! grep -q "^org.gradle.vfs.watch=false" android/gradle.properties 2>/dev/null; then
-            echo "org.gradle.vfs.watch=false" >> android/gradle.properties
-          fi
-
-          echo ""
-          echo "android/gradle.properties:"
-          cat android/gradle.properties
-
-      # ============================================================
-      # 10. FORCE ANDROID COMPILE SDK 36
-      # ============================================================
-      - name: Force Android compileSdk 36
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "ANDROID COMPILE SDK CONFIGURATION"
-          echo "=========================================="
-
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-
-          files = [
-              Path("android/app/build.gradle"),
-              Path("android/app/build.gradle.kts"),
-              Path("android/build.gradle"),
-              Path("android/build.gradle.kts"),
-          ]
-
-          for path in files:
-              if not path.exists():
-                  continue
-
-              text = path.read_text()
-
-              original = text
-
-              # Groovy
-              text = re.sub(
-                  r'compileSdkVersion\s+["\']?31["\']?',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+["\']?32["\']?',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+["\']?33["\']?',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+["\']?34["\']?',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+["\']?35["\']?',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              # Kotlin DSL
-              text = re.sub(
-                  r'compileSdk\s*=\s*31\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*32\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*33\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*34\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*35\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              if text != original:
-                  path.write_text(text)
-                  print(f"Updated: {path}")
-              else:
-                  print(f"No direct change needed: {path}")
-          PY
-
-          echo ""
-          echo "Application Gradle configuration:"
-
-          grep -RniE \
-            "compileSdk|compileSdkVersion" \
-            android/app || true
-
-      # ============================================================
-      # 12. FLUTTER 3.24 COLOR API COMPATIBILITY
-      # ============================================================
-      - name: Fix Flutter 3.24 Color API compatibility
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "CHECKING COLOR API COMPATIBILITY"
-          echo "=========================================="
-
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-
-          root = Path("lib")
-
-          changed = []
-
-          for path in root.rglob("*.dart"):
-              text = path.read_text()
-              original = text
-
-              # Handles:
-              # .withValues(alpha: 0.5)
-              # .withValues(
-              #     alpha: 0.5
-              # )
-              text = re.sub(
-                  r'\.withValues\(\s*alpha\s*:\s*([^)]+?)\s*\)',
-                  r'.withOpacity(\1)',
-                  text,
-                  flags=re.MULTILINE
-              )
-
-              if text != original:
-                  path.write_text(text)
-                  changed.append(str(path))
-
-          print("")
-          print("Files updated:")
-
-          if changed:
-              for item in changed:
-                  print(f" - {item}")
-          else:
-              print(" - None")
-          PY
-
-      # ============================================================
-      # 13. FAIL IF OLD COLOR API STILL EXISTS
-      # ============================================================
-      - name: Verify Dart source compatibility
-        shell: bash
-        run: |
-          set -e
-
-          REMAINING=$(grep -Rni \
-            --include="*.dart" \
-            "\.withValues(" \
-            lib 2>/dev/null || true)
-
-          if [ -n "$REMAINING" ]; then
-            echo ""
-            echo "ERROR: .withValues() still exists in Dart source."
-            echo ""
-            echo "$REMAINING"
-            exit 1
-          fi
-
-          echo ""
-          echo "Dart Color API compatibility check passed."
-
-      # ============================================================
-      # 14. SHOW IMPORTANT ANDROID SETTINGS
-      # ============================================================
-      - name: Verify Android configuration
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "ANDROID CONFIGURATION"
-          echo "=========================================="
-
-          echo ""
-          echo "settings.gradle.kts:"
-          cat android/settings.gradle.kts
-
-          echo ""
-          echo "app/build.gradle.kts:"
-          cat android/app/build.gradle.kts
-
-          echo ""
-          echo "Gradle wrapper:"
-          cat android/gradle/wrapper/gradle-wrapper.properties
-
-          echo ""
-          echo "Compile SDK:"
-
-          grep -RniE \
-            "compileSdk|compileSdkVersion" \
-            android/app \
-            2>/dev/null || true
-
-      # ============================================================
-      # 15. FLUTTER ANALYZE
-      # ============================================================
-      - name: Flutter Analyze
-        shell: bash
-        run: |
-          set -e
-          flutter analyze
-
-      # ============================================================
-      # 16. BUILD RELEASE APK
-      # ============================================================
-      - name: Build Release APK
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "BUILDING POWER FAN NETWORK APK"
-          echo "=========================================="
-
-          flutter build apk \
-            --release \
-            --android-skip-build-dependency-validation \
-            --verbose
-
-      # ============================================================
-      # 17. VERIFY APK
-      # ============================================================
-      - name: Verify APK
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "VERIFYING APK"
-          echo "=========================================="
-
-          RELEASE_DIR="build/app/outputs/flutter-apk"
-          ANDROID_RELEASE_DIR="android/app/build/outputs/apk/release"
-
-          echo ""
-          echo "Flutter APK directory:"
-
-          if [ -d "$RELEASE_DIR" ]; then
-            find "$RELEASE_DIR" \
-              -type f \
-              -name "*.apk" \
-              -print
-          else
-            echo "Not found: $RELEASE_DIR"
-          fi
-
-          echo ""
-          echo "Android APK directory:"
-
-          if [ -d "$ANDROID_RELEASE_DIR" ]; then
-            find "$ANDROID_RELEASE_DIR" \
-              -type f \
-              -name "*.apk" \
-              -print
-          else
-            echo "Not found: $ANDROID_RELEASE_DIR"
-          fi
-
-          APK=$(find . \
-            -type f \
-            -name "*.apk" \
-            -path "*/outputs/*" \
-            -print -quit)
-
-          if [ -z "$APK" ]; then
-            echo ""
-            echo "ERROR: No APK was produced."
-            exit 1
-          fi
-
-          echo ""
-          echo "APK FOUND:"
-          echo "$APK"
-
-          echo ""
-          echo "APK SIZE:"
-          du -h "$APK"
-
-      # ============================================================
-      # 18. UPLOAD APK ARTIFACT
-      # ============================================================
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: power-fan-network-release-apk
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            android/app/build/outputs/flutter-apk/*.apk
-            android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-          retention-days: 30
+build:
+name: Build Release APK
+runs-on: ubuntu-latest
+
+env:  
+  FLUTTER_VERSION: "3.24.0"  
+  GRADLE_VERSION: "8.13"  
+  JAVA_VERSION: "17"  
+  ANDROID_COMPILE_SDK: "36"  
+
+steps:  
+
+  # ============================================================  
+  # 1. CHECKOUT  
+  # ============================================================  
+  - name: Checkout repository  
+    uses: actions/checkout@v4  
+
+  # ============================================================  
+  # 2. JAVA 17  
+  # ============================================================  
+  - name: Setup Java 17  
+    uses: actions/setup-java@v4  
+    with:  
+      distribution: temurin  
+      java-version: ${{ env.JAVA_VERSION }}  
+      cache: gradle  
+
+  # ============================================================  
+  # 3. FLUTTER  
+  # ============================================================  
+  - name: Setup Flutter  
+    uses: subosito/flutter-action@v2  
+    with:  
+      flutter-version: ${{ env.FLUTTER_VERSION }}  
+      channel: stable  
+      cache: true  
+
+  # ============================================================  
+  # 4. GRADLE 8.13  
+  # ============================================================  
+  - name: Setup Gradle 8.13  
+    uses: gradle/actions/setup-gradle@v4  
+    with:  
+      gradle-version: ${{ env.GRADLE_VERSION }}  
+
+  # ============================================================  
+  # 5. BASIC ENVIRONMENT CHECK  
+  # ============================================================  
+  - name: Check build environment  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "POWER FAN NETWORK BUILD ENVIRONMENT"  
+      echo "=========================================="  
+
+      echo ""  
+      echo "Java:"  
+      java -version  
+
+      echo ""  
+      echo "Flutter:"  
+      flutter --version  
+
+      echo ""  
+      echo "Gradle:"  
+      gradle --version  
+
+      echo ""  
+      echo "Project:"  
+      pwd  
+
+      echo ""  
+      echo "Android directory:"  
+      ls -la android  
+
+  # ============================================================  
+  # 6. FLUTTER DOCTOR  
+  # ============================================================  
+  - name: Flutter Doctor  
+    shell: bash  
+    run: |  
+      set -e  
+      flutter doctor -v  
+
+  # ============================================================  
+  # 7. GET DEPENDENCIES  
+  # ============================================================  
+  - name: Flutter Pub Get  
+    shell: bash  
+    run: |  
+      set -e  
+
+      flutter clean  
+      flutter pub get  
+
+  # ============================================================  
+  # 8. CREATE / REPAIR GRADLE WRAPPER  
+  # ============================================================  
+  - name: Prepare Gradle Wrapper  
+    shell: bash  
+    working-directory: android  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "PREPARING GRADLE WRAPPER"  
+      echo "=========================================="  
+
+      mkdir -p gradle/wrapper  
+
+      echo ""  
+      echo "Generating Gradle Wrapper ${GRADLE_VERSION}..."  
+
+      gradle wrapper \  
+        --gradle-version "${GRADLE_VERSION}" \  
+        --distribution-type bin \  
+        --no-validate-url  
+
+      chmod +x gradlew  
+
+      echo ""  
+      echo "Wrapper files:"  
+      ls -la  
+
+      echo ""  
+      echo "Wrapper directory:"  
+      ls -la gradle/wrapper  
+
+      echo ""  
+      echo "Wrapper properties:"  
+      cat gradle/wrapper/gradle-wrapper.properties  
+
+      echo ""  
+      echo "Testing Gradle Wrapper:"  
+      ./gradlew --version  
+
+  # ============================================================  
+  # 9. DISABLE GRADLE VFS WATCHER  
+  # ============================================================  
+  - name: Configure Gradle for CI  
+    shell: bash  
+    run: |  
+      set -e  
+
+      if ! grep -q "^org.gradle.vfs.watch=false" android/gradle.properties 2>/dev/null; then  
+        echo "org.gradle.vfs.watch=false" >> android/gradle.properties  
+      fi  
+
+      echo ""  
+      echo "android/gradle.properties:"  
+      cat android/gradle.properties  
+
+  # ============================================================  
+  # 10. FORCE ANDROID COMPILE SDK 36  
+  # ============================================================  
+  - name: Force Android compileSdk 36  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "ANDROID COMPILE SDK CONFIGURATION"  
+      echo "=========================================="  
+
+      python3 <<'PY'  
+      from pathlib import Path  
+      import re  
+
+      files = [  
+          Path("android/app/build.gradle"),  
+          Path("android/app/build.gradle.kts"),  
+          Path("android/build.gradle"),  
+          Path("android/build.gradle.kts"),  
+      ]  
+
+      for path in files:  
+          if not path.exists():  
+              continue  
+
+          text = path.read_text()  
+
+          original = text  
+
+          # Groovy  
+          text = re.sub(  
+              r'compileSdkVersion\s+["\']?31["\']?',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+["\']?32["\']?',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+["\']?33["\']?',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+["\']?34["\']?',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+["\']?35["\']?',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          # Kotlin DSL  
+          text = re.sub(  
+              r'compileSdk\s*=\s*31\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*32\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*33\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*34\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*35\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          if text != original:  
+              path.write_text(text)  
+              print(f"Updated: {path}")  
+          else:  
+              print(f"No direct change needed: {path}")  
+      PY  
+
+      echo ""  
+      echo "Application Gradle configuration:"  
+      grep -RniE "compileSdk|compileSdkVersion" android/app || true  
+
+  # ============================================================  
+  # 11. PATCH APPLOVIN MAX COMPILE SDK  
+  # ============================================================  
+  - name: Fix AppLovin MAX compileSdk  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "FIXING APPLOVIN MAX COMPILE SDK"  
+      echo "=========================================="  
+
+      CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"  
+
+      echo ""  
+      echo "PUB CACHE:"  
+      echo "$CACHE_DIR"  
+
+      APPLOVIN_DIRS=$(find "$CACHE_DIR" \  
+        -type d \  
+        -path "*/hosted/pub.dev/applovin_max-*" \  
+        2>/dev/null || true)  
+
+      if [ -z "$APPLOVIN_DIRS" ]; then  
+        echo ""  
+        echo "ERROR: applovin_max package was not found."  
+        echo ""  
+        echo "Pub cache contents:"  
+        find "$CACHE_DIR" \  
+          -maxdepth 5 \  
+          -type d \  
+          -iname "*applovin*" \  
+          2>/dev/null || true  
+
+        exit 1  
+      fi  
+
+      echo ""  
+      echo "Found AppLovin package:"  
+      echo "$APPLOVIN_DIRS"  
+
+      while IFS= read -r APPLOVIN_DIR; do  
+        [ -z "$APPLOVIN_DIR" ] && continue  
+
+        ANDROID_DIR="$APPLOVIN_DIR/android"  
+
+        if [ ! -d "$ANDROID_DIR" ]; then  
+          echo "Android directory not found: $ANDROID_DIR"  
+          continue  
+        fi  
+
+        echo ""  
+        echo "Patching:"  
+        echo "$ANDROID_DIR"  
+
+        python3 - "$ANDROID_DIR" <<'PY'  
+      from pathlib import Path  
+      import re  
+      import sys  
+
+      android_dir = Path(sys.argv[1])  
+
+      gradle_files = list(android_dir.rglob("*.gradle"))  
+      gradle_files += list(android_dir.rglob("*.gradle.kts"))  
+
+      if not gradle_files:  
+          print("No Gradle files found.")  
+          sys.exit(0)  
+
+      for path in gradle_files:  
+          try:  
+              text = path.read_text()  
+          except Exception as exc:  
+              print(f"Cannot read {path}: {exc}")  
+              continue  
+
+          original = text  
+
+          # Groovy syntax  
+          text = re.sub(  
+              r'compileSdkVersion\s+31\b',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+32\b',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+33\b',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+34\b',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdkVersion\s+35\b',  
+              'compileSdkVersion 36',  
+              text  
+          )  
+
+          # Kotlin DSL syntax  
+          text = re.sub(  
+              r'compileSdk\s*=\s*31\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*32\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*33\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*34\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          text = re.sub(  
+              r'compileSdk\s*=\s*35\b',  
+              'compileSdk = 36',  
+              text  
+          )  
+
+          if text != original:  
+              path.write_text(text)  
+              print(f"Updated: {path}")  
+          else:  
+              print(f"Checked: {path}")  
+      PY  
+
+      done <<< "$APPLOVIN_DIRS"  
+
+      echo ""  
+      echo "=========================================="  
+      echo "VERIFYING APPLOVIN MAX"  
+      echo "=========================================="  
+
+      REMAINING_31=$(find "$CACHE_DIR" \  
+        -type f \  
+        -path "*/hosted/pub.dev/applovin_max-*/android/*" \  
+        -name "*.gradle" -o -name "*.gradle.kts" \  
+        -print0 2>/dev/null \  
+        | xargs -0 grep -nE \  
+          'compileSdkVersion[[:space:]]+31|compileSdk[[:space:]]*=[[:space:]]*31' \  
+          2>/dev/null || true)  
+
+      if [ -n "$REMAINING_31" ]; then  
+        echo ""  
+        echo "ERROR: AppLovin MAX is still compiled against Android 31."  
+        echo "$REMAINING_31"  
+        exit 1  
+      fi  
+
+      echo ""  
+      echo "AppLovin MAX compileSdk check passed."  
+
+  # ============================================================  
+  # 12. FLUTTER 3.24 COLOR API COMPATIBILITY  
+  # ============================================================  
+  - name: Fix Flutter 3.24 Color API compatibility  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "CHECKING COLOR API COMPATIBILITY"  
+      echo "=========================================="  
+
+      python3 <<'PY'  
+      from pathlib import Path  
+      import re  
+
+      root = Path("lib")  
+
+      changed = []  
+
+      for path in root.rglob("*.dart"):  
+          text = path.read_text()  
+          original = text  
+
+          # Handles:  
+          # .withValues(alpha: 0.5)  
+          # .withValues(  
+          #     alpha: 0.5  
+          # )  
+          text = re.sub(  
+              r'\.withValues\s*alpha\s*:\s*([^)]+?)\s*',  
+              r'.withOpacity(\1)',  
+              text,  
+              flags=re.MULTILINE  
+          )  
+
+          if text != original:  
+              path.write_text(text)  
+              changed.append(str(path))  
+
+      print("")  
+      print("Files updated:")  
+
+      if changed:  
+          for item in changed:  
+              print(f" - {item}")  
+      else:  
+          print(" - None")  
+
+  # ============================================================  
+  # 13. FAIL IF OLD COLOR API STILL EXISTS  
+  # ============================================================  
+  - name: Verify Dart source compatibility  
+    shell: bash  
+    run: |  
+      set -e  
+
+      REMAINING=$(grep -Rni \  
+        --include="*.dart" \  
+        "\.withValues(" \  
+        lib 2>/dev/null || true)  
+
+      if [ -n "$REMAINING" ]; then  
+        echo ""  
+        echo "ERROR: .withValues() still exists in Dart source."  
+        echo ""  
+        echo "$REMAINING"  
+        exit 1  
+      fi  
+
+      echo ""  
+      echo "Dart Color API compatibility check passed."  
+
+  # ============================================================  
+  # 14. SHOW IMPORTANT ANDROID SETTINGS  
+  # ============================================================  
+  - name: Verify Android configuration  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "ANDROID CONFIGURATION"  
+      echo "=========================================="  
+
+      echo ""  
+      echo "settings.gradle.kts:"  
+      cat android/settings.gradle.kts  
+
+      echo ""  
+      echo "app/build.gradle.kts:"  
+      cat android/app/build.gradle.kts  
+
+      echo ""  
+      echo "Gradle wrapper:"  
+      cat android/gradle/wrapper/gradle-wrapper.properties  
+
+      echo ""  
+      echo "Compile SDK:"  
+      grep -RniE \  
+        "compileSdk|compileSdkVersion" \  
+        android/app \  
+        "$HOME/.pub-cache/hosted/pub.dev/applovin_max-"*"/android" \  
+        2>/dev/null || true  
+
+  # ============================================================  
+  # 15. FLUTTER ANALYZE  
+  # ============================================================  
+  - name: Flutter Analyze  
+    shell: bash  
+    run: |  
+      set -e  
+
+      flutter analyze  
+
+  # ============================================================  
+  # 16. BUILD RELEASE APK  
+  # ============================================================  
+  - name: Build Release APK  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "BUILDING POWER FAN NETWORK APK"  
+      echo "=========================================="  
+
+      flutter build apk \  
+        --release \  
+        --android-skip-build-dependency-validation \  
+        --verbose  
+
+  # ============================================================  
+  # 17. VERIFY APK  
+  # ============================================================  
+  - name: Verify APK  
+    shell: bash  
+    run: |  
+      set -e  
+
+      echo "=========================================="  
+      echo "VERIFYING APK"  
+      echo "=========================================="  
+
+      RELEASE_DIR="build/app/outputs/flutter-apk"  
+      ANDROID_RELEASE_DIR="android/app/build/outputs/apk/release"  
+
+      echo ""  
+      echo "Flutter APK directory:"  
+      if [ -d "$RELEASE_DIR" ]; then  
+        find "$RELEASE_DIR" \  
+          -type f \  
+          -name "*.apk" \  
+          -print  
+      else  
+        echo "Not found: $RELEASE_DIR"  
+      fi  
+
+      echo ""  
+      echo "Android APK directory:"  
+      if [ -d "$ANDROID_RELEASE_DIR" ]; then  
+        find "$ANDROID_RELEASE_DIR" \  
+          -type f \  
+          -name "*.apk" \  
+          -print  
+      else  
+        echo "Not found: $ANDROID_RELEASE_DIR"  
+      fi  
+
+      APK=$(find . \  
+        -type f \  
+        -name "*.apk" \  
+        -path "*/outputs/*" \  
+        -print -quit)  
+
+      if [ -z "$APK" ]; then  
+        echo ""  
+        echo "ERROR: No APK was produced."  
+        exit 1  
+      fi  
+
+      echo ""  
+      echo "APK FOUND:"  
+      echo "$APK"  
+
+      echo ""  
+      echo "APK SIZE:"  
+      du -h "$APK"  
+
+  # ============================================================  
+  # 18. UPLOAD APK ARTIFACT  
+  # ============================================================  
+  - name: Upload Release APK  
+    uses: actions/upload-artifact@v4  
+    with:  
+      name: power-fan-network-release-apk  
+      path: |  
+        build/app/outputs/flutter-apk/*.apk  
+        android/app/build/outputs/flutter-apk/*.apk  
+        android/app/build/outputs/apk/release/*.apk  
+      if-no-files-found: error  
+      retention-days: 30
