@@ -1098,68 +1098,86 @@ $$;
 
 
 -- ============================================================
--- 15. GRANTS
+-- 15. SECURITY / EXECUTE GRANTS
 -- ============================================================
 
-grant execute
-on function public.calculate_active_referrals(uuid)
-to authenticated;
+-- Internal calculation functions must NOT be directly
+-- callable by normal authenticated users.
 
-grant execute
+revoke execute
+on function public.calculate_active_referrals(uuid)
+from public, authenticated;
+
+
+revoke execute
 on function public.calculate_ad_bonus_reward(
     uuid,
     timestamptz,
     timestamptz
 )
-to authenticated;
+from public, authenticated;
 
-grant execute
+
+revoke execute
 on function public.calculate_referral_bonus_reward(
     uuid,
     timestamptz,
     timestamptz
 )
-to authenticated;
+from public, authenticated;
+
+
+-- Public RPC functions used by the application.
 
 grant execute
 on function public.get_user_mining_rate()
 to authenticated;
 
+
 grant execute
 on function public.get_user_mining_rate(uuid)
 to authenticated;
+
 
 grant execute
 on function public.start_mining()
 to authenticated;
 
+
 grant execute
 on function public.start_mining(uuid)
 to authenticated;
+
 
 grant execute
 on function public.get_active_mining()
 to authenticated;
 
+
 grant execute
 on function public.record_rewarded_ad()
 to authenticated;
+
 
 grant execute
 on function public.record_rewarded_ad(uuid)
 to authenticated;
 
+
 grant execute
 on function public.verify_rewarded_ad(uuid)
 to authenticated;
+
 
 grant execute
 on function public.claim_mining()
 to authenticated;
 
+
 grant execute
 on function public.claim_mining(uuid)
 to authenticated;
+
 
 grant execute
 on function public.complete_expired_mining_session()
