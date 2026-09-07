@@ -3,16 +3,26 @@
 -- SUPABASE FINAL MIGRATION-SAFE SCHEMA
 -- ============================================================
 --
--- RULE:
---   EXISTS  -> UPDATE / ALTER / CONTINUE
---   MISSING -> CREATE
+-- BASE MINING:
+--   Base rate       = 0.20 FAN/H
+--   Session         = 24 hours
+--   Ad boost        = +0.10 FAN/H
+--   Maximum ads     = 7
+--   Referral boost  = +0.02 FAN/H per active referral
 --
--- Mining:
---   Base rate        = 0.20 FAN/H
---   Session          = 24 hours
---   Ad boost         = +0.10 FAN/H
---   Maximum ads      = 7
---   Referral boost   = +0.02 FAN/H
+-- INSTALL ORDER:
+--   1. schema.sql
+--   2. mining_engine.sql
+--
+-- schema.sql:
+--   Tables
+--   Indexes
+--   Profile trigger
+--   Referral system
+--   Wallet transaction history
+--
+-- mining_engine.sql:
+--   Mining RPC functions
 -- ============================================================
 
 
@@ -175,12 +185,23 @@ create table if not exists public.notifications (
     created_at timestamptz default now()
 );
 
-alter table public.notifications add column if not exists user_id uuid;
-alter table public.notifications add column if not exists title text;
-alter table public.notifications add column if not exists message text;
-alter table public.notifications add column if not exists type text default 'general';
-alter table public.notifications add column if not exists is_read boolean default false;
-alter table public.notifications add column if not exists created_at timestamptz default now();
+alter table public.notifications
+    add column if not exists user_id uuid;
+
+alter table public.notifications
+    add column if not exists title text;
+
+alter table public.notifications
+    add column if not exists message text;
+
+alter table public.notifications
+    add column if not exists type text default 'general';
+
+alter table public.notifications
+    add column if not exists is_read boolean default false;
+
+alter table public.notifications
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
@@ -196,15 +217,102 @@ create table if not exists public.referral_rewards (
     created_at timestamptz default now()
 );
 
-alter table public.referral_rewards add column if not exists inviter_id uuid;
-alter table public.referral_rewards add column if not exists referred_user_id uuid;
-alter table public.referral_rewards add column if not exists inviter_reward numeric(24,8) default 5;
-alter table public.referral_rewards add column if not exists new_user_reward numeric(24,8) default 20;
-alter table public.referral_rewards add column if not exists created_at timestamptz default now();
+alter table public.referral_rewards
+    add column if not exists inviter_id uuid;
+
+alter table public.referral_rewards
+    add column if not exists referred_user_id uuid;
+
+alter table public.referral_rewards
+    add column if not exists inviter_reward numeric(24,8) default 5;
+
+alter table public.referral_rewards
+    add column if not exists new_user_reward numeric(24,8) default 20;
+
+alter table public.referral_rewards
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
--- 6. DAILY CHECK-INS
+-- 6. REFERRALS
+-- ============================================================
+
+create table if not exists public.referrals (
+    id uuid primary key default gen_random_uuid(),
+    referrer_id uuid,
+    referred_id uuid,
+    status text default 'active',
+    new_user_reward numeric(24,8) default 20,
+    referrer_reward numeric(24,8) default 5,
+    mining_rate_bonus numeric(12,4) default 0.02,
+    created_at timestamptz default now(),
+    activated_at timestamptz
+);
+
+alter table public.referrals
+    add column if not exists referrer_id uuid;
+
+alter table public.referrals
+    add column if not exists referred_id uuid;
+
+alter table public.referrals
+    add column if not exists status text default 'active';
+
+alter table public.referrals
+    add column if not exists new_user_reward numeric(24,8) default 20;
+
+alter table public.referrals
+    add column if not exists referrer_reward numeric(24,8) default 5;
+
+alter table public.referrals
+    add column if not exists mining_rate_bonus numeric(12,4) default 0.02;
+
+alter table public.referrals
+    add column if not exists created_at timestamptz default now();
+
+alter table public.referrals
+    add column if not exists activated_at timestamptz;
+
+
+-- ============================================================
+-- 7. WALLET TRANSACTIONS
+-- ============================================================
+
+create table if not exists public.wallet_transactions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid,
+    coin text,
+    transaction_type text,
+    amount numeric(24,8),
+    reference_id uuid,
+    description text,
+    created_at timestamptz default now()
+);
+
+alter table public.wallet_transactions
+    add column if not exists user_id uuid;
+
+alter table public.wallet_transactions
+    add column if not exists coin text;
+
+alter table public.wallet_transactions
+    add column if not exists transaction_type text;
+
+alter table public.wallet_transactions
+    add column if not exists amount numeric(24,8);
+
+alter table public.wallet_transactions
+    add column if not exists reference_id uuid;
+
+alter table public.wallet_transactions
+    add column if not exists description text;
+
+alter table public.wallet_transactions
+    add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 8. DAILY CHECK-INS
 -- ============================================================
 
 create table if not exists public.daily_check_ins (
@@ -216,15 +324,24 @@ create table if not exists public.daily_check_ins (
     created_at timestamptz default now()
 );
 
-alter table public.daily_check_ins add column if not exists user_id uuid;
-alter table public.daily_check_ins add column if not exists check_in_date date default current_date;
-alter table public.daily_check_ins add column if not exists streak_day integer default 1;
-alter table public.daily_check_ins add column if not exists reward_amount numeric(24,8) default 0;
-alter table public.daily_check_ins add column if not exists created_at timestamptz default now();
+alter table public.daily_check_ins
+    add column if not exists user_id uuid;
+
+alter table public.daily_check_ins
+    add column if not exists check_in_date date default current_date;
+
+alter table public.daily_check_ins
+    add column if not exists streak_day integer default 1;
+
+alter table public.daily_check_ins
+    add column if not exists reward_amount numeric(24,8) default 0;
+
+alter table public.daily_check_ins
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
--- 7. KYC VERIFICATIONS
+-- 9. KYC VERIFICATIONS
 -- ============================================================
 
 create table if not exists public.kyc_verifications (
@@ -241,30 +358,56 @@ create table if not exists public.kyc_verifications (
     updated_at timestamptz default now()
 );
 
-alter table public.kyc_verifications add column if not exists user_id uuid;
-alter table public.kyc_verifications add column if not exists phase integer default 1;
-alter table public.kyc_verifications add column if not exists status text default 'pending';
-alter table public.kyc_verifications add column if not exists provider text;
-alter table public.kyc_verifications add column if not exists provider_reference text;
-alter table public.kyc_verifications add column if not exists verification_data jsonb;
-alter table public.kyc_verifications add column if not exists submitted_at timestamptz;
-alter table public.kyc_verifications add column if not exists verified_at timestamptz;
-alter table public.kyc_verifications add column if not exists created_at timestamptz default now();
-alter table public.kyc_verifications add column if not exists updated_at timestamptz default now();
+alter table public.kyc_verifications
+    add column if not exists user_id uuid;
+
+alter table public.kyc_verifications
+    add column if not exists phase integer default 1;
+
+alter table public.kyc_verifications
+    add column if not exists status text default 'pending';
+
+alter table public.kyc_verifications
+    add column if not exists provider text;
+
+alter table public.kyc_verifications
+    add column if not exists provider_reference text;
+
+alter table public.kyc_verifications
+    add column if not exists verification_data jsonb;
+
+alter table public.kyc_verifications
+    add column if not exists submitted_at timestamptz;
+
+alter table public.kyc_verifications
+    add column if not exists verified_at timestamptz;
+
+alter table public.kyc_verifications
+    add column if not exists created_at timestamptz default now();
+
+alter table public.kyc_verifications
+    add column if not exists updated_at timestamptz default now();
 
 
 -- ============================================================
--- 8. SOCIAL TASKS
+-- 10. SOCIAL TASKS
 -- ============================================================
 
 create table if not exists public.social_tasks (
     id uuid primary key default gen_random_uuid()
 );
 
-alter table public.social_tasks add column if not exists title text;
-alter table public.social_tasks add column if not exists description text;
-alter table public.social_tasks add column if not exists platform text;
-alter table public.social_tasks add column if not exists url text;
+alter table public.social_tasks
+    add column if not exists title text;
+
+alter table public.social_tasks
+    add column if not exists description text;
+
+alter table public.social_tasks
+    add column if not exists platform text;
+
+alter table public.social_tasks
+    add column if not exists url text;
 
 alter table public.social_tasks
     add column if not exists reward_fan numeric(24,8) default 0;
@@ -304,16 +447,21 @@ alter table public.social_tasks
 
 
 -- ============================================================
--- 9. SOCIAL TASK CLAIMS
+-- 11. SOCIAL TASK CLAIMS
 -- ============================================================
 
 create table if not exists public.social_task_claims (
     id uuid primary key default gen_random_uuid()
 );
 
-alter table public.social_task_claims add column if not exists user_id uuid;
-alter table public.social_task_claims add column if not exists task_id uuid;
-alter table public.social_task_claims add column if not exists task_date date default current_date;
+alter table public.social_task_claims
+    add column if not exists user_id uuid;
+
+alter table public.social_task_claims
+    add column if not exists task_id uuid;
+
+alter table public.social_task_claims
+    add column if not exists task_date date default current_date;
 
 alter table public.social_task_claims
     add column if not exists follow_verified boolean default false;
@@ -344,65 +492,94 @@ alter table public.social_task_claims
 
 
 -- ============================================================
--- 10. USER SOCIAL FOLLOWS
+-- 12. USER SOCIAL FOLLOWS
 -- ============================================================
 
 create table if not exists public.user_social_follows (
     id uuid primary key default gen_random_uuid()
 );
 
-alter table public.user_social_follows add column if not exists user_id uuid;
-alter table public.user_social_follows add column if not exists platform text;
-alter table public.user_social_follows add column if not exists external_account_id text;
-alter table public.user_social_follows add column if not exists verified boolean default false;
-alter table public.user_social_follows add column if not exists verified_at timestamptz;
-alter table public.user_social_follows add column if not exists created_at timestamptz default now();
-alter table public.user_social_follows add column if not exists updated_at timestamptz default now();
+alter table public.user_social_follows
+    add column if not exists user_id uuid;
+
+alter table public.user_social_follows
+    add column if not exists platform text;
+
+alter table public.user_social_follows
+    add column if not exists external_account_id text;
+
+alter table public.user_social_follows
+    add column if not exists verified boolean default false;
+
+alter table public.user_social_follows
+    add column if not exists verified_at timestamptz;
+
+alter table public.user_social_follows
+    add column if not exists created_at timestamptz default now();
+
+alter table public.user_social_follows
+    add column if not exists updated_at timestamptz default now();
 
 
 -- ============================================================
--- 11. LEGACY SOCIAL REWARDS
+-- 13. LEGACY SOCIAL REWARDS
 -- ============================================================
 
 create table if not exists public.social_rewards (
     id uuid primary key default gen_random_uuid()
 );
 
-alter table public.social_rewards add column if not exists user_id uuid;
-alter table public.social_rewards add column if not exists reward_date date default current_date;
-alter table public.social_rewards add column if not exists reward_amount numeric(24,8) default 0;
-alter table public.social_rewards add column if not exists created_at timestamptz default now();
+alter table public.social_rewards
+    add column if not exists user_id uuid;
+
+alter table public.social_rewards
+    add column if not exists reward_date date default current_date;
+
+alter table public.social_rewards
+    add column if not exists reward_amount numeric(24,8) default 0;
+
+alter table public.social_rewards
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
--- 12. TRANSACTIONS
+-- 14. TRANSACTIONS
 -- ============================================================
 
 create table if not exists public.transactions (
     id uuid primary key default gen_random_uuid()
 );
 
-alter table public.transactions add column if not exists user_id uuid;
-alter table public.transactions add column if not exists asset text;
-alter table public.transactions add column if not exists transaction_type text;
-alter table public.transactions add column if not exists amount numeric(24,8);
-alter table public.transactions add column if not exists balance_before numeric(24,8);
-alter table public.transactions add column if not exists balance_after numeric(24,8);
-alter table public.transactions add column if not exists reference_id uuid;
-alter table public.transactions add column if not exists description text;
-alter table public.transactions add column if not exists created_at timestamptz default now();
+alter table public.transactions
+    add column if not exists user_id uuid;
+
+alter table public.transactions
+    add column if not exists asset text;
+
+alter table public.transactions
+    add column if not exists transaction_type text;
+
+alter table public.transactions
+    add column if not exists amount numeric(24,8);
+
+alter table public.transactions
+    add column if not exists balance_before numeric(24,8);
+
+alter table public.transactions
+    add column if not exists balance_after numeric(24,8);
+
+alter table public.transactions
+    add column if not exists reference_id uuid;
+
+alter table public.transactions
+    add column if not exists description text;
+
+alter table public.transactions
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
--- 13. APP SETTINGS
--- ============================================================
---
--- IMPORTANT:
--- Current Flutter expects:
---
---   select('value')
---   eq('key', 'minimum_supported_version')
---
+-- 15. APP SETTINGS
 -- ============================================================
 
 create table if not exists public.app_settings (
@@ -411,9 +588,18 @@ create table if not exists public.app_settings (
     updated_at timestamptz default now()
 );
 
+alter table public.app_settings
+    add column if not exists key text;
+
+alter table public.app_settings
+    add column if not exists value text;
+
+alter table public.app_settings
+    add column if not exists updated_at timestamptz default now();
+
 
 -- ============================================================
--- 14. APP SETTINGS JSONB -> TEXT FIX
+-- 16. APP SETTINGS JSON/JSONB -> TEXT
 -- ============================================================
 
 do $$
@@ -436,8 +622,7 @@ begin
             case
                 when jsonb_typeof(value) = 'string'
                     then value #>> '{}'
-                else
-                    value::text
+                else value::text
             end
         );
 
@@ -453,40 +638,19 @@ end
 $$;
 
 
-alter table public.app_settings
-    add column if not exists key text;
-
-alter table public.app_settings
-    add column if not exists value text;
-
-alter table public.app_settings
-    add column if not exists updated_at timestamptz default now();
-
-
 -- ============================================================
--- 15. APP SETTINGS DEFAULT
+-- 17. APP SETTINGS DEFAULT
 -- ============================================================
-
-update public.app_settings
-set
-    key = 'minimum_supported_version',
-    value = '1.0.0',
-    updated_at = now()
-where key is null
-and not exists (
-    select 1
-    from public.app_settings
-    where key = 'minimum_supported_version'
-);
-
 
 insert into public.app_settings (
     key,
-    value
+    value,
+    updated_at
 )
 select
     'minimum_supported_version',
-    '1.0.0'
+    '1.0.0',
+    now()
 where not exists (
     select 1
     from public.app_settings
@@ -495,27 +659,38 @@ where not exists (
 
 
 -- ============================================================
--- 16. DEVICE REGISTRATIONS
+-- 18. DEVICE REGISTRATIONS
 -- ============================================================
 
 create table if not exists public.device_registrations (
     id uuid primary key default gen_random_uuid()
 );
 
-alter table public.device_registrations add column if not exists user_id uuid;
-alter table public.device_registrations add column if not exists device_id text;
-alter table public.device_registrations add column if not exists platform text;
-alter table public.device_registrations add column if not exists app_version text;
-alter table public.device_registrations add column if not exists last_seen_at timestamptz default now();
-alter table public.device_registrations add column if not exists created_at timestamptz default now();
-alter table public.device_registrations add column if not exists updated_at timestamptz default now();
+alter table public.device_registrations
+    add column if not exists user_id uuid;
+
+alter table public.device_registrations
+    add column if not exists device_id text;
+
+alter table public.device_registrations
+    add column if not exists platform text;
+
+alter table public.device_registrations
+    add column if not exists app_version text;
+
+alter table public.device_registrations
+    add column if not exists last_seen_at timestamptz default now();
+
+alter table public.device_registrations
+    add column if not exists created_at timestamptz default now();
+
+alter table public.device_registrations
+    add column if not exists updated_at timestamptz default now();
 
 
 -- ============================================================
--- 17. INDEXES
+-- 19. INDEXES
 -- ============================================================
-
--- Profiles
 
 create index if not exists idx_profiles_referred_by
 on public.profiles(referred_by);
@@ -526,9 +701,6 @@ on public.profiles(
     mining_started_at,
     mining_ends_at
 );
-
-
--- Mining
 
 create index if not exists idx_mining_sessions_user
 on public.mining_sessions(
@@ -543,9 +715,6 @@ on public.mining_sessions(
     ends_at
 );
 
-
--- Ads
-
 create index if not exists idx_ad_rewards_user
 on public.ad_rewards(
     user_id,
@@ -558,17 +727,11 @@ on public.ad_rewards(
     watched_at
 );
 
-
--- Notifications
-
 create index if not exists idx_notifications_user
 on public.notifications(
     user_id,
     created_at desc
 );
-
-
--- Referrals
 
 create index if not exists idx_referral_rewards_inviter
 on public.referral_rewards(
@@ -576,8 +739,27 @@ on public.referral_rewards(
     created_at desc
 );
 
+create index if not exists idx_referral_rewards_referred
+on public.referral_rewards(
+    referred_user_id
+);
 
--- Check-ins
+create index if not exists idx_referrals_referrer
+on public.referrals(
+    referrer_id,
+    created_at desc
+);
+
+create index if not exists idx_referrals_referred
+on public.referrals(
+    referred_id
+);
+
+create index if not exists idx_wallet_transactions_user
+on public.wallet_transactions(
+    user_id,
+    created_at desc
+);
 
 create index if not exists idx_checkins_user
 on public.daily_check_ins(
@@ -585,17 +767,11 @@ on public.daily_check_ins(
     check_in_date desc
 );
 
-
--- KYC
-
 create index if not exists idx_kyc_user
 on public.kyc_verifications(
     user_id,
     phase
 );
-
-
--- Social
 
 create index if not exists idx_social_tasks_active
 on public.social_tasks(
@@ -616,9 +792,6 @@ on public.user_social_follows(
     platform
 );
 
-
--- Transactions
-
 create index if not exists idx_transactions_user
 on public.transactions(
     user_id,
@@ -627,7 +800,7 @@ on public.transactions(
 
 
 -- ============================================================
--- 18. AD SESSION INDEX
+-- 20. UNIQUE AD PER SESSION
 -- ============================================================
 
 create unique index if not exists
@@ -641,7 +814,31 @@ and ad_number is not null;
 
 
 -- ============================================================
--- 19. REFERRAL CODE GENERATOR
+-- 21. ONE REFERRER PER USER
+-- ============================================================
+
+create unique index if not exists
+ux_referrals_referred_user
+on public.referrals(
+    referred_id
+)
+where referred_id is not null;
+
+
+-- ============================================================
+-- 22. UNIQUE REFERRAL CODE
+-- ============================================================
+
+create unique index if not exists
+ux_profiles_referral_code
+on public.profiles(
+    referral_code
+)
+where referral_code is not null;
+
+
+-- ============================================================
+-- 23. REFERRAL CODE GENERATOR
 -- ============================================================
 
 create or replace function public.generate_referral_code(
@@ -700,7 +897,7 @@ $$;
 
 
 -- ============================================================
--- 20. NEW USER PROFILE
+-- 24. NEW USER PROFILE
 -- ============================================================
 
 create or replace function public.handle_new_user()
@@ -750,7 +947,7 @@ $$;
 
 
 -- ============================================================
--- 21. AUTH TRIGGER
+-- 25. AUTH USER TRIGGER
 -- ============================================================
 
 drop trigger if exists on_auth_user_created
@@ -763,7 +960,7 @@ execute function public.handle_new_user();
 
 
 -- ============================================================
--- 22. UPDATED_AT FUNCTION
+-- 26. UPDATED_AT FUNCTION
 -- ============================================================
 
 create or replace function public.set_updated_at()
@@ -782,7 +979,7 @@ $$;
 
 
 -- ============================================================
--- 23. UPDATED_AT TRIGGERS
+-- 27. UPDATED_AT TRIGGERS
 -- ============================================================
 
 drop trigger if exists profiles_updated_at
@@ -840,7 +1037,7 @@ execute function public.set_updated_at();
 
 
 -- ============================================================
--- 24. DEFAULT MINING VALUES
+-- 28. DEFAULT MINING VALUES
 -- ============================================================
 
 update public.profiles
@@ -877,14 +1074,688 @@ where consecutive_check_ins is null;
 
 
 -- ============================================================
--- 25. FINAL
+-- 29. APPLY REFERRAL CODE
+-- ============================================================
+--
+-- New user reward  = 20 FAN
+-- Inviter reward   = 5 FAN
+-- Mining bonus     = 0.02 FAN/H
+--
+-- SECURITY:
+-- Uses auth.uid(), not a client supplied user ID.
 -- ============================================================
 
--- Schema creation completed.
--- Mining RPC functions will be installed separately
--- in mining_engine.sql.
+create or replace function public.apply_referral_code(
+    p_referral_code text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_user_id uuid := auth.uid();
+
+    v_code text;
+    v_inviter_id uuid;
+
+    v_existing_referrer uuid;
+
+    v_new_user_reward numeric(24,8) := 20;
+    v_inviter_reward numeric(24,8) := 5;
+    v_mining_bonus numeric(12,4) := 0.02;
+
+    v_referral_id uuid;
+begin
+
+    if v_user_id is null then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Authentication required'
+        );
+
+    end if;
+
+
+    v_code :=
+        upper(
+            trim(
+                coalesce(
+                    p_referral_code,
+                    ''
+                )
+            )
+        );
+
+
+    if v_code = '' then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Referral code is required'
+        );
+
+    end if;
+
+
+    -- Lock current user's profile.
+    select referred_by
+    into v_existing_referrer
+    from public.profiles
+    where id = v_user_id
+    for update;
+
+
+    if not found then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'User profile not found'
+        );
+
+    end if;
+
+
+    if v_existing_referrer is not null then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Referral code has already been used'
+        );
+
+    end if;
+
+
+    -- Find inviter.
+    select id
+    into v_inviter_id
+    from public.profiles
+    where upper(referral_code) = v_code
+      and id <> v_user_id
+    limit 1;
+
+
+    if v_inviter_id is null then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Invalid referral code'
+        );
+
+    end if;
+
+
+    -- Set referral relationship and reward new user.
+    update public.profiles
+    set
+        referred_by = v_inviter_id,
+        fan_balance = coalesce(fan_balance, 0)
+                       + v_new_user_reward,
+        updated_at = now()
+    where id = v_user_id;
+
+
+    -- Reward inviter.
+    update public.profiles
+    set
+        fan_balance = coalesce(fan_balance, 0)
+                       + v_inviter_reward,
+        active_referrals = coalesce(active_referrals, 0) + 1,
+        updated_at = now()
+    where id = v_inviter_id;
+
+
+    -- Create referral record.
+    insert into public.referrals(
+        referrer_id,
+        referred_id,
+        status,
+        new_user_reward,
+        referrer_reward,
+        mining_rate_bonus,
+        activated_at
+    )
+    values(
+        v_inviter_id,
+        v_user_id,
+        'active',
+        v_new_user_reward,
+        v_inviter_reward,
+        v_mining_bonus,
+        now()
+    )
+    returning id
+    into v_referral_id;
+
+
+    -- Reward history.
+    insert into public.referral_rewards(
+        inviter_id,
+        referred_user_id,
+        inviter_reward,
+        new_user_reward
+    )
+    values(
+        v_inviter_id,
+        v_user_id,
+        v_inviter_reward,
+        v_new_user_reward
+    );
+
+
+    -- Wallet history.
+    insert into public.wallet_transactions(
+        user_id,
+        coin,
+        transaction_type,
+        amount,
+        reference_id,
+        description
+    )
+    values
+    (
+        v_user_id,
+        'FAN',
+        'referral_bonus',
+        v_new_user_reward,
+        v_referral_id,
+        'New user referral bonus'
+    ),
+    (
+        v_inviter_id,
+        'FAN',
+        'referral_bonus',
+        v_inviter_reward,
+        v_referral_id,
+        'Inviter referral bonus'
+    );
+
+
+    return jsonb_build_object(
+        'success', true,
+        'message', 'Referral code applied successfully',
+        'inviter_id', v_inviter_id,
+        'new_user_reward', v_new_user_reward,
+        'inviter_reward', v_inviter_reward,
+        'mining_rate_bonus', v_mining_bonus
+    );
+
+
+exception
+    when unique_violation then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Referral code has already been used'
+        );
+
+end;
+$$;
 
 
 -- ============================================================
--- END
+-- 30. GET REFERRAL INFO
+-- ============================================================
+
+create or replace function public.get_referral_info()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+
+    v_user_id uuid := auth.uid();
+
+    v_referral_code text;
+    v_referred_by uuid;
+
+    v_total_referrals integer := 0;
+    v_active_referrals integer := 0;
+
+    v_total_inviter_rewards numeric(24,8) := 0;
+
+    v_bonus_per_referral numeric(12,4) := 0.02;
+    v_total_mining_bonus numeric(24,8) := 0;
+
+begin
+
+    if v_user_id is null then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Authentication required'
+        );
+
+    end if;
+
+
+    select
+        referral_code,
+        referred_by
+    into
+        v_referral_code,
+        v_referred_by
+    from public.profiles
+    where id = v_user_id;
+
+
+    if not found then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'User profile not found'
+        );
+
+    end if;
+
+
+    -- Total referrals.
+    select count(*)
+    into v_total_referrals
+    from public.profiles
+    where referred_by = v_user_id;
+
+
+    -- Active referrals.
+    select count(*)
+    into v_active_referrals
+    from public.profiles
+    where referred_by = v_user_id
+      and mining_active = true
+      and mining_started_at is not null
+      and mining_ends_at is not null
+      and mining_ends_at > now();
+
+
+    -- Total inviter rewards.
+    select coalesce(
+        sum(inviter_reward),
+        0
+    )
+    into v_total_inviter_rewards
+    from public.referral_rewards
+    where inviter_id = v_user_id;
+
+
+    v_total_mining_bonus :=
+        v_active_referrals * v_bonus_per_referral;
+
+
+    return jsonb_build_object(
+        'success', true,
+        'referral_code', v_referral_code,
+        'referred_by', v_referred_by,
+        'total_referrals', v_total_referrals,
+        'active_referrals', v_active_referrals,
+        'mining_bonus_per_active_referral',
+            v_bonus_per_referral,
+        'mining_bonus',
+            v_total_mining_bonus,
+        'total_inviter_rewards',
+            v_total_inviter_rewards
+    );
+
+end;
+$$;
+
+
+-- ============================================================
+-- 31. GET REFERRAL MINING BONUS
+-- ============================================================
+
+create or replace function public.get_referral_mining_bonus(
+    p_user_id uuid
+)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+
+    v_active_referrals integer := 0;
+
+begin
+
+    if p_user_id is null then
+        return 0;
+    end if;
+
+
+    select count(*)
+    into v_active_referrals
+    from public.profiles
+    where referred_by = p_user_id
+      and mining_active = true
+      and mining_started_at is not null
+      and mining_ends_at is not null
+      and mining_ends_at > now();
+
+
+    return v_active_referrals * 0.02;
+
+end;
+$$;
+
+
+-- ============================================================
+-- 32. CALCULATE ACTIVE REFERRALS
+-- ============================================================
+--
+-- mining_engine.sql also installs this function.
+-- Its final mining implementation will replace this version.
+-- ============================================================
+
+create or replace function public.calculate_active_referrals(
+    p_user_id uuid
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+
+    v_count integer := 0;
+
+begin
+
+    if p_user_id is null then
+        return 0;
+    end if;
+
+
+    select count(*)
+    into v_count
+    from public.profiles
+    where referred_by = p_user_id
+      and mining_active = true
+      and mining_started_at is not null
+      and mining_ends_at is not null
+      and mining_ends_at > now();
+
+
+    return coalesce(v_count, 0);
+
+end;
+$$;
+
+
+-- ============================================================
+-- 33. LEGACY USE REFERRAL CODE
+-- ============================================================
+--
+-- Kept for compatibility with an older version of the app.
+-- It simply forwards to the final apply_referral_code function.
+-- ============================================================
+
+create or replace function public.use_referral_code(
+    p_referral_code text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+
+    return public.apply_referral_code(
+        p_referral_code
+    );
+
+end;
+$$;
+
+
+-- ============================================================
+-- 34. REFERRAL STATS
+-- ============================================================
+
+create or replace function public.get_referral_stats()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+
+    v_user_id uuid := auth.uid();
+
+    v_total integer := 0;
+    v_active integer := 0;
+
+    v_bonus numeric(24,8) := 0;
+
+begin
+
+    if v_user_id is null then
+
+        return jsonb_build_object(
+            'success', false,
+            'message', 'Authentication required'
+        );
+
+    end if;
+
+
+    select count(*)
+    into v_total
+    from public.profiles
+    where referred_by = v_user_id;
+
+
+    select count(*)
+    into v_active
+    from public.profiles
+    where referred_by = v_user_id
+      and mining_active = true
+      and mining_started_at is not null
+      and mining_ends_at is not null
+      and mining_ends_at > now();
+
+
+    v_bonus := v_active * 0.02;
+
+
+    return jsonb_build_object(
+        'success', true,
+        'total_referrals', v_total,
+        'active_referrals', v_active,
+        'mining_bonus', v_bonus,
+        'mining_bonus_per_active_referral', 0.02
+    );
+
+end;
+$$;
+
+
+-- ============================================================
+-- 35. GRANTS
+-- ============================================================
+
+grant usage
+on schema public
+to authenticated;
+
+
+grant select, insert, update
+on public.profiles
+to authenticated;
+
+
+grant select, insert
+on public.mining_sessions
+to authenticated;
+
+
+grant select, insert
+on public.ad_rewards
+to authenticated;
+
+
+grant select, insert, update
+on public.notifications
+to authenticated;
+
+
+grant select, insert
+on public.referral_rewards
+to authenticated;
+
+
+grant select, insert
+on public.referrals
+to authenticated;
+
+
+grant select, insert
+on public.wallet_transactions
+to authenticated;
+
+
+grant select, insert
+on public.daily_check_ins
+to authenticated;
+
+
+grant select, insert, update
+on public.kyc_verifications
+to authenticated;
+
+
+grant select, insert, update
+on public.social_tasks
+to authenticated;
+
+
+grant select, insert, update
+on public.social_task_claims
+to authenticated;
+
+
+grant select, insert, update
+on public.user_social_follows
+to authenticated;
+
+
+grant select, insert
+on public.social_rewards
+to authenticated;
+
+
+grant select, insert
+on public.transactions
+to authenticated;
+
+
+grant select
+on public.app_settings
+to authenticated;
+
+
+grant select, insert, update
+on public.device_registrations
+to authenticated;
+
+
+-- ============================================================
+-- 36. FUNCTION GRANTS
+-- ============================================================
+
+grant execute
+on function public.generate_referral_code(text)
+to authenticated;
+
+
+grant execute
+on function public.apply_referral_code(text)
+to authenticated;
+
+
+grant execute
+on function public.get_referral_info()
+to authenticated;
+
+
+grant execute
+on function public.get_referral_mining_bonus(uuid)
+to authenticated;
+
+
+grant execute
+on function public.calculate_active_referrals(uuid)
+to authenticated;
+
+
+grant execute
+on function public.use_referral_code(text)
+to authenticated;
+
+
+grant execute
+on function public.get_referral_stats()
+to authenticated;
+
+
+-- ============================================================
+-- 37. FINAL DEFAULTS
+-- ============================================================
+
+update public.profiles
+set mining_rate = 0.20
+where mining_rate is null;
+
+update public.profiles
+set fan_balance = 0
+where fan_balance is null;
+
+update public.profiles
+set afam_balance = 0
+where afam_balance is null;
+
+update public.profiles
+set active_referrals = 0
+where active_referrals is null;
+
+update public.profiles
+set daily_ads_watched = 0
+where daily_ads_watched is null;
+
+update public.profiles
+set ad_boost = 0
+where ad_boost is null;
+
+update public.profiles
+set mining_active = false
+where mining_active is null;
+
+update public.profiles
+set consecutive_check_ins = 0
+where consecutive_check_ins is null;
+
+
+-- ============================================================
+-- FINAL
+-- ============================================================
+--
+-- schema.sql = DATABASE STRUCTURE + REFERRAL SYSTEM
+--
+-- Next:
+--
+--   mining_engine.sql
+--
+-- The mining engine owns:
+--   start_mining()
+--   get_active_mining()
+--   get_user_mining_rate()
+--   record_rewarded_ad()
+--   verify_rewarded_ad()
+--   claim_mining()
+--   complete_expired_mining_session()
+--   calculate_active_referrals()
+--
+-- ============================================================
+-- END OF POWER FAN NETWORK SCHEMA
 -- ============================================================
