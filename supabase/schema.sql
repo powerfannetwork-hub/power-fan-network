@@ -1,1143 +1,149 @@
 -- ============================================================
 -- POWER FAN NETWORK
--- MINING ENGINE
+-- SUPABASE FINAL MIGRATION-SAFE SCHEMA
 -- ============================================================
 --
--- Rules:
--- Base mining rate       = 0.20 FAN/H
--- Mining duration        = 24 hours
--- Referral bonus         = +0.02 FAN/H per active referral
--- Rewarded ad boost      = +0.10 FAN/H per verified ad
--- Maximum ads/session    = 7
+-- RULE:
+--   EXISTS  -> UPDATE / ALTER / CONTINUE
+--   MISSING -> CREATE
 --
--- IMPORTANT:
--- Ad boosts are NOT retroactive.
--- Referral boosts are NOT retroactive.
---
--- Example:
--- Mining starts 00:00
--- Referral becomes active 04:00
--- Referral bonus applies only 04:00 -> 24:00
---
--- Ad watched 06:00
--- +0.10 FAN/H applies only 06:00 -> 24:00
---
--- PostgreSQL server time is the source of truth.
+-- Mining:
+--   Base rate        = 0.20 FAN/H
+--   Session          = 24 hours
+--   Ad boost         = +0.10 FAN/H
+--   Maximum ads      = 7
+--   Referral boost   = +0.02 FAN/H
 -- ============================================================
 
 
--- ============================================================
--- 1. CONSTANTS
--- ============================================================
-
-create or replace function public.pf_base_mining_rate()
-returns numeric
-language sql
-immutable
-as $$
-    select 0.20::numeric;
-$$;
-
-
-create or replace function public.pf_referral_bonus_rate()
-returns numeric
-language sql
-immutable
-as $$
-    select 0.02::numeric;
-$$;
-
-
-create or replace function public.pf_ad_bonus_rate()
-returns numeric
-language sql
-immutable
-as $$
-    select 0.10::numeric;
-$$;
-
-
-create or replace function public.pf_mining_duration()
-returns interval
-language sql
-immutable
-as $$
-    select interval '24 hours';
-$$;
-
-
-create or replace function public.pf_max_ads()
-returns integer
-language sql
-immutable
-as $$
-    select 7;
-$$;
+create extension if not exists pgcrypto;
 
 
 -- ============================================================
--- 2. ACTIVE REFERRALS
--- ============================================================
---
--- A referral is considered active while the referred user's
--- mining session is active.
---
--- We intentionally calculate the count from mining_sessions
--- instead of trusting profiles.active_referrals.
+-- 1. PROFILES
 -- ============================================================
 
-create or replace function public.calculate_active_referrals(
-    p_user_id uuid
-)
-returns integer
-language sql
-security definer
-set search_path = public
-stable
-as $$
-    select count(*)::integer
-    from public.profiles referred
-    where referred.referred_by = p_user_id
-      and referred.mining_active = true;
-$$;
+create table if not exists public.profiles (
+    id uuid primary key references auth.users(id) on delete cascade
+);
 
+alter table public.profiles add column if not exists name text;
+alter table public.profiles add column if not exists email text;
+alter table public.profiles add column if not exists referral_code text;
+alter table public.profiles add column if not exists referred_by uuid;
 
--- ============================================================
--- 3. CURRENT USER MINING RATE
--- ============================================================
---
--- This is a DISPLAY/CURRENT-RATE function.
---
--- It does NOT determine historical claim reward.
--- Historical reward is calculated by claim_mining().
--- ============================================================
+alter table public.profiles
+    add column if not exists fan_balance numeric(24,8) default 0;
 
-create or replace function public.get_user_mining_rate()
-returns numeric
-language plpgsql
-security definer
-set search_path = public
-stable
-as $$
-declare
-    v_user_id uuid;
-    v_active_referrals integer;
-    v_ads integer;
-    v_rate numeric;
-begin
-    v_user_id := auth.uid();
+alter table public.profiles
+    add column if not exists afam_balance numeric(24,8) default 0;
 
-    if v_user_id is null then
-        raise exception 'Not authenticated';
-    end if;
+alter table public.profiles
+    add column if not exists mining_rate numeric(12,4) default 0.20;
 
-    v_active_referrals :=
-        public.calculate_active_referrals(v_user_id);
+alter table public.profiles
+    add column if not exists active_referrals integer default 0;
 
-    select count(*)::integer
-    into v_ads
-    from public.ad_rewards ar
-    where ar.user_id = v_user_id
-      and ar.watched_at >= (
-          select ms.started_at
-          from public.mining_sessions ms
-          where ms.user_id = v_user_id
-            and ms.claimed = false
-            and ms.started_at <= now()
-            and ms.ends_at > now()
-          order by ms.started_at desc
-          limit 1
-      );
+alter table public.profiles
+    add column if not exists daily_ads_watched integer default 0;
 
-    v_ads := least(
-        greatest(coalesce(v_ads, 0), 0),
-        public.pf_max_ads()
-    );
+alter table public.profiles
+    add column if not exists ad_boost numeric(12,4) default 0;
 
-    v_rate :=
-        public.pf_base_mining_rate()
-        + (
-            coalesce(v_active_referrals, 0)
-            * public.pf_referral_bonus_rate()
-        )
-        + (
-            coalesce(v_ads, 0)
-            * public.pf_ad_bonus_rate()
-        );
+alter table public.profiles
+    add column if not exists mining_active boolean default false;
 
-    return round(v_rate, 4);
-end;
-$$;
+alter table public.profiles
+    add column if not exists mining_started_at timestamptz;
+
+alter table public.profiles
+    add column if not exists mining_ends_at timestamptz;
+
+alter table public.profiles
+    add column if not exists consecutive_check_ins integer default 0;
+
+alter table public.profiles
+    add column if not exists kyc1_eligible boolean default false;
+
+alter table public.profiles
+    add column if not exists kyc1_verified boolean default false;
+
+alter table public.profiles
+    add column if not exists kyc2_eligible boolean default false;
+
+alter table public.profiles
+    add column if not exists kyc2_verified boolean default false;
+
+alter table public.profiles
+    add column if not exists kyc3_verified boolean default false;
+
+alter table public.profiles
+    add column if not exists last_social_claim_date date;
+
+alter table public.profiles
+    add column if not exists created_at timestamptz default now();
+
+alter table public.profiles
+    add column if not exists updated_at timestamptz default now();
 
 
 -- ============================================================
--- 4. START MINING
+-- 2. MINING SESSIONS
 -- ============================================================
 
-create or replace function public.start_mining()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-volatile
-as $$
-declare
-    v_user_id uuid;
-    v_now timestamptz;
-    v_existing public.mining_sessions%rowtype;
-    v_session_id uuid;
-    v_start timestamptz;
-    v_end timestamptz;
-    v_referrals integer;
-    v_rate numeric;
-begin
-    v_user_id := auth.uid();
+create table if not exists public.mining_sessions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references public.profiles(id) on delete cascade,
+    started_at timestamptz default now(),
+    ends_at timestamptz,
+    mining_rate numeric(12,4) default 0.20,
+    claimed boolean default false,
+    claimed_at timestamptz,
+    reward_amount numeric(24,8) default 0,
+    created_at timestamptz default now()
+);
 
-    if v_user_id is null then
-        raise exception 'Not authenticated';
-    end if;
+alter table public.mining_sessions
+    add column if not exists user_id uuid;
 
-    v_now := now();
+alter table public.mining_sessions
+    add column if not exists started_at timestamptz default now();
 
-    -- Lock profile so two simultaneous start requests
-    -- cannot create two sessions.
-    perform 1
-    from public.profiles
-    where id = v_user_id
-    for update;
+alter table public.mining_sessions
+    add column if not exists ends_at timestamptz;
 
-    -- Check for an existing unclaimed active session.
-    select *
-    into v_existing
-    from public.mining_sessions
-    where user_id = v_user_id
-      and claimed = false
-      and ends_at > v_now
-    order by started_at desc
-    limit 1
-    for update;
+alter table public.mining_sessions
+    add column if not exists mining_rate numeric(12,4) default 0.20;
 
-    if found then
-        return jsonb_build_object(
-            'success', true,
-            'active', true,
-            'is_mining', true,
-            'mining_active', true,
-            'session_id', v_existing.id,
-            'started_at', v_existing.started_at,
-            'ends_at', v_existing.ends_at,
-            'remaining_seconds',
-                greatest(
-                    0,
-                    floor(
-                        extract(
-                            epoch from
-                            (v_existing.ends_at - v_now)
-                        )
-                    )::integer
-                ),
-            'elapsed_seconds',
-                greatest(
-                    0,
-                    floor(
-                        extract(
-                            epoch from
-                            (v_now - v_existing.started_at)
-                        )
-                    )::integer
-                ),
-            'mining_rate', v_existing.mining_rate,
-            'active_referrals',
-                public.calculate_active_referrals(v_user_id)
-        );
-    end if;
+alter table public.mining_sessions
+    add column if not exists claimed boolean default false;
 
-    -- Check if an unclaimed session has expired.
-    -- It must be claimable before a new one can start.
-    select *
-    into v_existing
-    from public.mining_sessions
-    where user_id = v_user_id
-      and claimed = false
-    order by started_at desc
-    limit 1
-    for update;
+alter table public.mining_sessions
+    add column if not exists claimed_at timestamptz;
 
-    if found then
-        if v_existing.ends_at <= v_now then
-            return jsonb_build_object(
-                'success', false,
-                'active', false,
-                'claimable', true,
-                'session_finished', true,
-                'message', 'Mining session is complete. Claim your reward first.'
-            );
-        end if;
-    end if;
+alter table public.mining_sessions
+    add column if not exists reward_amount numeric(24,8) default 0;
 
-    v_start := v_now;
-    v_end := v_now + public.pf_mining_duration();
-
-    -- Referral count at session start is stored only as a
-    -- snapshot/display value.
-    --
-    -- IMPORTANT:
-    -- claim_mining() does NOT use this value to retroactively
-    -- calculate referral rewards.
-    v_referrals :=
-        public.calculate_active_referrals(v_user_id);
-
-    v_rate :=
-        public.pf_base_mining_rate()
-        + (
-            v_referrals
-            * public.pf_referral_bonus_rate()
-        );
-
-    insert into public.mining_sessions (
-        user_id,
-        started_at,
-        ends_at,
-        mining_rate,
-        claimed,
-        created_at
-    )
-    values (
-        v_user_id,
-        v_start,
-        v_end,
-        round(v_rate, 4),
-        false,
-        v_now
-    )
-    returning id into v_session_id;
-
-    update public.profiles
-    set
-        mining_active = true,
-        mining_started_at = v_start,
-        mining_ends_at = v_end,
-        mining_rate = round(v_rate, 4),
-        ad_boost = 0,
-        daily_ads_watched = 0,
-        updated_at = v_now
-    where id = v_user_id;
-
-    return jsonb_build_object(
-        'success', true,
-        'active', true,
-        'is_mining', true,
-        'mining_active', true,
-        'session_id', v_session_id,
-        'started_at', v_start,
-        'ends_at', v_end,
-        'remaining_seconds', 86400,
-        'elapsed_seconds', 0,
-        'mining_rate', round(v_rate, 4),
-        'active_referrals', v_referrals,
-        'ads_watched', 0,
-        'ad_boost', 0
-    );
-end;
-$$;
+alter table public.mining_sessions
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
--- 5. GET ACTIVE MINING
+-- 3. AD REWARDS
 -- ============================================================
 
-create or replace function public.get_active_mining()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-stable
-as $$
-declare
-    v_user_id uuid;
-    v_session public.mining_sessions%rowtype;
-    v_now timestamptz;
-    v_ads integer;
-    v_referrals integer;
-    v_ad_boost numeric;
-    v_current_rate numeric;
-    v_elapsed integer;
-    v_remaining integer;
-    v_claimable boolean;
-begin
-    v_user_id := auth.uid();
-
-    if v_user_id is null then
-        raise exception 'Not authenticated';
-    end if;
-
-    v_now := now();
-
-    select *
-    into v_session
-    from public.mining_sessions
-    where user_id = v_user_id
-      and claimed = false
-    order by started_at desc
-    limit 1;
-
-    if not found then
-        return jsonb_build_object(
-            'success', true,
-            'active', false,
-            'is_mining', false,
-            'mining_active', false,
-            'expired', false,
-            'claimable', false,
-            'session_finished', false,
-            'remaining_seconds', 0,
-            'elapsed_seconds', 0,
-            'ads_watched', 0,
-            'ad_boost', 0,
-            'active_referrals', 0,
-            'mining_rate', public.pf_base_mining_rate(),
-            'reward', 0
-        );
-    end if;
-
-    v_elapsed := greatest(
-        0,
-        least(
-            86400,
-            floor(
-                extract(
-                    epoch from
-                    least(v_now, v_session.ends_at)
-                    - v_session.started_at
-                )
-            )::integer
-        )
-    );
-
-    v_remaining := greatest(
-        0,
-        floor(
-            extract(
-                epoch from
-                (v_session.ends_at - v_now)
-        )
-        )::integer
-    );
-
-    v_claimable := v_now >= v_session.ends_at;
-
-    select count(*)::integer
-    into v_ads
-    from public.ad_rewards
-    where user_id = v_user_id
-      and watched_at >= v_session.started_at
-      and watched_at <= v_session.ends_at;
-
-    v_ads := least(
-        greatest(coalesce(v_ads, 0), 0),
-        public.pf_max_ads()
-    );
-
-    v_ad_boost :=
-        v_ads * public.pf_ad_bonus_rate();
-
-    v_referrals :=
-        public.calculate_active_referrals(v_user_id);
-
-    v_current_rate :=
-        public.pf_base_mining_rate()
-        + (
-            v_referrals
-            * public.pf_referral_bonus_rate()
-        )
-        + v_ad_boost;
-
-    return jsonb_build_object(
-        'success', true,
-        'active', not v_claimable,
-        'is_mining', not v_claimable,
-        'mining_active', not v_claimable,
-        'expired', v_claimable,
-        'claimable', v_claimable,
-        'session_finished', v_claimable,
-        'session_id', v_session.id,
-        'started_at', v_session.started_at,
-        'start_time', v_session.started_at,
-        'ends_at', v_session.ends_at,
-        'end_time', v_session.ends_at,
-        'remaining_seconds', v_remaining,
-        'elapsed_seconds', v_elapsed,
-        'ads_watched', v_ads,
-        'ad_count', v_ads,
-        'ads_count', v_ads,
-        'ad_boost', round(v_ad_boost, 4),
-        'active_referrals', v_referrals,
-        'referrals', v_referrals,
-        'mining_rate', round(v_current_rate, 4),
-        'rate', round(v_current_rate, 4),
-        'reward', 0
-    );
-end;
-$$;
-
-
--- ============================================================
--- 6. RECORD REWARDED AD
--- ============================================================
---
--- Called by Flutter after LevelPlay reports a reward.
---
--- NOTE:
--- This records the rewarded event.
--- Real production anti-fraud should additionally use
--- ad-network/server-to-server verification.
---
--- The function itself never credits FAN balance.
--- ============================================================
-
-create or replace function public.record_rewarded_ad()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-volatile
-as $$
-declare
-    v_user_id uuid;
-    v_session public.mining_sessions%rowtype;
-    v_now timestamptz;
-    v_count integer;
-    v_ad_id uuid;
-    v_ad_number integer;
-begin
-    v_user_id := auth.uid();
-
-    if v_user_id is null then
-        raise exception 'Not authenticated';
-    end if;
-
-    v_now := now();
-
-    select *
-    into v_session
-    from public.mining_sessions
-    where user_id = v_user_id
-      and claimed = false
-      and started_at <= v_now
-      and ends_at > v_now
-    order by started_at desc
-    limit 1
-    for update;
-
-    if not found then
-        return jsonb_build_object(
-            'success', false,
-            'message', 'No active mining session.'
-        );
-    end if;
-
-    select count(*)::integer
-    into v_count
-    from public.ad_rewards
-    where user_id = v_user_id
-      and watched_at >= v_session.started_at
-      and watched_at <= v_session.ends_at;
-
-    if v_count >= public.pf_max_ads() then
-        return jsonb_build_object(
-            'success', false,
-            'message', 'Maximum 7 ads reached for this mining session.',
-            'ads_watched', public.pf_max_ads()
-        );
-    end if;
-
-    v_ad_number := v_count + 1;
-
-    insert into public.ad_rewards (
-        user_id,
-        session_id,
-        ad_number,
-        watched_at,
-        reward_amount
-    )
-    values (
-        v_user_id,
-        v_session.id,
-        v_ad_number,
-        v_now,
-        public.pf_ad_bonus_rate()
-    )
-    returning id into v_ad_id;
-
-    -- Update profile only for current/display state.
-    update public.profiles
-    set
-        daily_ads_watched = v_ad_number,
-        ad_boost =
-            v_ad_number * public.pf_ad_bonus_rate(),
-        updated_at = v_now
-    where id = v_user_id;
-
-    return jsonb_build_object(
-        'success', true,
-        'ad_id', v_ad_id,
-        'ad_number', v_ad_number,
-        'ad_boost',
-            round(
-                v_ad_number * public.pf_ad_bonus_rate(),
-                4
-            ),
-        'reward_rate',
-            public.pf_ad_bonus_rate(),
-        'ads_watched', v_ad_number
-    );
-end;
-$$;
-
-
--- ============================================================
--- 7. VERIFY REWARDED AD
--- ============================================================
---
--- Compatible with Flutter:
---
--- verify_rewarded_ad(
---     p_ad_id => adId
--- )
---
--- This verifies that the recorded ad belongs to the
--- authenticated user and to a valid mining session.
--- ============================================================
-
-create or replace function public.verify_rewarded_ad(
-    p_ad_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-stable
-as $$
-declare
-    v_user_id uuid;
-    v_ad public.ad_rewards%rowtype;
-    v_session public.mining_sessions%rowtype;
-begin
-    v_user_id := auth.uid();
-
-    if v_user_id is null then
-        raise exception 'Not authenticated';
-    end if;
-
-    select *
-    into v_ad
-    from public.ad_rewards
-    where id = p_ad_id
-      and user_id = v_user_id
-    limit 1;
-
-    if not found then
-        return jsonb_build_object(
-            'success', false,
-            'verified', false,
-            'message', 'Rewarded ad was not found.'
-        );
-    end if;
-
-    select *
-    into v_session
-    from public.mining_sessions
-    where id = v_ad.session_id
-      and user_id = v_user_id
-    limit 1;
-
-    if not found then
-        return jsonb_build_object(
-            'success', false,
-            'verified', false,
-            'message', 'Mining session was not found.'
-        );
-    end if;
-
-    if v_ad.watched_at < v_session.started_at
-       or v_ad.watched_at > v_session.ends_at then
-        return jsonb_build_object(
-            'success', false,
-            'verified', false,
-            'message', 'Ad is outside the mining session.'
-        );
-    end if;
-
-    return jsonb_build_object(
-        'success', true,
-        'verified', true,
-        'ad_id', v_ad.id,
-        'ad_number', v_ad.ad_number,
-        'reward_rate', v_ad.reward_amount,
-        'watched_at', v_ad.watched_at
-    );
-end;
-$$;
-
-
--- ============================================================
--- 8. CLAIM MINING
--- ============================================================
---
--- THIS IS THE IMPORTANT PART.
---
--- Reward is calculated by time segments:
---
--- Base:
---   0.20 FAN/H for all mining time
---
--- Referral:
---   +0.02 FAN/H only during the period in which each
---   referred user's mining session overlaps this session.
---
--- Ads:
---   +0.10 FAN/H from each ad's watched_at until session end.
---
--- Therefore no bonus is paid retroactively.
--- ============================================================
-
-create or replace function public.claim_mining()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-volatile
-as $$
-declare
-    v_user_id uuid;
-    v_now timestamptz;
-
-    v_session public.mining_sessions%rowtype;
-
-    v_base_reward numeric := 0;
-    v_referral_reward numeric := 0;
-    v_ad_reward numeric := 0;
-    v_total_reward numeric := 0;
-
-    v_base_seconds bigint := 0;
-    v_referral_seconds bigint := 0;
-    v_ad_seconds bigint := 0;
-
-    v_referral_count integer := 0;
-    v_ad_count integer := 0;
-
-    v_old_balance numeric := 0;
-    v_new_balance numeric := 0;
-
-    v_session_end timestamptz;
-    v_claim_end timestamptz;
-
-    r record;
-begin
-    v_user_id := auth.uid();
-
-    if v_user_id is null then
-        raise exception 'Not authenticated';
-    end if;
-
-    v_now := now();
-
-    -- Lock profile.
-    select fan_balance
-    into v_old_balance
-    from public.profiles
-    where id = v_user_id
-    for update;
-
-    if not found then
-        raise exception 'Profile not found.';
-    end if;
-
-    -- Lock the latest unclaimed session.
-    select *
-    into v_session
-    from public.mining_sessions
-    where user_id = v_user_id
-      and claimed = false
-    order by started_at desc
-    limit 1
-    for update;
-
-    if not found then
-        return jsonb_build_object(
-            'success', false,
-            'claimed', false,
-            'message', 'No mining session to claim.'
-        );
-    end if;
-
-    -- A mining session must complete before claiming.
-    if v_now < v_session.ends_at then
-        return jsonb_build_object(
-            'success', false,
-            'claimed', false,
-            'claimable', false,
-            'remaining_seconds',
-                floor(
-                    extract(
-                        epoch from
-                        (v_session.ends_at - v_now)
-                    )
-                )::integer,
-            'message', 'Mining session is still active.'
-        );
-    end if;
-
-    v_session_end := v_session.ends_at;
-    v_claim_end := v_session.ends_at;
-
-    -- ========================================================
-    -- BASE REWARD
-    -- ========================================================
-
-    v_base_seconds := greatest(
-        0,
-        floor(
-            extract(
-                epoch from
-                (v_session_end - v_session.started_at)
-            )
-        )::bigint
-    );
-
-    v_base_reward :=
-        public.pf_base_mining_rate()
-        * (
-            v_base_seconds::numeric / 3600.0
-        );
-
-    -- ========================================================
-    -- REFERRAL REWARD
-    -- ========================================================
-    --
-    -- For every referred user:
-    --
-    -- referred mining start
-    --       ->
-    -- referred mining end
-    --
-    -- is intersected with:
-    --
-    -- inviter session start
-    --       ->
-    -- inviter session end
-    --
-    -- Only the overlapping seconds receive +0.02 FAN/H.
-    -- ========================================================
-
-    for r in
-        select
-            referred.id,
-            greatest(
-                v_session.started_at,
-                referred.mining_started_at
-            ) as overlap_start,
-            least(
-                v_session_end,
-                referred.mining_ends_at
-            ) as overlap_end
-        from public.profiles referred
-        where referred.referred_by = v_user_id
-          and referred.mining_started_at is not null
-          and referred.mining_ends_at is not null
-          and referred.mining_ends_at >
-              v_session.started_at
-          and referred.mining_started_at <
-              v_session_end
-    loop
-        if r.overlap_end > r.overlap_start then
-
-            v_referral_seconds :=
-                v_referral_seconds
-                + floor(
-                    extract(
-                        epoch from
-                        (
-                            r.overlap_end
-                            - r.overlap_start
-                        )
-                    )
-                )::bigint;
-
-        end if;
-    end loop;
-
-    v_referral_count :=
-        case
-            when v_referral_seconds > 0 then
-                (
-                    select count(*)::integer
-                    from public.profiles referred
-                    where referred.referred_by = v_user_id
-                      and referred.mining_started_at is not null
-                      and referred.mining_ends_at is not null
-                      and referred.mining_ends_at >
-                          v_session.started_at
-                      and referred.mining_started_at <
-                          v_session_end
-                )
-            else 0
-        end;
-
-    v_referral_reward :=
-        public.pf_referral_bonus_rate()
-        * (
-            v_referral_seconds::numeric / 3600.0
-        );
-
-    -- ========================================================
-    -- AD REWARD
-    -- ========================================================
-    --
-    -- Every verified/recorded ad creates a +0.10 FAN/H
-    -- boost starting at watched_at.
-    --
-    -- For each ad:
-    --
-    -- watched_at -> session_end
-    --
-    -- receives the +0.10 rate.
-    --
-    -- Therefore:
-    --
-    -- Ad at hour 4:
-    -- +0.10 for hours 4 -> 24
-    --
-    -- NOT:
-    -- +0.10 for hours 0 -> 24
-    -- ========================================================
-
-    for r in
-        select
-            ar.id,
-            ar.watched_at
-        from public.ad_rewards ar
-        where ar.user_id = v_user_id
-          and ar.session_id = v_session.id
-          and ar.watched_at >= v_session.started_at
-          and ar.watched_at < v_session_end
-        order by ar.watched_at asc
-        limit 7
-    loop
-        v_ad_seconds :=
-            v_ad_seconds
-            + floor(
-                extract(
-                    epoch from
-                    (
-                        v_session_end
-                        - r.watched_at
-                    )
-                )
-            )::bigint;
-    end loop;
-
-    select count(*)::integer
-    into v_ad_count
-    from public.ad_rewards ar
-    where ar.user_id = v_user_id
-      and ar.session_id = v_session.id
-      and ar.watched_at >= v_session.started_at
-      and ar.watched_at < v_session_end;
-
-    v_ad_count := least(
-        greatest(coalesce(v_ad_count, 0), 0),
-        public.pf_max_ads()
-    );
-
-    v_ad_reward :=
-        public.pf_ad_bonus_rate()
-        * (
-            v_ad_seconds::numeric / 3600.0
-        );
-
-    -- ========================================================
-    -- TOTAL
-    -- ========================================================
-
-    v_total_reward :=
-        round(
-            v_base_reward
-            + v_referral_reward
-            + v_ad_reward,
-            8
-        );
-
-    -- Never allow negative rewards.
-    if v_total_reward < 0 then
-        v_total_reward := 0;
-    end if;
-
-    v_new_balance :=
-        round(
-            coalesce(v_old_balance, 0)
-            + v_total_reward,
-            8
-        );
-
-    -- ========================================================
-    -- CREDIT BALANCE
-    -- ========================================================
-
-    update public.profiles
-    set
-        fan_balance = v_new_balance,
-        mining_active = false,
-        mining_started_at = null,
-        mining_ends_at = null,
-        mining_rate = public.pf_base_mining_rate(),
-        ad_boost = 0,
-        daily_ads_watched = 0,
-        updated_at = v_now
-    where id = v_user_id;
-
-    -- ========================================================
-    -- MARK SESSION CLAIMED
-    -- ========================================================
-
-    update public.mining_sessions
-    set
-        claimed = true,
-        claimed_at = v_now,
-        reward_amount = v_total_reward
-    where id = v_session.id;
-
-    -- ========================================================
-    -- RESULT
-    -- ========================================================
-
-    return jsonb_build_object(
-        'success', true,
-        'claimed', true,
-        'claimable', true,
-
-        'session_id', v_session.id,
-
-        'started_at', v_session.started_at,
-        'ends_at', v_session.ends_at,
-        'claimed_at', v_now,
-
-        'base_rate',
-            public.pf_base_mining_rate(),
-
-        'base_reward',
-            round(v_base_reward, 8),
-
-        'referral_bonus_rate',
-            public.pf_referral_bonus_rate(),
-
-        'referral_reward',
-            round(v_referral_reward, 8),
-
-        'active_referrals',
-            v_referral_count,
-
-        'referral_seconds',
-            v_referral_seconds,
-
-        'ad_bonus_rate',
-            public.pf_ad_bonus_rate(),
-
-        'ads_watched',
-            v_ad_count,
-
-        'ad_reward',
-            round(v_ad_reward, 8),
-
-        'ad_seconds',
-            v_ad_seconds,
-
-        'reward',
-            v_total_reward,
-
-        'fan_balance_before',
-            round(coalesce(v_old_balance, 0), 8),
-
-        'fan_balance_after',
-            v_new_balance
-    );
-end;
-$$;
-
-
--- ============================================================
--- 9. SESSION AD COUNT
--- ============================================================
-
-create or replace function public.get_session_ad_count(
-    p_started_at timestamptz
-)
-returns integer
-language sql
-security definer
-set search_path = public
-stable
-as $$
-    select least(
-        count(*)::integer,
-        public.pf_max_ads()
-    )
-    from public.ad_rewards
-    where user_id = auth.uid()
-      and watched_at >= p_started_at
-      and watched_at < p_started_at + public.pf_mining_duration();
-$$;
-
-
--- ============================================================
--- 10. COMPLETE EXPIRED SESSIONS
--- ============================================================
---
--- Trusted/backend maintenance function.
--- It DOES NOT credit FAN.
--- User must claim to receive reward.
--- ============================================================
-
-create or replace function public.complete_expired_mining_sessions()
-returns integer
-language plpgsql
-security definer
-set search_path = public
-volatile
-as $$
-declare
-    v_count integer;
-begin
-
-    update public.profiles p
-    set
-        mining_active = false,
-        updated_at = now()
-    where p.mining_active = true
-      and p.mining_ends_at is not null
-      and p.mining_ends_at <= now()
-      and exists (
-          select 1
-          from public.mining_sessions ms
-          where ms.user_id = p.id
-            and ms.claimed = false
-            and ms.ends_at <= now()
-      );
-
-    get diagnostics v_count = row_count;
-
-    return v_count;
-end;
-$$;
-
-
--- ============================================================
--- 11. REQUIRED COLUMNS FOR THE AD SESSION LINK
--- ============================================================
---
--- These statements make the engine compatible with the old
--- ad_rewards table while adding the missing session relation.
--- ============================================================
+create table if not exists public.ad_rewards (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references public.profiles(id) on delete cascade,
+    session_id uuid,
+    ad_number integer,
+    watched_at timestamptz default now(),
+    reward_amount numeric(12,4) default 0.10,
+    created_at timestamptz default now()
+);
+
+alter table public.ad_rewards
+    add column if not exists user_id uuid;
 
 alter table public.ad_rewards
     add column if not exists session_id uuid;
@@ -1146,181 +152,739 @@ alter table public.ad_rewards
     add column if not exists ad_number integer;
 
 alter table public.ad_rewards
-    add column if not exists reward_amount numeric(18,8);
+    add column if not exists watched_at timestamptz default now();
+
+alter table public.ad_rewards
+    add column if not exists reward_amount numeric(12,4) default 0.10;
+
+alter table public.ad_rewards
+    add column if not exists created_at timestamptz default now();
 
 
 -- ============================================================
--- 12. BACKFILL session_id / ad_number FOR EXISTING DATA
+-- 4. NOTIFICATIONS
+-- ============================================================
+
+create table if not exists public.notifications (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid references public.profiles(id) on delete cascade,
+    title text default '',
+    message text default '',
+    type text default 'general',
+    is_read boolean default false,
+    created_at timestamptz default now()
+);
+
+alter table public.notifications add column if not exists user_id uuid;
+alter table public.notifications add column if not exists title text;
+alter table public.notifications add column if not exists message text;
+alter table public.notifications add column if not exists type text default 'general';
+alter table public.notifications add column if not exists is_read boolean default false;
+alter table public.notifications add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 5. REFERRAL REWARDS
+-- ============================================================
+
+create table if not exists public.referral_rewards (
+    id uuid primary key default gen_random_uuid(),
+    inviter_id uuid,
+    referred_user_id uuid,
+    inviter_reward numeric(24,8) default 5,
+    new_user_reward numeric(24,8) default 20,
+    created_at timestamptz default now()
+);
+
+alter table public.referral_rewards add column if not exists inviter_id uuid;
+alter table public.referral_rewards add column if not exists referred_user_id uuid;
+alter table public.referral_rewards add column if not exists inviter_reward numeric(24,8) default 5;
+alter table public.referral_rewards add column if not exists new_user_reward numeric(24,8) default 20;
+alter table public.referral_rewards add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 6. DAILY CHECK-INS
+-- ============================================================
+
+create table if not exists public.daily_check_ins (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid,
+    check_in_date date default current_date,
+    streak_day integer default 1,
+    reward_amount numeric(24,8) default 0,
+    created_at timestamptz default now()
+);
+
+alter table public.daily_check_ins add column if not exists user_id uuid;
+alter table public.daily_check_ins add column if not exists check_in_date date default current_date;
+alter table public.daily_check_ins add column if not exists streak_day integer default 1;
+alter table public.daily_check_ins add column if not exists reward_amount numeric(24,8) default 0;
+alter table public.daily_check_ins add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 7. KYC VERIFICATIONS
+-- ============================================================
+
+create table if not exists public.kyc_verifications (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid,
+    phase integer default 1,
+    status text default 'pending',
+    provider text,
+    provider_reference text,
+    verification_data jsonb,
+    submitted_at timestamptz,
+    verified_at timestamptz,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+);
+
+alter table public.kyc_verifications add column if not exists user_id uuid;
+alter table public.kyc_verifications add column if not exists phase integer default 1;
+alter table public.kyc_verifications add column if not exists status text default 'pending';
+alter table public.kyc_verifications add column if not exists provider text;
+alter table public.kyc_verifications add column if not exists provider_reference text;
+alter table public.kyc_verifications add column if not exists verification_data jsonb;
+alter table public.kyc_verifications add column if not exists submitted_at timestamptz;
+alter table public.kyc_verifications add column if not exists verified_at timestamptz;
+alter table public.kyc_verifications add column if not exists created_at timestamptz default now();
+alter table public.kyc_verifications add column if not exists updated_at timestamptz default now();
+
+
+-- ============================================================
+-- 8. SOCIAL TASKS
+-- ============================================================
+
+create table if not exists public.social_tasks (
+    id uuid primary key default gen_random_uuid()
+);
+
+alter table public.social_tasks add column if not exists title text;
+alter table public.social_tasks add column if not exists description text;
+alter table public.social_tasks add column if not exists platform text;
+alter table public.social_tasks add column if not exists url text;
+
+alter table public.social_tasks
+    add column if not exists reward_fan numeric(24,8) default 0;
+
+alter table public.social_tasks
+    add column if not exists requires_follow boolean default true;
+
+alter table public.social_tasks
+    add column if not exists requires_like boolean default true;
+
+alter table public.social_tasks
+    add column if not exists requires_comment boolean default true;
+
+alter table public.social_tasks
+    add column if not exists requires_share boolean default true;
+
+alter table public.social_tasks
+    add column if not exists is_active boolean default true;
+
+alter table public.social_tasks
+    add column if not exists post_external_id text;
+
+alter table public.social_tasks
+    add column if not exists post_published_at timestamptz;
+
+alter table public.social_tasks
+    add column if not exists starts_at timestamptz;
+
+alter table public.social_tasks
+    add column if not exists ends_at timestamptz;
+
+alter table public.social_tasks
+    add column if not exists created_at timestamptz default now();
+
+alter table public.social_tasks
+    add column if not exists updated_at timestamptz default now();
+
+
+-- ============================================================
+-- 9. SOCIAL TASK CLAIMS
+-- ============================================================
+
+create table if not exists public.social_task_claims (
+    id uuid primary key default gen_random_uuid()
+);
+
+alter table public.social_task_claims add column if not exists user_id uuid;
+alter table public.social_task_claims add column if not exists task_id uuid;
+alter table public.social_task_claims add column if not exists task_date date default current_date;
+
+alter table public.social_task_claims
+    add column if not exists follow_verified boolean default false;
+
+alter table public.social_task_claims
+    add column if not exists like_verified boolean default false;
+
+alter table public.social_task_claims
+    add column if not exists comment_verified boolean default false;
+
+alter table public.social_task_claims
+    add column if not exists share_verified boolean default false;
+
+alter table public.social_task_claims
+    add column if not exists reward_amount numeric(24,8) default 0;
+
+alter table public.social_task_claims
+    add column if not exists started_at timestamptz;
+
+alter table public.social_task_claims
+    add column if not exists verified_at timestamptz;
+
+alter table public.social_task_claims
+    add column if not exists claimed_at timestamptz;
+
+alter table public.social_task_claims
+    add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 10. USER SOCIAL FOLLOWS
+-- ============================================================
+
+create table if not exists public.user_social_follows (
+    id uuid primary key default gen_random_uuid()
+);
+
+alter table public.user_social_follows add column if not exists user_id uuid;
+alter table public.user_social_follows add column if not exists platform text;
+alter table public.user_social_follows add column if not exists external_account_id text;
+alter table public.user_social_follows add column if not exists verified boolean default false;
+alter table public.user_social_follows add column if not exists verified_at timestamptz;
+alter table public.user_social_follows add column if not exists created_at timestamptz default now();
+alter table public.user_social_follows add column if not exists updated_at timestamptz default now();
+
+
+-- ============================================================
+-- 11. LEGACY SOCIAL REWARDS
+-- ============================================================
+
+create table if not exists public.social_rewards (
+    id uuid primary key default gen_random_uuid()
+);
+
+alter table public.social_rewards add column if not exists user_id uuid;
+alter table public.social_rewards add column if not exists reward_date date default current_date;
+alter table public.social_rewards add column if not exists reward_amount numeric(24,8) default 0;
+alter table public.social_rewards add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 12. TRANSACTIONS
+-- ============================================================
+
+create table if not exists public.transactions (
+    id uuid primary key default gen_random_uuid()
+);
+
+alter table public.transactions add column if not exists user_id uuid;
+alter table public.transactions add column if not exists asset text;
+alter table public.transactions add column if not exists transaction_type text;
+alter table public.transactions add column if not exists amount numeric(24,8);
+alter table public.transactions add column if not exists balance_before numeric(24,8);
+alter table public.transactions add column if not exists balance_after numeric(24,8);
+alter table public.transactions add column if not exists reference_id uuid;
+alter table public.transactions add column if not exists description text;
+alter table public.transactions add column if not exists created_at timestamptz default now();
+
+
+-- ============================================================
+-- 13. APP SETTINGS
 -- ============================================================
 --
--- Only rows that can safely be matched to a user's unclaimed
--- session are linked.
+-- IMPORTANT:
+-- Current Flutter expects:
 --
--- Existing old rows that cannot be safely matched are left
--- untouched instead of guessing.
+--   select('value')
+--   eq('key', 'minimum_supported_version')
+--
 -- ============================================================
 
-with ranked_ads as (
-    select
-        ar.id,
-        ms.id as matched_session_id,
-        row_number() over (
-            partition by ms.id
-            order by ar.watched_at asc, ar.id asc
-        )::integer as calculated_ad_number
-    from public.ad_rewards ar
-    join public.mining_sessions ms
-      on ms.user_id = ar.user_id
-     and ar.watched_at >= ms.started_at
-     and ar.watched_at < ms.ends_at
-    where ar.session_id is null
-)
-update public.ad_rewards ar
+create table if not exists public.app_settings (
+    key text,
+    value text,
+    updated_at timestamptz default now()
+);
+
+
+-- ============================================================
+-- 14. APP SETTINGS JSONB -> TEXT FIX
+-- ============================================================
+
+do $$
+declare
+    v_type text;
+begin
+
+    select data_type
+    into v_type
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'app_settings'
+      and column_name = 'value';
+
+    if v_type = 'jsonb' then
+
+        alter table public.app_settings
+        alter column value type text
+        using (
+            case
+                when jsonb_typeof(value) = 'string'
+                    then value #>> '{}'
+                else
+                    value::text
+            end
+        );
+
+    elsif v_type = 'json' then
+
+        alter table public.app_settings
+        alter column value type text
+        using value::text;
+
+    end if;
+
+end
+$$;
+
+
+alter table public.app_settings
+    add column if not exists key text;
+
+alter table public.app_settings
+    add column if not exists value text;
+
+alter table public.app_settings
+    add column if not exists updated_at timestamptz default now();
+
+
+-- ============================================================
+-- 15. APP SETTINGS DEFAULT
+-- ============================================================
+
+update public.app_settings
 set
-    session_id = ranked_ads.matched_session_id,
-    ad_number = ranked_ads.calculated_ad_number,
-    reward_amount = coalesce(
-        ar.reward_amount,
-        public.pf_ad_bonus_rate()
-    )
-from ranked_ads
-where ar.id = ranked_ads.id
-  and ranked_ads.calculated_ad_number <= public.pf_max_ads();
-
-
--- ============================================================
--- 13. DEFAULTS / CONSTRAINTS
--- ============================================================
-
-alter table public.ad_rewards
-    alter column reward_amount
-    set default 0.10;
-
-alter table public.ad_rewards
-    alter column ad_number
-    set default 1;
-
-
--- ============================================================
--- 14. INDEXES
--- ============================================================
-
-create index if not exists idx_mining_sessions_user_active
-on public.mining_sessions (
-    user_id,
-    claimed,
-    started_at,
-    ends_at
+    key = 'minimum_supported_version',
+    value = '1.0.0',
+    updated_at = now()
+where key is null
+and not exists (
+    select 1
+    from public.app_settings
+    where key = 'minimum_supported_version'
 );
 
-create index if not exists idx_ad_rewards_user_session
-on public.ad_rewards (
-    user_id,
-    session_id,
-    watched_at
+
+insert into public.app_settings (
+    key,
+    value
+)
+select
+    'minimum_supported_version',
+    '1.0.0'
+where not exists (
+    select 1
+    from public.app_settings
+    where key = 'minimum_supported_version'
 );
+
+
+-- ============================================================
+-- 16. DEVICE REGISTRATIONS
+-- ============================================================
+
+create table if not exists public.device_registrations (
+    id uuid primary key default gen_random_uuid()
+);
+
+alter table public.device_registrations add column if not exists user_id uuid;
+alter table public.device_registrations add column if not exists device_id text;
+alter table public.device_registrations add column if not exists platform text;
+alter table public.device_registrations add column if not exists app_version text;
+alter table public.device_registrations add column if not exists last_seen_at timestamptz default now();
+alter table public.device_registrations add column if not exists created_at timestamptz default now();
+alter table public.device_registrations add column if not exists updated_at timestamptz default now();
+
+
+-- ============================================================
+-- 17. INDEXES
+-- ============================================================
+
+-- Profiles
 
 create index if not exists idx_profiles_referred_by
-on public.profiles (
-    referred_by
-);
+on public.profiles(referred_by);
 
-create index if not exists idx_profiles_mining_window
-on public.profiles (
+create index if not exists idx_profiles_mining_active
+on public.profiles(
+    mining_active,
     mining_started_at,
     mining_ends_at
 );
 
 
+-- Mining
+
+create index if not exists idx_mining_sessions_user
+on public.mining_sessions(
+    user_id,
+    started_at desc
+);
+
+create index if not exists idx_mining_sessions_active
+on public.mining_sessions(
+    user_id,
+    claimed,
+    ends_at
+);
+
+
+-- Ads
+
+create index if not exists idx_ad_rewards_user
+on public.ad_rewards(
+    user_id,
+    watched_at desc
+);
+
+create index if not exists idx_ad_rewards_session
+on public.ad_rewards(
+    session_id,
+    watched_at
+);
+
+
+-- Notifications
+
+create index if not exists idx_notifications_user
+on public.notifications(
+    user_id,
+    created_at desc
+);
+
+
+-- Referrals
+
+create index if not exists idx_referral_rewards_inviter
+on public.referral_rewards(
+    inviter_id,
+    created_at desc
+);
+
+
+-- Check-ins
+
+create index if not exists idx_checkins_user
+on public.daily_check_ins(
+    user_id,
+    check_in_date desc
+);
+
+
+-- KYC
+
+create index if not exists idx_kyc_user
+on public.kyc_verifications(
+    user_id,
+    phase
+);
+
+
+-- Social
+
+create index if not exists idx_social_tasks_active
+on public.social_tasks(
+    is_active,
+    starts_at,
+    ends_at
+);
+
+create index if not exists idx_social_claims_user
+on public.social_task_claims(
+    user_id,
+    task_date desc
+);
+
+create index if not exists idx_social_follows_user
+on public.user_social_follows(
+    user_id,
+    platform
+);
+
+
+-- Transactions
+
+create index if not exists idx_transactions_user
+on public.transactions(
+    user_id,
+    created_at desc
+);
+
+
 -- ============================================================
--- 15. UNIQUE AD NUMBER PER SESSION
+-- 18. AD SESSION INDEX
 -- ============================================================
 
 create unique index if not exists
 ux_ad_rewards_session_ad_number
-on public.ad_rewards (
+on public.ad_rewards(
     session_id,
     ad_number
 )
 where session_id is not null
-  and ad_number is not null;
+and ad_number is not null;
 
 
 -- ============================================================
--- 16. FUNCTION PERMISSIONS
+-- 19. REFERRAL CODE GENERATOR
 -- ============================================================
 
-revoke all on function public.start_mining() from public;
-revoke all on function public.start_mining() from anon;
-grant execute on function public.start_mining()
-to authenticated;
+create or replace function public.generate_referral_code(
+    input_name text
+)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_base text;
+    v_code text;
+begin
 
+    v_base :=
+        upper(
+            regexp_replace(
+                coalesce(input_name, 'FAN'),
+                '[^A-Za-z0-9]',
+                '',
+                'g'
+            )
+        );
 
-revoke all on function public.get_active_mining() from public;
-revoke all on function public.get_active_mining() from anon;
-grant execute on function public.get_active_mining()
-to authenticated;
+    if v_base = '' then
+        v_base := 'FAN';
+    end if;
 
+    v_base := left(v_base, 8);
 
-revoke all on function public.get_user_mining_rate() from public;
-revoke all on function public.get_user_mining_rate() from anon;
-grant execute on function public.get_user_mining_rate()
-to authenticated;
+    loop
 
+        v_code :=
+            v_base ||
+            upper(
+                substr(
+                    md5(random()::text),
+                    1,
+                    6
+                )
+            );
 
-revoke all on function public.record_rewarded_ad() from public;
-revoke all on function public.record_rewarded_ad() from anon;
-grant execute on function public.record_rewarded_ad()
-to authenticated;
+        exit when not exists (
+            select 1
+            from public.profiles
+            where referral_code = v_code
+        );
 
+    end loop;
 
-revoke all on function public.verify_rewarded_ad(uuid) from public;
-revoke all on function public.verify_rewarded_ad(uuid) from anon;
-grant execute on function public.verify_rewarded_ad(uuid)
-to authenticated;
+    return v_code;
 
-
-revoke all on function public.claim_mining() from public;
-revoke all on function public.claim_mining() from anon;
-grant execute on function public.claim_mining()
-to authenticated;
-
-
-revoke all on function public.get_session_ad_count(timestamptz)
-from public;
-
-revoke all on function public.get_session_ad_count(timestamptz)
-from anon;
-
-grant execute on function public.get_session_ad_count(timestamptz)
-to authenticated;
-
-
--- This is a trusted maintenance function.
--- Do NOT expose it to normal authenticated users.
-revoke all on function public.complete_expired_mining_sessions()
-from public;
-
-revoke all on function public.complete_expired_mining_sessions()
-from anon;
-
-revoke all on function public.complete_expired_mining_sessions()
-from authenticated;
-
-
--- calculate_active_referrals() is only needed internally.
--- Flutter currently calls it directly from ReferralService,
--- so authenticated execution is retained for compatibility.
-revoke all on function public.calculate_active_referrals(uuid)
-from public;
-
-revoke all on function public.calculate_active_referrals(uuid)
-from anon;
-
-grant execute on function public.calculate_active_referrals(uuid)
-to authenticated;
+end;
+$$;
 
 
 -- ============================================================
--- END OF MINING ENGINE
+-- 20. NEW USER PROFILE
+-- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    v_name text;
+    v_email text;
+    v_code text;
+begin
+
+    v_name :=
+        coalesce(
+            new.raw_user_meta_data ->> 'name',
+            new.raw_user_meta_data ->> 'full_name',
+            new.raw_user_meta_data ->> 'display_name',
+            ''
+        );
+
+    v_email := new.email;
+
+    v_code :=
+        public.generate_referral_code(v_name);
+
+    insert into public.profiles(
+        id,
+        name,
+        email,
+        referral_code
+    )
+    values(
+        new.id,
+        nullif(v_name, ''),
+        v_email,
+        v_code
+    )
+    on conflict (id)
+    do nothing;
+
+    return new;
+
+end;
+$$;
+
+
+-- ============================================================
+-- 21. AUTH TRIGGER
+-- ============================================================
+
+drop trigger if exists on_auth_user_created
+on auth.users;
+
+create trigger on_auth_user_created
+after insert on auth.users
+for each row
+execute function public.handle_new_user();
+
+
+-- ============================================================
+-- 22. UPDATED_AT FUNCTION
+-- ============================================================
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+
+    new.updated_at := now();
+
+    return new;
+
+end;
+$$;
+
+
+-- ============================================================
+-- 23. UPDATED_AT TRIGGERS
+-- ============================================================
+
+drop trigger if exists profiles_updated_at
+on public.profiles;
+
+create trigger profiles_updated_at
+before update on public.profiles
+for each row
+execute function public.set_updated_at();
+
+
+drop trigger if exists kyc_verifications_updated_at
+on public.kyc_verifications;
+
+create trigger kyc_verifications_updated_at
+before update on public.kyc_verifications
+for each row
+execute function public.set_updated_at();
+
+
+drop trigger if exists social_tasks_updated_at
+on public.social_tasks;
+
+create trigger social_tasks_updated_at
+before update on public.social_tasks
+for each row
+execute function public.set_updated_at();
+
+
+drop trigger if exists user_social_follows_updated_at
+on public.user_social_follows;
+
+create trigger user_social_follows_updated_at
+before update on public.user_social_follows
+for each row
+execute function public.set_updated_at();
+
+
+drop trigger if exists app_settings_updated_at
+on public.app_settings;
+
+create trigger app_settings_updated_at
+before update on public.app_settings
+for each row
+execute function public.set_updated_at();
+
+
+drop trigger if exists device_registrations_updated_at
+on public.device_registrations;
+
+create trigger device_registrations_updated_at
+before update on public.device_registrations
+for each row
+execute function public.set_updated_at();
+
+
+-- ============================================================
+-- 24. DEFAULT MINING VALUES
+-- ============================================================
+
+update public.profiles
+set mining_rate = 0.20
+where mining_rate is null;
+
+update public.profiles
+set fan_balance = 0
+where fan_balance is null;
+
+update public.profiles
+set afam_balance = 0
+where afam_balance is null;
+
+update public.profiles
+set active_referrals = 0
+where active_referrals is null;
+
+update public.profiles
+set daily_ads_watched = 0
+where daily_ads_watched is null;
+
+update public.profiles
+set ad_boost = 0
+where ad_boost is null;
+
+update public.profiles
+set mining_active = false
+where mining_active is null;
+
+update public.profiles
+set consecutive_check_ins = 0
+where consecutive_check_ins is null;
+
+
+-- ============================================================
+-- 25. FINAL
+-- ============================================================
+
+-- Schema creation completed.
+-- Mining RPC functions will be installed separately
+-- in mining_engine.sql.
+
+
+-- ============================================================
+-- END
 -- ============================================================
