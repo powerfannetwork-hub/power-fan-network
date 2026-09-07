@@ -23,7 +23,6 @@ jobs:
       ANDROID_COMPILE_SDK: "36"
 
     steps:
-
       # ============================================================
       # 1. CHECKOUT
       # ============================================================
@@ -269,180 +268,10 @@ jobs:
 
           echo ""
           echo "Application Gradle configuration:"
-          grep -RniE "compileSdk|compileSdkVersion" android/app || true
 
-      # ============================================================
-      # 11. PATCH APPLOVIN MAX COMPILE SDK
-      # ============================================================
-      - name: Fix AppLovin MAX compileSdk
-        shell: bash
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "FIXING APPLOVIN MAX COMPILE SDK"
-          echo "=========================================="
-
-          CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
-
-          echo ""
-          echo "PUB CACHE:"
-          echo "$CACHE_DIR"
-
-          APPLOVIN_DIRS=$(find "$CACHE_DIR" \
-            -type d \
-            -path "*/hosted/pub.dev/applovin_max-*" \
-            2>/dev/null || true)
-
-          if [ -z "$APPLOVIN_DIRS" ]; then
-            echo ""
-            echo "ERROR: applovin_max package was not found."
-            echo ""
-            echo "Pub cache contents:"
-            find "$CACHE_DIR" \
-              -maxdepth 5 \
-              -type d \
-              -iname "*applovin*" \
-              2>/dev/null || true
-
-            exit 1
-          fi
-
-          echo ""
-          echo "Found AppLovin package:"
-          echo "$APPLOVIN_DIRS"
-
-          while IFS= read -r APPLOVIN_DIR; do
-            [ -z "$APPLOVIN_DIR" ] && continue
-
-            ANDROID_DIR="$APPLOVIN_DIR/android"
-
-            if [ ! -d "$ANDROID_DIR" ]; then
-              echo "Android directory not found: $ANDROID_DIR"
-              continue
-            fi
-
-            echo ""
-            echo "Patching:"
-            echo "$ANDROID_DIR"
-
-            python3 - "$ANDROID_DIR" <<'PY'
-          from pathlib import Path
-          import re
-          import sys
-
-          android_dir = Path(sys.argv[1])
-
-          gradle_files = list(android_dir.rglob("*.gradle"))
-          gradle_files += list(android_dir.rglob("*.gradle.kts"))
-
-          if not gradle_files:
-              print("No Gradle files found.")
-              sys.exit(0)
-
-          for path in gradle_files:
-              try:
-                  text = path.read_text()
-              except Exception as exc:
-                  print(f"Cannot read {path}: {exc}")
-                  continue
-
-              original = text
-
-              # Groovy syntax
-              text = re.sub(
-                  r'compileSdkVersion\s+31\b',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+32\b',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+33\b',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+34\b',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdkVersion\s+35\b',
-                  'compileSdkVersion 36',
-                  text
-              )
-
-              # Kotlin DSL syntax
-              text = re.sub(
-                  r'compileSdk\s*=\s*31\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*32\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*33\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*34\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              text = re.sub(
-                  r'compileSdk\s*=\s*35\b',
-                  'compileSdk = 36',
-                  text
-              )
-
-              if text != original:
-                  path.write_text(text)
-                  print(f"Updated: {path}")
-              else:
-                  print(f"Checked: {path}")
-          PY
-
-          done <<< "$APPLOVIN_DIRS"
-
-          echo ""
-          echo "=========================================="
-          echo "VERIFYING APPLOVIN MAX"
-          echo "=========================================="
-
-          REMAINING_31=$(find "$CACHE_DIR" \
-            -type f \
-            -path "*/hosted/pub.dev/applovin_max-*/android/*" \
-            \( -name "*.gradle" -o -name "*.gradle.kts" \) \
-            -print0 2>/dev/null \
-            | xargs -0 grep -nE \
-              'compileSdkVersion[[:space:]]+31|compileSdk[[:space:]]*=[[:space:]]*31' \
-              2>/dev/null || true)
-
-          if [ -n "$REMAINING_31" ]; then
-            echo ""
-            echo "ERROR: AppLovin MAX is still compiled against Android 31."
-            echo "$REMAINING_31"
-            exit 1
-          fi
-
-          echo ""
-          echo "AppLovin MAX compileSdk check passed."
+          grep -RniE \
+            "compileSdk|compileSdkVersion" \
+            android/app || true
 
       # ============================================================
       # 12. FLUTTER 3.24 COLOR API COMPATIBILITY
@@ -492,6 +321,7 @@ jobs:
                   print(f" - {item}")
           else:
               print(" - None")
+          PY
 
       # ============================================================
       # 13. FAIL IF OLD COLOR API STILL EXISTS
@@ -543,10 +373,10 @@ jobs:
 
           echo ""
           echo "Compile SDK:"
+
           grep -RniE \
             "compileSdk|compileSdkVersion" \
             android/app \
-            "$HOME/.pub-cache/hosted/pub.dev/applovin_max-"*"/android" \
             2>/dev/null || true
 
       # ============================================================
@@ -556,7 +386,6 @@ jobs:
         shell: bash
         run: |
           set -e
-
           flutter analyze
 
       # ============================================================
@@ -593,6 +422,7 @@ jobs:
 
           echo ""
           echo "Flutter APK directory:"
+
           if [ -d "$RELEASE_DIR" ]; then
             find "$RELEASE_DIR" \
               -type f \
@@ -604,6 +434,7 @@ jobs:
 
           echo ""
           echo "Android APK directory:"
+
           if [ -d "$ANDROID_RELEASE_DIR" ]; then
             find "$ANDROID_RELEASE_DIR" \
               -type f \
