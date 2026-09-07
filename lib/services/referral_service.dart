@@ -64,16 +64,14 @@ class ReferralResult {
     required this.message,
   });
 
-  const ReferralResult.success(
-    String message,
-  ) : this(
+  const ReferralResult.success(String message)
+      : this(
           success: true,
           message: message,
         );
 
-  const ReferralResult.failure(
-    String message,
-  ) : this(
+  const ReferralResult.failure(String message)
+      : this(
           success: false,
           message: message,
         );
@@ -98,82 +96,45 @@ class ReferralService {
     return user.id;
   }
 
-  /// Loads referral information for the signed-in user.
-  ///
-  /// Server-side data is used as the source of truth.
   Future<ReferralInfo> getReferralInfo() async {
-    final userId = _userId;
-
     return SupabaseService.safeCall(() async {
-      final profile = await _client
-          .from('profiles')
-          .select(
-            'referral_code, active_referrals',
-          )
-          .eq('id', userId)
-          .single();
+      final result =
+          await _client.rpc('get_referral_info');
 
-      final profileMap =
-          Map<String, dynamic>.from(profile);
+      final data = _mapFromRpcResult(result);
+
+      if (data['success'] == false) {
+        throw Exception(
+          data['message']?.toString() ??
+              'Unable to load referral information.',
+        );
+      }
 
       final referralCode =
-          profileMap['referral_code']?.toString() ?? '';
+          data['referral_code']?.toString() ?? '';
 
-      int totalReferrals = 0;
+      final totalReferrals =
+          _toInt(data['total_referrals']);
 
-      final referredUsers = await _client
-          .from('profiles')
-          .select('id')
-          .eq('referred_by', userId);
+      final activeReferrals =
+          _toInt(data['active_referrals']);
 
-      if (referredUsers != null) {  // <-- AN GYARA NAN: an cire `is List`
-        totalReferrals = referredUsers.length;
-      }
+      final totalInviterRewards =
+          _toDouble(data['total_inviter_rewards']);
 
-      int activeReferrals = 0;
+      final miningBonusPerActiveReferral =
+          _toDouble(
+        data['mining_bonus_per_active_referral'],
+        fallback: 0.02,
+      );
 
-      try {
-        final dynamic activeResult =
-            await _client.rpc(
-          'calculate_active_referrals',
-          params: {
-            'p_user_id': userId,
-          },
-        );
-
-        activeReferrals =
-            _toInt(activeResult);
-      } catch (_) {
-        activeReferrals = _toInt(
-          profileMap['active_referrals'],
-        );
-      }
-
-      double totalInviterRewards = 0;
-
-      try {
-        final rewards = await _client
-            .from('referral_rewards')
-            .select('inviter_reward')
-            .eq('inviter_id', userId);
-
-        if (rewards != null) {  // <-- AN GYARA NAN: an cire `is List`
-          for (final row in rewards) {
-            if (row != null) {  // <-- AN GYARA NAN: an cire `is Map`
-              totalInviterRewards += _toDouble(
-                row['inviter_reward'],
-              );
-            }
-          }
-        }
-      } catch (_) {
-        totalInviterRewards = 0;
-      }
-
-      const double bonusPerReferral = 0.02;
-
-      final double miningBonus =
-          activeReferrals * bonusPerReferral;
+      final miningBonus =
+          _toDouble(
+        data['mining_bonus'],
+        fallback:
+            activeReferrals *
+                miningBonusPerActiveReferral,
+      );
 
       return ReferralInfo(
         referralCode: referralCode,
@@ -182,4 +143,128 @@ class ReferralService {
         totalInviterRewards:
             totalInviterRewards,
         miningBonus: miningBonus,
-       
+        miningBonusPerActiveReferral:
+            miningBonusPerActiveReferral,
+      );
+    });
+  }
+
+  Future<ReferralResult> applyReferralCode(
+    String code,
+  ) async {
+    final cleanCode =
+        code.trim().toUpperCase();
+
+    if (cleanCode.isEmpty) {
+      return const ReferralResult.failure(
+        'Referral code is required.',
+      );
+    }
+
+    _userId;
+
+    return SupabaseService.safeCall(() async {
+      final result = await _client.rpc(
+        'apply_referral_code',
+        params: {
+          'p_referral_code': cleanCode,
+        },
+      );
+
+      final data = _mapFromRpcResult(result);
+
+      final success =
+          data['success'] == true;
+
+      final message =
+          data['message']?.toString() ??
+              (success
+                  ? 'Referral code applied successfully.'
+                  : 'Unable to apply referral code.');
+
+      return ReferralResult(
+        success: success,
+        message: message,
+      );
+    });
+  }
+
+  Future<int> getActiveReferrals() async {
+    final userId = _userId;
+
+    return SupabaseService.safeCall(() async {
+      final result = await _client.rpc(
+        'calculate_active_referrals',
+        params: {
+          'p_user_id': userId,
+        },
+      );
+
+      return _toInt(result);
+    });
+  }
+
+  Future<double> getMiningBonus() async {
+    final userId = _userId;
+
+    return SupabaseService.safeCall(() async {
+      final result = await _client.rpc(
+        'get_referral_mining_bonus',
+        params: {
+          'p_user_id': userId,
+        },
+      );
+
+      return _toDouble(result);
+    });
+  }
+
+  Map<String, dynamic> _mapFromRpcResult(
+    dynamic result,
+  ) {
+    if (result is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(result);
+    }
+
+    if (result is Map) {
+      return Map<String, dynamic>.from(result);
+    }
+
+    throw Exception(
+      'Unexpected referral RPC response.',
+    );
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  double _toDouble(
+    dynamic value, {
+    double fallback = 0,
+  }) {
+    if (value is double) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        fallback;
+  }
+}
