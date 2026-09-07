@@ -19,6 +19,10 @@ class ApiService {
     return user.id;
   }
 
+  // ============================================================
+  // PROFILE
+  // ============================================================
+
   static Future<Map<String, dynamic>> getProfile() async {
     return SupabaseService.safeCall(() async {
       final result = await _client
@@ -42,12 +46,12 @@ class ApiService {
     });
   }
 
-  static Future<Map<String, dynamic>> startMining() async {
-    await MiningService.instance.startMining();
+  // ============================================================
+  // MINING
+  // ============================================================
 
-    return {
-      'success': true,
-    };
+  static Future<Map<String, dynamic>> startMining() async {
+    return MiningService.instance.startMining();
   }
 
   static Future<Map<String, dynamic>> claimMining() async {
@@ -57,6 +61,30 @@ class ApiService {
   static Future<Map<String, dynamic>> watchAd() async {
     return MiningService.instance.recordRewardedAd();
   }
+
+  static Future<Map<String, dynamic>> getActiveMining() async {
+    return MiningService.instance.getActiveMining();
+  }
+
+  static Future<double> getMiningRate() async {
+    return MiningService.instance.getUserMiningRate();
+  }
+
+  static Future<int> getAdsWatched() async {
+    return MiningService.instance.getAdsWatched();
+  }
+
+  static Future<bool> isMining() async {
+    return MiningService.instance.isMining();
+  }
+
+  static Future<bool> isClaimable() async {
+    return MiningService.instance.isClaimable();
+  }
+
+  // ============================================================
+  // REFERRALS
+  // ============================================================
 
   static Future<Map<String, dynamic>> getReferrals() async {
     final info =
@@ -76,8 +104,16 @@ class ApiService {
   static Future<Map<String, dynamic>> applyReferral(
     String code,
   ) async {
+    final cleanCode = code.trim();
+
+    if (cleanCode.isEmpty) {
+      throw Exception('Referral code cannot be empty.');
+    }
+
     final result =
-        await ReferralService.instance.applyReferralCode(code);
+        await ReferralService.instance.applyReferralCode(
+      cleanCode,
+    );
 
     if (!result.success) {
       throw Exception(result.message);
