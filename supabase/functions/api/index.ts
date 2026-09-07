@@ -1,5 +1,3 @@
-// supabase/functions/api/index.ts
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -24,7 +22,10 @@ const corsHeaders = {
     "GET, POST, PUT, PATCH, OPTIONS",
 };
 
-function json(data: unknown, status = 200) {
+function json(
+  data: unknown,
+  status = 200,
+): Response {
   return new Response(
     JSON.stringify(data),
     {
@@ -37,39 +38,16 @@ function json(data: unknown, status = 200) {
   );
 }
 
-function cleanEmail(value: unknown): string {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase();
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
-function cleanName(value: unknown): string {
-  return String(value ?? "").trim();
-}
-
-function cleanReferralCode(value: unknown): string {
+function cleanReferralCode(
+  value: unknown,
+): string {
   return String(value ?? "")
     .trim()
     .toUpperCase();
-}
-
-function randomReferralCode(name: string): string {
-  const prefix =
-    name
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toUpperCase()
-      .substring(0, 5) || "FAN";
-
-  const random =
-    Math.floor(
-      100000 + Math.random() * 900000,
-    );
-
-  return `${prefix}${random}`;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 async function getUserFromRequest(
@@ -104,12 +82,14 @@ async function getUserFromRequest(
 async function getProfile(
   userId: string,
 ) {
-  const { data, error } =
-    await admin
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
+  const {
+    data,
+    error,
+  } = await admin
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
 
   if (error) {
     throw error;
@@ -125,8 +105,10 @@ function publicProfile(
     id: profile.id,
     name: profile.name ?? "",
     email: profile.email ?? "",
+
     referralCode:
       profile.referral_code ?? "",
+
     referredBy:
       profile.referred_by ?? null,
 
@@ -137,7 +119,7 @@ function publicProfile(
       Number(profile.afam_balance ?? 0),
 
     miningRate:
-      Number(profile.mining_rate ?? 0.2),
+      Number(profile.mining_rate ?? 0.20),
 
     activeReferrals:
       Number(profile.active_referrals ?? 0),
@@ -185,6 +167,35 @@ function publicProfile(
   };
 }
 
+
+/* ============================================================
+   HEALTH
+   ============================================================ */
+
+async function health() {
+  const {
+    error,
+  } = await admin
+    .from("profiles")
+    .select("id")
+    .limit(1);
+
+  return json({
+    success: true,
+    status: "healthy",
+    database:
+      error ? "error" : "connected",
+    authentication:
+      "Supabase Auth",
+    time: nowIso(),
+  });
+}
+
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+
 async function dashboard(
   request: Request,
 ) {
@@ -219,13 +230,14 @@ async function dashboard(
   return json({
     success: true,
 
-    user: publicProfile(profile),
+    user:
+      publicProfile(profile),
 
     rules: {
-      baseMiningRate: 0.2,
-      adBoostPerAd: 0.1,
+      baseMiningRate: 0.20,
+      adBoostPerAd: 0.10,
       maxDailyAds: 7,
-      maxAdBoost: 0.7,
+      maxAdBoost: 0.70,
       referralMiningBoost: 0.02,
       newUserReferralReward: 20,
       inviterReferralReward: 5,
@@ -234,6 +246,11 @@ async function dashboard(
     },
   });
 }
+
+
+/* ============================================================
+   START MINING
+   ============================================================ */
 
 async function startMining(
   request: Request,
@@ -252,78 +269,89 @@ async function startMining(
     );
   }
 
-  const profile =
-    await getProfile(user.id);
+  const {
+    data,
+    error,
+  } = await admin.rpc(
+    "start_mining",
+    {
+      p_user_id: user.id,
+    },
+  );
 
-  if (!profile) {
-    return json(
-      {
-        success: false,
-        message:
-          "User profile not found.",
-      },
-      404,
+  if (error) {
+    console.error(
+      "START MINING ERROR:",
+      error,
     );
-  }
 
-  if (profile.mining_active) {
     return json(
       {
         success: false,
         message:
-          "Mining is already active.",
+          error.message ||
+          "Could not start mining.",
       },
       400,
     );
   }
 
-  const started =
-    new Date();
+  return json(data);
+}
 
-  const ends =
-    new Date(
-      started.getTime() +
-        24 * 60 * 60 * 1000,
-    );
 
-  const { error } =
-    await admin
-      .from("profiles")
-      .update({
-        mining_active: true,
-        mining_started_at:
-          started.toISOString(),
-        mining_ends_at:
-          ends.toISOString(),
-        updated_at: nowIso(),
-      })
-      .eq("id", user.id);
+/* ============================================================
+   ACTIVE MINING
+   ============================================================ */
 
-  if (error) {
+async function activeMining(
+  request: Request,
+) {
+  const user =
+    await getUserFromRequest(request);
+
+  if (!user) {
     return json(
       {
         success: false,
         message:
-          "Could not start mining.",
+          "Authentication required.",
       },
-      500,
+      401,
     );
   }
 
-  return json({
-    success: true,
-    message: "Mining started.",
-    mining: {
-      active: true,
-      startedAt:
-        started.toISOString(),
-      endsAt:
-        ends.toISOString(),
-      miningRate:
-        Number(profile.mining_rate ?? 0.2),
-    },
-  });
+  const {
+    data,
+    error,
+  } = await admin.rpc(
+    "get_active_mining",
+  );
+
+  if (error) {
+    console.error(
+      "ACTIVE MINING ERROR:",
+      error,
+    );
+
+    return json(
+      {
+        success: false,
+        message:
+          error.message ||
+          "Could not load mining status.",
+      },
+      400,
+    );
+  }
+
+  return json(data);
 }
+
+
+/* ============================================================
+   CLAIM MINING
+   ============================================================ */
 
 async function claimMining(
   request: Request,
@@ -342,115 +370,40 @@ async function claimMining(
     );
   }
 
-  const profile =
-    await getProfile(user.id);
-
-  if (!profile) {
-    return json(
-      {
-        success: false,
-        message:
-          "User profile not found.",
-      },
-      404,
-    );
-  }
-
-  if (!profile.mining_active) {
-    return json(
-      {
-        success: false,
-        message:
-          "Mining session is not active.",
-      },
-      400,
-    );
-  }
-
-  if (!profile.mining_ends_at) {
-    return json(
-      {
-        success: false,
-        message:
-          "Mining end time is missing.",
-      },
-      400,
-    );
-  }
-
-  const ends =
-    new Date(
-      profile.mining_ends_at,
-    );
-
-  if (new Date() < ends) {
-    return json(
-      {
-        success: false,
-        message:
-          "Mining session has not ended yet.",
-        endsAt:
-          ends.toISOString(),
-      },
-      400,
-    );
-  }
-
-  const rate =
-    Number(profile.mining_rate ?? 0.2);
-
-  const reward =
-    rate * 24;
-
-  const balance =
-    Number(profile.fan_balance ?? 0);
-
-  const newBalance =
-    balance + reward;
-
-  const referrals =
-    Number(
-      profile.active_referrals ?? 0,
-    );
-
-  const baseRate =
-    0.2 + referrals * 0.02;
-
-  const { error } =
-    await admin
-      .from("profiles")
-      .update({
-        fan_balance: newBalance,
-        mining_active: false,
-        mining_started_at: null,
-        mining_ends_at: null,
-        daily_ads_watched: 0,
-        ad_boost: 0,
-        mining_rate: baseRate,
-        updated_at: nowIso(),
-      })
-      .eq("id", user.id);
+  const {
+    data,
+    error,
+  } = await admin.rpc(
+    "claim_mining",
+    {
+      p_user_id: user.id,
+    },
+  );
 
   if (error) {
+    console.error(
+      "CLAIM MINING ERROR:",
+      error,
+    );
+
     return json(
       {
         success: false,
         message:
+          error.message ||
           "Could not claim mining reward.",
       },
-      500,
+      400,
     );
   }
 
-  return json({
-    success: true,
-    message:
-      "Mining reward claimed.",
-    reward,
-    fanBalance: newBalance,
-    miningActive: false,
-  });
+  return json(data);
 }
+
+
+/* ============================================================
+   REWARDED AD
+   ============================================================ */
 
 async function watchAd(
   request: Request,
@@ -469,82 +422,111 @@ async function watchAd(
     );
   }
 
-  const profile =
-    await getProfile(user.id);
+  const {
+    data,
+    error,
+  } = await admin.rpc(
+    "record_rewarded_ad",
+    {
+      p_user_id: user.id,
+    },
+  );
 
-  if (!profile) {
+  if (error) {
+    console.error(
+      "REWARDED AD ERROR:",
+      error,
+    );
+
     return json(
       {
         success: false,
         message:
-          "User profile not found.",
-      },
-      404,
-    );
-  }
-
-  const ads =
-    Number(
-      profile.daily_ads_watched ?? 0,
-    );
-
-  if (ads >= 7) {
-    return json(
-      {
-        success: false,
-        message:
-          "You have reached the maximum of 7 rewarded ads today.",
+          error.message ||
+          "Could not record rewarded ad.",
       },
       400,
     );
   }
 
-  const newAds = ads + 1;
+  return json(data);
+}
 
-  const adBoost =
-    newAds * 0.1;
 
-  const referralBoost =
-    Number(
-      profile.active_referrals ?? 0,
-    ) * 0.02;
+/* ============================================================
+   VERIFY REWARDED AD
+   ============================================================ */
 
-  const rate =
-    0.2 +
-    referralBoost +
-    adBoost;
+async function verifyRewardedAd(
+  request: Request,
+) {
+  const user =
+    await getUserFromRequest(request);
 
-  const { error } =
-    await admin
-      .from("profiles")
-      .update({
-        daily_ads_watched: newAds,
-        ad_boost: adBoost,
-        mining_rate: rate,
-        updated_at: nowIso(),
-      })
-      .eq("id", user.id);
-
-  if (error) {
+  if (!user) {
     return json(
       {
         success: false,
         message:
-          "Could not apply ad reward.",
+          "Authentication required.",
       },
-      500,
+      401,
     );
   }
 
-  return json({
-    success: true,
-    message:
-      "Ad reward applied.",
-    adsWatched: newAds,
-    adBoost,
-    miningRate: rate,
-  });
+  const body =
+    await request.json().catch(
+      () => ({}),
+    );
+
+  const adId =
+    String(body.adId ?? "").trim();
+
+  if (!adId) {
+    return json(
+      {
+        success: false,
+        message:
+          "adId is required.",
+      },
+      400,
+    );
+  }
+
+  const {
+    data,
+    error,
+  } = await admin.rpc(
+    "verify_rewarded_ad",
+    {
+      p_ad_id: adId,
+    },
+  );
+
+  if (error) {
+    console.error(
+      "VERIFY AD ERROR:",
+      error,
+    );
+
+    return json(
+      {
+        success: false,
+        message:
+          error.message ||
+          "Could not verify rewarded ad.",
+      },
+      400,
+    );
+  }
+
+  return json(data);
 }
+
+
+/* ============================================================
+   REFERRALS
+   ============================================================ */
 
 async function referrals(
   request: Request,
@@ -577,22 +559,31 @@ async function referrals(
     );
   }
 
-  const { data, error } =
-    await admin
-      .from("profiles")
-      .select(
-        "id,name,email,created_at,mining_active",
-      )
-      .eq(
-        "referred_by",
-        user.id,
-      )
-      .order(
-        "created_at",
-        { ascending: false },
-      );
+  const {
+    data,
+    error,
+  } = await admin
+    .from("profiles")
+    .select(
+      "id,name,email,created_at,mining_active",
+    )
+    .eq(
+      "referred_by",
+      user.id,
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false,
+      },
+    );
 
   if (error) {
+    console.error(
+      "REFERRALS ERROR:",
+      error,
+    );
+
     return json(
       {
         success: false,
@@ -616,7 +607,7 @@ async function referrals(
 
     miningRate:
       Number(
-        profile.mining_rate ?? 0.2,
+        profile.mining_rate ?? 0.20,
       ),
 
     referrals:
@@ -628,11 +619,18 @@ async function referrals(
           createdAt:
             item.created_at ?? null,
           miningActive:
-            Boolean(item.mining_active),
+            Boolean(
+              item.mining_active,
+            ),
         }),
       ),
   });
 }
+
+
+/* ============================================================
+   APPLY REFERRAL
+   ============================================================ */
 
 async function applyReferral(
   request: Request,
@@ -715,8 +713,13 @@ async function applyReferral(
     error: referrerError,
   } = await admin
     .from("profiles")
-    .select("*")
-    .eq("referral_code", code)
+    .select(
+      "id,fan_balance,referral_code",
+    )
+    .eq(
+      "referral_code",
+      code,
+    )
     .maybeSingle();
 
   if (referrerError) {
@@ -741,35 +744,40 @@ async function applyReferral(
     );
   }
 
-  const referrals =
-    Number(
-      referrer.active_referrals ?? 0,
-    ) + 1;
-
-  const newRate =
-    0.2 + referrals * 0.02;
-
-  const newBalance =
-    Number(
-      referrer.fan_balance ?? 0,
-    ) + 5;
-
   const userBalance =
     Number(
       current.fan_balance ?? 0,
     ) + 20;
 
-  const { error: userError } =
-    await admin
-      .from("profiles")
-      .update({
-        referred_by: referrer.id,
-        fan_balance: userBalance,
-        updated_at: nowIso(),
-      })
-      .eq("id", user.id);
+  const inviterBalance =
+    Number(
+      referrer.fan_balance ?? 0,
+    ) + 5;
+
+
+  const {
+    error: userError,
+  } = await admin
+    .from("profiles")
+    .update({
+      referred_by:
+        referrer.id,
+      fan_balance:
+        userBalance,
+      updated_at:
+        nowIso(),
+    })
+    .eq(
+      "id",
+      user.id,
+    );
 
   if (userError) {
+    console.error(
+      "REFERRAL USER ERROR:",
+      userError,
+    );
+
     return json(
       {
         success: false,
@@ -780,35 +788,87 @@ async function applyReferral(
     );
   }
 
-  const { error: referrerUpdateError } =
-    await admin
-      .from("profiles")
-      .update({
-        fan_balance: newBalance,
-        active_referrals: referrals,
-        mining_rate: newRate,
-        updated_at: nowIso(),
-      })
-      .eq("id", referrer.id);
 
-  if (referrerUpdateError) {
+  const {
+    error: inviterError,
+  } = await admin
+    .from("profiles")
+    .update({
+      fan_balance:
+        inviterBalance,
+      updated_at:
+        nowIso(),
+    })
+    .eq(
+      "id",
+      referrer.id,
+    );
+
+  if (inviterError) {
+    console.error(
+      "REFERRAL INVITER ERROR:",
+      inviterError,
+    );
+
     return json(
       {
         success: false,
         message:
-          "Referral was not completed.",
+          "Could not complete inviter reward.",
       },
       500,
     );
   }
 
+
+  const {
+    error: rewardError,
+  } = await admin
+    .from("referral_rewards")
+    .insert({
+      inviter_id:
+        referrer.id,
+      referred_user_id:
+        user.id,
+      inviter_reward: 5,
+      new_user_reward: 20,
+    });
+
+  if (rewardError) {
+    console.error(
+      "REFERRAL REWARD RECORD ERROR:",
+      rewardError,
+    );
+
+    return json(
+      {
+        success: false,
+        message:
+          "Referral was applied but reward record failed.",
+      },
+      500,
+    );
+  }
+
+
   return json({
     success: true,
     message:
       "Referral applied successfully.",
+
     reward: 20,
+
+    inviterReward: 5,
+
+    fanBalance:
+      userBalance,
   });
 }
+
+
+/* ============================================================
+   SOCIAL CLAIM
+   ============================================================ */
 
 async function socialClaim(
   request: Request,
@@ -864,23 +924,38 @@ async function socialClaim(
     );
   }
 
+  const reward = 10;
+
   const newBalance =
     Number(
       profile.fan_balance ?? 0,
-    ) + 10;
+    ) + reward;
 
-  const { error } =
-    await admin
-      .from("profiles")
-      .update({
-        fan_balance: newBalance,
-        last_social_claim_date:
-          today,
-        updated_at: nowIso(),
-      })
-      .eq("id", user.id);
+  const {
+    error,
+  } = await admin
+    .from("profiles")
+    .update({
+      fan_balance:
+        newBalance,
+
+      last_social_claim_date:
+        today,
+
+      updated_at:
+        nowIso(),
+    })
+    .eq(
+      "id",
+      user.id,
+    );
 
   if (error) {
+    console.error(
+      "SOCIAL CLAIM ERROR:",
+      error,
+    );
+
     return json(
       {
         success: false,
@@ -895,34 +970,23 @@ async function socialClaim(
     success: true,
     message:
       "Social reward claimed.",
-    reward: 10,
-    fanBalance: newBalance,
+
+    reward,
+
+    fanBalance:
+      newBalance,
   });
 }
 
-async function health() {
-  const {
-    error,
-  } = await admin
-    .from("profiles")
-    .select("id")
-    .limit(1);
 
-  return json({
-    success: true,
-    status: "healthy",
-    database:
-      error ? "error" : "connected",
-    firebaseAuthentication: false,
-    authentication:
-      "Supabase Auth",
-    time: nowIso(),
-  });
-}
+/* ============================================================
+   ROUTER
+   ============================================================ */
 
 async function handle(
   request: Request,
-) {
+): Promise<Response> {
+
   if (
     request.method === "OPTIONS"
   ) {
@@ -945,12 +1009,14 @@ async function handle(
     );
 
   try {
+
     if (
       path === "/health" &&
       request.method === "GET"
     ) {
       return await health();
     }
+
 
     if (
       path === "/dashboard" &&
@@ -961,6 +1027,7 @@ async function handle(
       );
     }
 
+
     if (
       path === "/mining/start" &&
       request.method === "POST"
@@ -969,6 +1036,17 @@ async function handle(
         request,
       );
     }
+
+
+    if (
+      path === "/mining/active" &&
+      request.method === "GET"
+    ) {
+      return await activeMining(
+        request,
+      );
+    }
+
 
     if (
       path === "/mining/claim" &&
@@ -979,6 +1057,7 @@ async function handle(
       );
     }
 
+
     if (
       path === "/mining/ad" &&
       request.method === "POST"
@@ -987,6 +1066,17 @@ async function handle(
         request,
       );
     }
+
+
+    if (
+      path === "/mining/ad/verify" &&
+      request.method === "POST"
+    ) {
+      return await verifyRewardedAd(
+        request,
+      );
+    }
+
 
     if (
       path === "/referrals" &&
@@ -997,6 +1087,7 @@ async function handle(
       );
     }
 
+
     if (
       path === "/referral/apply" &&
       request.method === "POST"
@@ -1005,6 +1096,7 @@ async function handle(
         request,
       );
     }
+
 
     if (
       path === "/social/claim" &&
@@ -1015,6 +1107,7 @@ async function handle(
       );
     }
 
+
     return json(
       {
         success: false,
@@ -1024,7 +1117,9 @@ async function handle(
       },
       404,
     );
+
   } catch (error) {
+
     console.error(
       "API ERROR:",
       error,
@@ -1034,7 +1129,9 @@ async function handle(
       {
         success: false,
         message:
-          "Internal server error.",
+          error instanceof Error
+            ? error.message
+            : "Internal server error.",
       },
       500,
     );
