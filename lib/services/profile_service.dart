@@ -1,3 +1,5 @@
+// lib/services/profile_service.dart
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileData {
@@ -57,41 +59,81 @@ class ProfileData {
     required this.updatedAt,
   });
 
-  factory ProfileData.fromMap(Map<String, dynamic> map) {
+  factory ProfileData.fromMap(
+    Map<String, dynamic> map,
+  ) {
     return ProfileData(
       id: _stringValue(map['id']),
       name: _stringValue(map['name']),
       email: _stringValue(map['email']),
-      referralCode: _stringValue(map['referral_code']),
-      referredBy: _nullableString(map['referred_by']),
-      fanBalance: _doubleValue(map['fan_balance']),
-      afamBalance: _doubleValue(map['afam_balance']),
-      miningRate: _doubleValue(map['mining_rate']),
-      activeReferrals: _intValue(map['active_referrals']),
-      dailyAdsWatched: _intValue(map['daily_ads_watched']),
-      adBoost: _doubleValue(map['ad_boost']),
-      miningActive: _boolValue(map['mining_active']),
-      miningStartedAt: _dateTimeValue(map['mining_started_at']),
-      miningEndsAt: _dateTimeValue(map['mining_ends_at']),
+      referralCode: _stringValue(
+        map['referral_code'],
+      ),
+      referredBy: _nullableString(
+        map['referred_by'],
+      ),
+      fanBalance: _doubleValue(
+        map['fan_balance'],
+      ),
+      afamBalance: _doubleValue(
+        map['afam_balance'],
+      ),
+      miningRate: _doubleValue(
+        map['mining_rate'],
+      ),
+      activeReferrals: _intValue(
+        map['active_referrals'],
+      ),
+      dailyAdsWatched: _intValue(
+        map['daily_ads_watched'],
+      ),
+      adBoost: _doubleValue(
+        map['ad_boost'],
+      ),
+      miningActive: _boolValue(
+        map['mining_active'],
+      ),
+      miningStartedAt: _dateTimeValue(
+        map['mining_started_at'],
+      ),
+      miningEndsAt: _dateTimeValue(
+        map['mining_ends_at'],
+      ),
       consecutiveCheckIns: _intValue(
         map['consecutive_check_ins'],
       ),
-      kyc1Eligible: _boolValue(map['kyc1_eligible']),
-      kyc1Verified: _boolValue(map['kyc1_verified']),
-      kyc2Eligible: _boolValue(map['kyc2_eligible']),
-      kyc2Verified: _boolValue(map['kyc2_verified']),
-      kyc3Verified: _boolValue(map['kyc3_verified']),
+      kyc1Eligible: _boolValue(
+        map['kyc1_eligible'],
+      ),
+      kyc1Verified: _boolValue(
+        map['kyc1_verified'],
+      ),
+      kyc2Eligible: _boolValue(
+        map['kyc2_eligible'],
+      ),
+      kyc2Verified: _boolValue(
+        map['kyc2_verified'],
+      ),
+      kyc3Verified: _boolValue(
+        map['kyc3_verified'],
+      ),
       lastSocialClaimDate: _dateTimeValue(
         map['last_social_claim_date'],
       ),
-      createdAt: _dateTimeValue(map['created_at']),
-      updatedAt: _dateTimeValue(map['updated_at']),
+      createdAt: _dateTimeValue(
+        map['created_at'],
+      ),
+      updatedAt: _dateTimeValue(
+        map['updated_at'],
+      ),
     );
   }
 
   ProfileData copyWith({
     String? name,
     String? email,
+    String? referralCode,
+    String? referredBy,
     double? fanBalance,
     double? afamBalance,
     double? miningRate,
@@ -115,36 +157,58 @@ class ProfileData {
       id: id,
       name: name ?? this.name,
       email: email ?? this.email,
-      referralCode: referralCode,
-      referredBy: referredBy,
-      fanBalance: fanBalance ?? this.fanBalance,
-      afamBalance: afamBalance ?? this.afamBalance,
-      miningRate: miningRate ?? this.miningRate,
-      activeReferrals: activeReferrals ?? this.activeReferrals,
-      dailyAdsWatched: dailyAdsWatched ?? this.dailyAdsWatched,
-      adBoost: adBoost ?? this.adBoost,
-      miningActive: miningActive ?? this.miningActive,
-      miningStartedAt: miningStartedAt ?? this.miningStartedAt,
-      miningEndsAt: miningEndsAt ?? this.miningEndsAt,
+      referralCode:
+          referralCode ?? this.referralCode,
+      referredBy:
+          referredBy ?? this.referredBy,
+      fanBalance:
+          fanBalance ?? this.fanBalance,
+      afamBalance:
+          afamBalance ?? this.afamBalance,
+      miningRate:
+          miningRate ?? this.miningRate,
+      activeReferrals:
+          activeReferrals ?? this.activeReferrals,
+      dailyAdsWatched:
+          dailyAdsWatched ?? this.dailyAdsWatched,
+      adBoost:
+          adBoost ?? this.adBoost,
+      miningActive:
+          miningActive ?? this.miningActive,
+      miningStartedAt:
+          miningStartedAt ?? this.miningStartedAt,
+      miningEndsAt:
+          miningEndsAt ?? this.miningEndsAt,
       consecutiveCheckIns:
-          consecutiveCheckIns ?? this.consecutiveCheckIns,
-      kyc1Eligible: kyc1Eligible ?? this.kyc1Eligible,
-      kyc1Verified: kyc1Verified ?? this.kyc1Verified,
-      kyc2Eligible: kyc2Eligible ?? this.kyc2Eligible,
-      kyc2Verified: kyc2Verified ?? this.kyc2Verified,
-      kyc3Verified: kyc3Verified ?? this.kyc3Verified,
+          consecutiveCheckIns ??
+              this.consecutiveCheckIns,
+      kyc1Eligible:
+          kyc1Eligible ?? this.kyc1Eligible,
+      kyc1Verified:
+          kyc1Verified ?? this.kyc1Verified,
+      kyc2Eligible:
+          kyc2Eligible ?? this.kyc2Eligible,
+      kyc2Verified:
+          kyc2Verified ?? this.kyc2Verified,
+      kyc3Verified:
+          kyc3Verified ?? this.kyc3Verified,
       lastSocialClaimDate:
-          lastSocialClaimDate ?? this.lastSocialClaimDate,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
+          lastSocialClaimDate ??
+              this.lastSocialClaimDate,
+      createdAt:
+          createdAt ?? this.createdAt,
+      updatedAt:
+          updatedAt ?? this.updatedAt,
     );
   }
 
   static String _stringValue(dynamic value) {
-    return value?.toString() ?? '';
+    return value?.toString().trim() ?? '';
   }
 
-  static String? _nullableString(dynamic value) {
+  static String? _nullableString(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
@@ -154,7 +218,9 @@ class ProfileData {
     return result.isEmpty ? null : result;
   }
 
-  static double _doubleValue(dynamic value) {
+  static double _doubleValue(
+    dynamic value,
+  ) {
     if (value == null) {
       return 0.0;
     }
@@ -163,7 +229,10 @@ class ProfileData {
       return value.toDouble();
     }
 
-    return double.tryParse(value.toString()) ?? 0.0;
+    return double.tryParse(
+          value.toString().trim(),
+        ) ??
+        0.0;
   }
 
   static int _intValue(dynamic value) {
@@ -175,7 +244,10 @@ class ProfileData {
       return value.toInt();
     }
 
-    return int.tryParse(value.toString()) ?? 0;
+    return int.tryParse(
+          value.toString().trim(),
+        ) ??
+        0;
   }
 
   static bool _boolValue(dynamic value) {
@@ -191,27 +263,33 @@ class ProfileData {
       return false;
     }
 
-    return value.toString().trim().toLowerCase() == 'true';
+    return value
+            .toString()
+            .trim()
+            .toLowerCase() ==
+        'true';
   }
 
-  static DateTime? _dateTimeValue(dynamic value) {
+  static DateTime? _dateTimeValue(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
 
     if (value is DateTime) {
-      return value.toLocal();
+      return value.toUtc();
     }
 
-    return DateTime.tryParse(
-      value.toString(),
-    )?.toLocal();
+    final parsed = DateTime.tryParse(
+      value.toString().trim(),
+    );
+
+    return parsed?.toUtc();
   }
 }
 
 class ProfileService {
-  ProfileService();
-
   ProfileService._internal();
 
   static final ProfileService instance =
@@ -220,46 +298,60 @@ class ProfileService {
   final SupabaseClient _supabase =
       Supabase.instance.client;
 
+  // ============================================================
+  // CURRENT USER
+  // ============================================================
+
   User? get currentUser =>
       _supabase.auth.currentUser;
 
   String? get currentUserId =>
       _supabase.auth.currentUser?.id;
 
+  // ============================================================
+  // PROFILE COLUMNS
+  // ============================================================
+
+  static const String _profileColumns = '''
+    id,
+    name,
+    email,
+    referral_code,
+    referred_by,
+    fan_balance,
+    afam_balance,
+    mining_rate,
+    active_referrals,
+    daily_ads_watched,
+    ad_boost,
+    mining_active,
+    mining_started_at,
+    mining_ends_at,
+    consecutive_check_ins,
+    kyc1_eligible,
+    kyc1_verified,
+    kyc2_eligible,
+    kyc2_verified,
+    kyc3_verified,
+    last_social_claim_date,
+    created_at,
+    updated_at
+  ''';
+
+  // ============================================================
+  // GET PROFILE
+  // ============================================================
+
   Future<ProfileData?> getProfile() async {
     final userId = currentUserId;
 
-    if (userId == null) {
+    if (userId == null || userId.isEmpty) {
       return null;
     }
 
     final response = await _supabase
         .from('profiles')
-        .select('''
-          id,
-          name,
-          email,
-          referral_code,
-          referred_by,
-          fan_balance,
-          afam_balance,
-          mining_rate,
-          active_referrals,
-          daily_ads_watched,
-          ad_boost,
-          mining_active,
-          mining_started_at,
-          mining_ends_at,
-          consecutive_check_ins,
-          kyc1_eligible,
-          kyc1_verified,
-          kyc2_eligible,
-          kyc2_verified,
-          kyc3_verified,
-          last_social_claim_date,
-          created_at,
-          updated_at
-        ''')
+        .select(_profileColumns)
         .eq('id', userId)
         .maybeSingle();
 
@@ -271,6 +363,10 @@ class ProfileService {
       Map<String, dynamic>.from(response),
     );
   }
+
+  // ============================================================
+  // REQUIRE PROFILE
+  // ============================================================
 
   Future<ProfileData> requireProfile() async {
     final profile = await getProfile();
@@ -284,16 +380,24 @@ class ProfileService {
     return profile;
   }
 
+  // ============================================================
+  // REFRESH PROFILE
+  // ============================================================
+
   Future<ProfileData?> refreshProfile() async {
     return getProfile();
   }
+
+  // ============================================================
+  // UPDATE NAME
+  // ============================================================
 
   Future<ProfileData> updateName(
     String name,
   ) async {
     final userId = currentUserId;
 
-    if (userId == null) {
+    if (userId == null || userId.isEmpty) {
       throw const AuthException(
         'You must be logged in.',
       );
@@ -319,31 +423,7 @@ class ProfileService {
           'name': cleanName,
         })
         .eq('id', userId)
-        .select('''
-          id,
-          name,
-          email,
-          referral_code,
-          referred_by,
-          fan_balance,
-          afam_balance,
-          mining_rate,
-          active_referrals,
-          daily_ads_watched,
-          ad_boost,
-          mining_active,
-          mining_started_at,
-          mining_ends_at,
-          consecutive_check_ins,
-          kyc1_eligible,
-          kyc1_verified,
-          kyc2_eligible,
-          kyc2_verified,
-          kyc3_verified,
-          last_social_claim_date,
-          created_at,
-          updated_at
-        ''')
+        .select(_profileColumns)
         .single();
 
     return ProfileData.fromMap(
@@ -351,10 +431,14 @@ class ProfileService {
     );
   }
 
+  // ============================================================
+  // BALANCES
+  // ============================================================
+
   Future<Map<String, double>> getBalances() async {
     final profile = await requireProfile();
 
-    return {
+    return <String, double>{
       'fan': profile.fanBalance,
       'afam': profile.afamBalance,
     };
@@ -362,28 +446,37 @@ class ProfileService {
 
   Future<double> getFanBalance() async {
     final profile = await requireProfile();
+
     return profile.fanBalance;
   }
 
   Future<double> getAfamBalance() async {
     final profile = await requireProfile();
+
     return profile.afamBalance;
   }
+
+  // ============================================================
+  // USER INFORMATION
+  // ============================================================
 
   Future<String> getDisplayName() async {
     final profile = await requireProfile();
 
-    if (profile.name.trim().isEmpty) {
+    final name = profile.name.trim();
+
+    if (name.isEmpty) {
       return 'POWER FAN User';
     }
 
-    return profile.name.trim();
+    return name;
   }
 
   Future<String> getEmail() async {
     final profile = await requireProfile();
 
-    final profileEmail = profile.email.trim();
+    final profileEmail =
+        profile.email.trim();
 
     if (profileEmail.isNotEmpty) {
       return profileEmail;
@@ -394,23 +487,39 @@ class ProfileService {
 
   Future<String> getReferralCode() async {
     final profile = await requireProfile();
+
     return profile.referralCode;
   }
 
+  // ============================================================
+  // REFERRALS
+  // ============================================================
+
   Future<int> getActiveReferralCount() async {
     final profile = await requireProfile();
+
     return profile.activeReferrals;
   }
 
+  // ============================================================
+  // MINING
+  // ============================================================
+
   Future<double> getMiningRate() async {
     final profile = await requireProfile();
+
     return profile.miningRate;
   }
 
   Future<bool> isMiningActive() async {
     final profile = await requireProfile();
+
     return profile.miningActive;
   }
+
+  // ============================================================
+  // ENSURE PROFILE
+  // ============================================================
 
   Future<void> ensureProfileExists() async {
     final user = currentUser;
