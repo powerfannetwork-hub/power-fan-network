@@ -9,37 +9,55 @@ class MiningService {
 
   final SupabaseClient _client = SupabaseService.client;
 
-  static const int miningDurationSeconds = 86400;
+  // ============================================================
+  // MINING CONFIGURATION
+  // ============================================================
+
+  static const int miningDurationSeconds = 86400; // 24 hours
   static const int maxAdsPerSession = 7;
 
   static const double defaultMiningRate = 0.20;
   static const double adBoostPerAd = 0.10;
   static const double referralBoostPerReferral = 0.02;
 
-  String get _userId {
-    final user = _client.auth.currentUser;
+  // ============================================================
+  // CURRENT USER
+  // ============================================================
 
-    if (user == null) {
-      throw Exception('User is not logged in.');
+  String? get _userId => _client.auth.currentUser?.id;
+
+  String get userId {
+    final id = _userId;
+
+    if (id == null || id.isEmpty) {
+      throw Exception('User is not authenticated.');
     }
 
-    return user.id;
+    return id;
   }
 
   // ============================================================
   // PROFILE
   // ============================================================
 
-  Future<Map<String, dynamic>> getProfile() async {
-    return SupabaseService.safeCall(() async {
-      final result = await _client
-          .from('profiles')
-          .select()
-          .eq('id', _userId)
-          .single();
+  Future<Map<String, dynamic>?> getProfile() async {
+    final id = _userId;
 
-      return Map<String, dynamic>.from(result);
-    });
+    if (id == null) {
+      return null;
+    }
+
+    final result = await _client
+        .from('profiles')
+        .select()
+        .eq('id', id)
+        .maybeSingle();
+
+    if (result == null) {
+      return null;
+    }
+
+    return Map<String, dynamic>.from(result);
   }
 
   // ============================================================
@@ -47,31 +65,36 @@ class MiningService {
   // ============================================================
 
   Future<Map<String, dynamic>> getActiveMining() async {
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'get_active_mining',
-      );
+    final id = _userId;
+
+    if (id == null) {
+      return _emptyMining();
+    }
+
+    try {
+      final result = await _client.rpc('get_active_mining');
 
       return _mapFromRpcResult(result);
-    });
+    } catch (_) {
+      return _emptyMining();
+    }
   }
 
   Map<String, dynamic> _emptyMining() {
-    return {
-      'success': true,
-      'active': false,
-      'is_mining': false,
-      'mining_active': false,
-      'expired': false,
-      'claimable': false,
-      'session_finished': false,
-      'remaining_seconds': 0,
-      'elapsed_seconds': 0,
-      'ads_watched': 0,
-      'ad_boost': 0.0,
-      'active_referrals': 0,
-      'mining_rate': defaultMiningRate,
+    return <String, dynamic>{
+      'id': null,
+      'user_id': _userId,
+      'started_at': null,
+      'ends_at': null,
+      'claimed': false,
+      'base_rate': defaultMiningRate,
+      'ad_rate': 0.0,
+      'referral_rate': 0.0,
+      'total_rate': defaultMiningRate,
       'reward': 0.0,
+      'ads_watched': 0,
+      'active_referrals': 0,
+      'status': 'idle',
     };
   }
 
@@ -80,9 +103,38 @@ class MiningService {
   // ============================================================
 
   Future<double> getUserMiningRate() async {
-    return SupabaseService.safeCall(() async {
+    final id = _userId;
+
+    if (id == null) {
+      return defaultMiningRate;
+    }
+
+    try {
+      final result = await _client.rpc('get_user_mining_rate');
+
+      final rate = _toDouble(result);
+
+      if (rate <= 0) {
+        return defaultMiningRate;
+      }
+
+      return double.parse(rate.toStringAsFixed(2));
+    } catch (_) {
+      return defaultMiningRate;
+    }
+  }
+
+  Future<double> getMiningRateForUser(String targetUserId) async {
+    if (targetUserId.trim().isEmpty) {
+      return defaultMiningRate;
+    }
+
+    try {
       final result = await _client.rpc(
         'get_user_mining_rate',
+        params: <String, dynamic>{
+          'p_user_id': targetUserId,
+        },
       );
 
       final rate = _toDouble(result);
@@ -91,10 +143,10 @@ class MiningService {
         return defaultMiningRate;
       }
 
-      return double.parse(
-        rate.toStringAsFixed(2),
-      );
-    });
+      return double.parse(rate.toStringAsFixed(2));
+    } catch (_) {
+      return defaultMiningRate;
+    }
   }
 
   // ============================================================
@@ -102,13 +154,11 @@ class MiningService {
   // ============================================================
 
   Future<Map<String, dynamic>> startMining() async {
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'start_mining',
-      );
+    userId;
 
-      return _mapFromRpcResult(result);
-    });
+    final result = await _client.rpc('start_mining');
+
+    return _mapFromRpcResult(result);
   }
 
   // ============================================================
@@ -116,100 +166,65 @@ class MiningService {
   // ============================================================
 
   Future<Map<String, dynamic>> claimMining() async {
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'claim_mining',
-      );
+    userId;
 
-      return _mapFromRpcResult(result);
-    });
+    final result = await _client.rpc('claim_mining');
+
+    return _mapFromRpcResult(result);
   }
 
   // ============================================================
-  // RECORD REWARDED AD
+  // REWARDED ADS
   // ============================================================
 
   Future<Map<String, dynamic>> recordRewardedAd() async {
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'record_rewarded_ad',
-      );
+    userId;
 
-      return _mapFromRpcResult(result);
-    });
+    final result = await _client.rpc('record_rewarded_ad');
+
+    return _mapFromRpcResult(result);
   }
 
-  // ============================================================
-  // VERIFY REWARDED AD
-  // ============================================================
+  Future<Map<String, dynamic>> verifyRewardedAd(String adId) async {
+    userId;
 
-  Future<Map<String, dynamic>> verifyRewardedAd(
-    String adId,
-  ) async {
-    final trimmedAdId = adId.trim();
+    final cleanAdId = adId.trim();
 
-    if (trimmedAdId.isEmpty) {
-      throw Exception(
-        'Ad ID is missing.',
-      );
+    if (cleanAdId.isEmpty) {
+      throw Exception('Invalid ad ID.');
     }
 
-    return SupabaseService.safeCall(() async {
-      final result = await _client.rpc(
-        'verify_rewarded_ad',
-        params: {
-          'p_ad_id': trimmedAdId,
-        },
-      );
+    final result = await _client.rpc(
+      'verify_rewarded_ad',
+      params: <String, dynamic>{
+        'p_ad_id': cleanAdId,
+      },
+    );
 
-      return _mapFromRpcResult(result);
-    });
+    return _mapFromRpcResult(result);
   }
-
-  // ============================================================
-  // RECORD + VERIFY REWARDED AD
-  // ============================================================
 
   Future<Map<String, dynamic>> recordAndVerifyRewardedAd() async {
     final recorded = await recordRewardedAd();
 
-    if (recorded['success'] != true) {
-      return recorded;
-    }
-
-    final adId = recorded['ad_id']?.toString();
+    final adId = recorded['id']?.toString();
 
     if (adId == null || adId.isEmpty) {
-      throw Exception(
-        'Ad was recorded but no ad ID was returned.',
-      );
+      throw Exception('Rewarded ad was recorded without an ID.');
     }
 
-    final verified = await verifyRewardedAd(adId);
-
-    return {
-      ...recorded,
-      ...verified,
-      'recorded': true,
-      'verified': verified['verified'] == true,
-    };
+    return verifyRewardedAd(adId);
   }
 
   // ============================================================
-  // ADS WATCHED
+  // ADS COUNT
   // ============================================================
 
   Future<int> getAdsWatched() async {
-    final activeMining = await getActiveMining();
-
-    final value =
-        activeMining['ads_watched'] ??
-        activeMining['ad_count'] ??
-        activeMining['ads_count'] ??
-        0;
+    final mining = await getActiveMining();
 
     return _clampInt(
-      _toInt(value),
+      _toInt(mining['ads_watched']),
       0,
       maxAdsPerSession,
     );
@@ -220,14 +235,9 @@ class MiningService {
   // ============================================================
 
   Future<int> getActiveReferrals() async {
-    final activeMining = await getActiveMining();
+    final mining = await getActiveMining();
 
-    final value =
-        activeMining['active_referrals'] ??
-        activeMining['referrals'] ??
-        0;
-
-    return _toInt(value);
+    return _toInt(mining['active_referrals']);
   }
 
   // ============================================================
@@ -235,81 +245,131 @@ class MiningService {
   // ============================================================
 
   Future<double> getAdBoost() async {
-    final activeMining = await getActiveMining();
+    final mining = await getActiveMining();
 
-    final value =
-        activeMining['ad_boost'] ??
-        0.0;
+    final ads = _clampInt(
+      _toInt(mining['ads_watched']),
+      0,
+      maxAdsPerSession,
+    );
 
-    return _toDouble(value);
+    return ads * adBoostPerAd;
   }
 
   // ============================================================
-  // IS MINING
+  // REFERRAL BOOST
+  // ============================================================
+
+  Future<double> getReferralBoost() async {
+    final referrals = await getActiveReferrals();
+
+    return referrals * referralBoostPerReferral;
+  }
+
+  // ============================================================
+  // TOTAL MINING RATE
+  // ============================================================
+
+  Future<double> getCurrentMiningRate() async {
+    final mining = await getActiveMining();
+
+    final totalRate = _toDouble(mining['total_rate']);
+
+    if (totalRate > 0) {
+      return totalRate;
+    }
+
+    final baseRate = _toDouble(
+      mining['base_rate'],
+      fallback: defaultMiningRate,
+    );
+
+    final adRate = _toDouble(mining['ad_rate']);
+
+    final referralRate = _toDouble(mining['referral_rate']);
+
+    final calculatedRate =
+        baseRate + adRate + referralRate;
+
+    if (calculatedRate <= 0) {
+      return defaultMiningRate;
+    }
+
+    return calculatedRate;
+  }
+
+  // ============================================================
+  // MINING STATUS
   // ============================================================
 
   Future<bool> isMining() async {
-    final activeMining = await getActiveMining();
+    final mining = await getActiveMining();
 
-    final active =
-        activeMining['active'] ??
-        activeMining['is_mining'] ??
-        activeMining['mining_active'] ??
-        activeMining['is_active'] ??
-        false;
+    final status = mining['status']?.toString().toLowerCase();
 
-    return active == true;
+    if (status == 'active' || status == 'mining') {
+      return true;
+    }
+
+    final startedAt = _parseDateTime(mining['started_at']);
+    final endsAt = _parseDateTime(mining['ends_at']);
+
+    if (startedAt == null || endsAt == null) {
+      return false;
+    }
+
+    final now = DateTime.now().toUtc();
+
+    return now.isAfter(startedAt) && now.isBefore(endsAt);
   }
-
-  // ============================================================
-  // IS CLAIMABLE
-  // ============================================================
 
   Future<bool> isClaimable() async {
-    final activeMining = await getActiveMining();
+    final mining = await getActiveMining();
 
-    return activeMining['claimable'] == true;
+    final status = mining['status']?.toString().toLowerCase();
+
+    if (status == 'claimable' || status == 'completed') {
+      return true;
+    }
+
+    final endsAt = _parseDateTime(mining['ends_at']);
+
+    if (endsAt == null) {
+      return false;
+    }
+
+    final now = DateTime.now().toUtc();
+
+    return !endsAt.isAfter(now) &&
+        mining['claimed'] != true;
   }
-
-  // ============================================================
-  // IS EXPIRED
-  // ============================================================
 
   Future<bool> isExpired() async {
-    final activeMining = await getActiveMining();
+    final mining = await getActiveMining();
 
-    return activeMining['expired'] == true ||
-        activeMining['session_finished'] == true ||
-        activeMining['claimable'] == true;
+    final endsAt = _parseDateTime(mining['ends_at']);
+
+    if (endsAt == null) {
+      return false;
+    }
+
+    return !endsAt.isAfter(DateTime.now().toUtc());
   }
 
   // ============================================================
-  // MINING END TIME
-  // ============================================================
-
-  Future<DateTime?> getMiningEndsAt() async {
-    final activeMining = await getActiveMining();
-
-    final value =
-        activeMining['ends_at'] ??
-        activeMining['end_time'] ??
-        activeMining['expires_at'];
-
-    return _parseDateTime(value);
-  }
-
-  // ============================================================
-  // MINING START TIME
+  // MINING DATES
   // ============================================================
 
   Future<DateTime?> getMiningStartedAt() async {
-    final activeMining = await getActiveMining();
+    final mining = await getActiveMining();
 
-    final value =
-        activeMining['started_at'] ??
-        activeMining['start_time'];
+    return _parseDateTime(mining['started_at']);
+  }
 
-    return _parseDateTime(value);
+  Future<DateTime?> getMiningEndsAt() async {
+    final mining = await getActiveMining();
+
+    return _parseDateTime(mining['ends_at']);
   }
 
   // ============================================================
@@ -317,60 +377,19 @@ class MiningService {
   // ============================================================
 
   Future<Duration> getRemainingTime() async {
-    final activeMining = await getActiveMining();
-
-    final remainingSeconds = _toInt(
-      activeMining['remaining_seconds'],
-    );
-
-    if (remainingSeconds > 0) {
-      return Duration(
-        seconds: _clampInt(
-          remainingSeconds,
-          0,
-          miningDurationSeconds,
-        ),
-      );
-    }
-
-    final endsAt = _parseDateTime(
-      activeMining['ends_at'] ??
-          activeMining['end_time'] ??
-          activeMining['expires_at'],
-    );
+    final endsAt = await getMiningEndsAt();
 
     if (endsAt == null) {
-      final startedAt = _parseDateTime(
-        activeMining['started_at'] ??
-            activeMining['start_time'],
-      );
-
-      if (startedAt == null) {
-        return Duration.zero;
-      }
-
-      final calculatedEnd = startedAt.add(
-        const Duration(
-          seconds: miningDurationSeconds,
-        ),
-      );
-
-      final remaining = calculatedEnd.difference(
-        DateTime.now(),
-      );
-
-      return remaining.isNegative
-          ? Duration.zero
-          : remaining;
+      return Duration.zero;
     }
 
-    final remaining = endsAt.difference(
-      DateTime.now(),
-    );
+    final now = DateTime.now().toUtc();
 
-    return remaining.isNegative
-        ? Duration.zero
-        : remaining;
+    if (!endsAt.isAfter(now)) {
+      return Duration.zero;
+    }
+
+    return endsAt.difference(now);
   }
 
   // ============================================================
@@ -378,228 +397,250 @@ class MiningService {
   // ============================================================
 
   Future<Duration> getElapsedTime() async {
-    final activeMining = await getActiveMining();
-
-    final elapsedSeconds = _toInt(
-      activeMining['elapsed_seconds'],
-    );
-
-    if (elapsedSeconds > 0) {
-      return Duration(
-        seconds: _clampInt(
-          elapsedSeconds,
-          0,
-          miningDurationSeconds,
-        ),
-      );
-    }
-
-    final startedAt = _parseDateTime(
-      activeMining['started_at'] ??
-          activeMining['start_time'],
-    );
+    final startedAt = await getMiningStartedAt();
 
     if (startedAt == null) {
-      final endsAt = _parseDateTime(
-        activeMining['ends_at'] ??
-            activeMining['end_time'] ??
-            activeMining['expires_at'],
+      return Duration.zero;
+    }
+
+    final now = DateTime.now().toUtc();
+
+    if (now.isBefore(startedAt)) {
+      return Duration.zero;
+    }
+
+    final elapsed = now.difference(startedAt);
+
+    if (elapsed.inSeconds > miningDurationSeconds) {
+      return const Duration(
+        seconds: miningDurationSeconds,
       );
-
-      if (endsAt != null) {
-        final calculatedStart = endsAt.subtract(
-          const Duration(
-            seconds: miningDurationSeconds,
-          ),
-        );
-
-        final elapsed = DateTime.now().difference(
-          calculatedStart,
-        );
-
-        if (elapsed.isNegative) {
-          return Duration.zero;
-        }
-
-        return Duration(
-          seconds: _clampInt(
-            elapsed.inSeconds,
-            0,
-            miningDurationSeconds,
-          ),
-        );
-      }
-
-      return Duration.zero;
     }
 
-    final elapsed = DateTime.now().difference(
-      startedAt,
-    );
-
-    if (elapsed.isNegative) {
-      return Duration.zero;
-    }
-
-    return Duration(
-      seconds: _clampInt(
-        elapsed.inSeconds,
-        0,
-        miningDurationSeconds,
-      ),
-    );
+    return elapsed;
   }
 
   // ============================================================
-  // FAN EARNED SO FAR
-  //
-  // IMPORTANT:
-  // The server is the source of truth.
-  //
-  // The mining engine calculates:
-  //   Base reward
-  //   + time-weighted ad reward
-  //   + time-weighted referral reward
-  //
-  // Therefore the Flutter app must NOT calculate:
-  //   currentRate × totalElapsedTime
-  //
-  // because that would incorrectly give earlier hours
-  // the later ad boost.
+  // ESTIMATED EARNED
   // ============================================================
 
   Future<double> getEstimatedEarned() async {
     final mining = await getActiveMining();
 
-    final serverReward = _toDouble(
-      mining['reward'],
-    );
+    final serverReward = _toDouble(mining['reward']);
 
     if (serverReward > 0) {
       return serverReward;
     }
 
-    if (mining['claimable'] == true) {
+    final startedAt = _parseDateTime(mining['started_at']);
+    final endsAt = _parseDateTime(mining['ends_at']);
+
+    if (startedAt == null || endsAt == null) {
       return 0.0;
     }
 
-    return 0.0;
+    final now = DateTime.now().toUtc();
+
+    if (!endsAt.isAfter(startedAt)) {
+      return 0.0;
+    }
+
+    final effectiveNow =
+        now.isAfter(endsAt) ? endsAt : now;
+
+    if (!effectiveNow.isAfter(startedAt)) {
+      return 0.0;
+    }
+
+    final elapsedSeconds =
+        effectiveNow.difference(startedAt).inSeconds;
+
+    if (elapsedSeconds <= 0) {
+      return 0.0;
+    }
+
+    final totalSeconds =
+        endsAt.difference(startedAt).inSeconds;
+
+    if (totalSeconds <= 0) {
+      return 0.0;
+    }
+
+    final baseRate = _toDouble(
+      mining['base_rate'],
+      fallback: defaultMiningRate,
+    );
+
+    final adRate = _toDouble(mining['ad_rate']);
+
+    final referralRate =
+        _toDouble(mining['referral_rate']);
+
+    final totalRate =
+        baseRate + adRate + referralRate;
+
+    if (totalRate <= 0) {
+      return 0.0;
+    }
+
+    final earned =
+        totalRate * elapsedSeconds / 3600.0;
+
+    return double.parse(
+      earned.toStringAsFixed(6),
+    );
   }
 
   // ============================================================
-  // SESSION REWARD
+  // CURRENT REWARD
   // ============================================================
 
   Future<double> getCurrentReward() async {
     final mining = await getActiveMining();
 
-    return _toDouble(
-      mining['reward'],
-    );
+    return _toDouble(mining['reward']);
   }
 
   // ============================================================
-  // SESSION ID
+  // MINING SESSION ID
   // ============================================================
 
   Future<String?> getMiningSessionId() async {
     final mining = await getActiveMining();
 
-    final value = mining['session_id'];
+    final id = mining['id'];
 
-    if (value == null) {
+    if (id == null) {
       return null;
     }
 
-    final id = value.toString().trim();
+    final value = id.toString().trim();
 
-    return id.isEmpty ? null : id;
+    if (value.isEmpty) {
+      return null;
+    }
+
+    return value;
   }
 
   // ============================================================
-  // MINING STATUS
+  // MINING STATUS TEXT
   // ============================================================
 
-  Future<Map<String, dynamic>> getMiningStatus() async {
+  Future<String> getMiningStatus() async {
     final mining = await getActiveMining();
 
-    final remainingSeconds = _clampInt(
-      _toInt(
-        mining['remaining_seconds'],
-      ),
-      0,
-      miningDurationSeconds,
-    );
+    final status = mining['status'];
 
-    final elapsedSeconds = _clampInt(
-      _toInt(
-        mining['elapsed_seconds'],
-      ),
-      0,
-      miningDurationSeconds,
-    );
+    if (status != null) {
+      final value = status.toString().trim();
 
-    final adsWatched = _clampInt(
-      _toInt(
-        mining['ads_watched'],
-      ),
-      0,
-      maxAdsPerSession,
-    );
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
 
-    return {
-      ...mining,
-      'is_mining':
-          mining['active'] == true ||
-          mining['mining_active'] == true,
-      'claimable':
-          mining['claimable'] == true,
-      'expired':
-          mining['expired'] == true,
-      'remaining_seconds':
-          remainingSeconds,
-      'elapsed_seconds':
-          elapsedSeconds,
-      'ads_watched':
-          adsWatched,
-    };
+    final claimed = mining['claimed'] == true;
+
+    if (claimed) {
+      return 'claimed';
+    }
+
+    final endsAt = _parseDateTime(mining['ends_at']);
+
+    if (endsAt != null) {
+      final now = DateTime.now().toUtc();
+
+      if (endsAt.isAfter(now)) {
+        return 'active';
+      }
+
+      return 'claimable';
+    }
+
+    return 'idle';
+  }
+
+  // ============================================================
+  // COMPLETE EXPIRED MINING SESSION
+  // ============================================================
+
+  Future<Map<String, dynamic>> completeExpiredMiningSession() async {
+    userId;
+
+    final result =
+        await _client.rpc('complete_expired_mining_session');
+
+    return _mapFromRpcResult(result);
+  }
+
+  // ============================================================
+  // REFRESH MINING DATA
+  // ============================================================
+
+  Future<Map<String, dynamic>> refreshMining() async {
+    try {
+      await completeExpiredMiningSession();
+    } catch (_) {
+      // The mining engine itself handles the authoritative state.
+    }
+
+    return getActiveMining();
   }
 
   // ============================================================
   // HELPERS
   // ============================================================
 
-  Map<String, dynamic> _mapFromRpcResult(
-    dynamic result,
-  ) {
+  Map<String, dynamic> _mapFromRpcResult(dynamic result) {
     if (result == null) {
-      return _emptyMining();
+      return <String, dynamic>{};
+    }
+
+    if (result is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(result);
     }
 
     if (result is Map) {
       return Map<String, dynamic>.from(result);
     }
 
-    if (result is List &&
-        result.isNotEmpty &&
-        result.first is Map) {
-      return Map<String, dynamic>.from(
-        result.first as Map,
-      );
+    if (result is List) {
+      if (result.isEmpty) {
+        return <String, dynamic>{};
+      }
+
+      final first = result.first;
+
+      if (first is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(first);
+      }
+
+      if (first is Map) {
+        return Map<String, dynamic>.from(first);
+      }
     }
 
-    return {
+    return <String, dynamic>{
       'result': result,
     };
   }
 
-  int _toInt(dynamic value) {
+  int _toInt(
+    dynamic value, {
+    int fallback = 0,
+  }) {
     if (value == null) {
-      return 0;
+      return fallback;
     }
 
     if (value is int) {
       return value;
+    }
+
+    if (value is double) {
+      return value.round();
     }
 
     if (value is num) {
@@ -607,18 +648,25 @@ class MiningService {
     }
 
     return int.tryParse(
-          value.toString(),
+          value.toString().trim(),
         ) ??
-        0;
+        fallback;
   }
 
-  double _toDouble(dynamic value) {
+  double _toDouble(
+    dynamic value, {
+    double fallback = 0.0,
+  }) {
     if (value == null) {
-      return 0.0;
+      return fallback;
     }
 
     if (value is double) {
       return value;
+    }
+
+    if (value is int) {
+      return value.toDouble();
     }
 
     if (value is num) {
@@ -626,9 +674,9 @@ class MiningService {
     }
 
     return double.tryParse(
-          value.toString(),
+          value.toString().trim(),
         ) ??
-        0.0;
+        fallback;
   }
 
   int _clampInt(
@@ -647,30 +695,13 @@ class MiningService {
     return value;
   }
 
-  // ============================================================
-  // DATE / TIMESTAMP PARSER
-  //
-  // Supports:
-  // - DateTime
-  // - ISO strings
-  // - Unix seconds
-  // - Unix milliseconds
-  // - numeric strings
-  // ============================================================
-
-  DateTime? _parseDateTime(
-    dynamic value,
-  ) {
+  DateTime? _parseDateTime(dynamic value) {
     if (value == null) {
       return null;
     }
 
     if (value is DateTime) {
-      return value.toLocal();
-    }
-
-    if (value is num) {
-      return _fromTimestamp(value);
+      return value.toUtc();
     }
 
     final text = value.toString().trim();
@@ -679,48 +710,34 @@ class MiningService {
       return null;
     }
 
-    final parsedIso = DateTime.tryParse(
-      text,
-    );
+    final parsed = DateTime.tryParse(text);
 
-    if (parsedIso != null) {
-      return parsedIso.toLocal();
+    return parsed?.toUtc();
+  }
+
+  DateTime? _fromTimestamp(dynamic value) {
+    if (value == null) {
+      return null;
     }
 
-    final numeric = num.tryParse(
-      text,
-    );
+    if (value is DateTime) {
+      return value.toUtc();
+    }
 
-    if (numeric != null) {
-      return _fromTimestamp(
-        numeric,
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        value,
+        isUtc: true,
       );
     }
 
-    return null;
-  }
-
-  DateTime? _fromTimestamp(
-    num timestamp,
-  ) {
-    try {
-      final value = timestamp.toInt();
-
-      // Milliseconds timestamp.
-      if (value.abs() >= 100000000000) {
-        return DateTime.fromMillisecondsSinceEpoch(
-          value,
-          isUtc: true,
-        ).toLocal();
-      }
-
-      // Seconds timestamp.
+    if (value is double) {
       return DateTime.fromMillisecondsSinceEpoch(
-        value * 1000,
+        value.toInt(),
         isUtc: true,
-      ).toLocal();
-    } catch (_) {
-      return null;
+      );
     }
+
+    return _parseDateTime(value);
   }
 }
