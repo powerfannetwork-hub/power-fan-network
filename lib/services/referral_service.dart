@@ -25,7 +25,7 @@ class ReferralInfo {
       activeReferrals: 0,
       totalReferrals: 0,
       totalInviterRewards: 0,
-      miningBonus: 0,
+      miningBonus: 0.0,
       miningBonusPerActiveReferral: 0.02,
     );
   }
@@ -86,6 +86,10 @@ class ReferralService {
   SupabaseClient get _client =>
       SupabaseService.client;
 
+  // ============================================================
+  // CURRENT USER
+  // ============================================================
+
   String get _userId {
     final user = _client.auth.currentUser;
 
@@ -95,6 +99,10 @@ class ReferralService {
 
     return user.id;
   }
+
+  // ============================================================
+  // REFERRAL INFORMATION
+  // ============================================================
 
   Future<ReferralInfo> getReferralInfo() async {
     return SupabaseService.safeCall(() async {
@@ -111,7 +119,11 @@ class ReferralService {
       }
 
       final referralCode =
-          data['referral_code']?.toString() ?? '';
+          data['referral_code']
+                  ?.toString()
+                  .trim()
+                  .toUpperCase() ??
+              '';
 
       final totalReferrals =
           _toInt(data['total_referrals']);
@@ -120,7 +132,9 @@ class ReferralService {
           _toInt(data['active_referrals']);
 
       final totalInviterRewards =
-          _toDouble(data['total_inviter_rewards']);
+          _toDouble(
+        data['total_inviter_rewards'],
+      );
 
       final miningBonusPerActiveReferral =
           _toDouble(
@@ -149,6 +163,10 @@ class ReferralService {
     });
   }
 
+  // ============================================================
+  // APPLY REFERRAL CODE
+  // ============================================================
+
   Future<ReferralResult> applyReferralCode(
     String code,
   ) async {
@@ -164,7 +182,7 @@ class ReferralService {
     return SupabaseService.safeCall(() async {
       final result = await _client.rpc(
         'apply_referral_code',
-        params: {
+        params: <String, dynamic>{
           'p_referral_code': cleanCode,
         },
       );
@@ -175,7 +193,7 @@ class ReferralService {
           data['success'] == true;
 
       final message =
-          data['message']?.toString() ??
+          data['message']?.toString().trim() ??
               (success
                   ? 'Referral code applied successfully.'
                   : 'Unable to apply referral code.');
@@ -187,13 +205,17 @@ class ReferralService {
     });
   }
 
+  // ============================================================
+  // ACTIVE REFERRALS
+  // ============================================================
+
   Future<int> getActiveReferrals() async {
     final userId = _userId;
 
     return SupabaseService.safeCall(() async {
       final result = await _client.rpc(
         'calculate_active_referrals',
-        params: {
+        params: <String, dynamic>{
           'p_user_id': userId,
         },
       );
@@ -202,13 +224,17 @@ class ReferralService {
     });
   }
 
+  // ============================================================
+  // MINING BONUS
+  // ============================================================
+
   Future<double> getMiningBonus() async {
     final userId = _userId;
 
     return SupabaseService.safeCall(() async {
       final result = await _client.rpc(
         'get_referral_mining_bonus',
-        params: {
+        params: <String, dynamic>{
           'p_user_id': userId,
         },
       );
@@ -217,9 +243,17 @@ class ReferralService {
     });
   }
 
+  // ============================================================
+  // RPC RESPONSE PARSER
+  // ============================================================
+
   Map<String, dynamic> _mapFromRpcResult(
     dynamic result,
   ) {
+    if (result == null) {
+      return <String, dynamic>{};
+    }
+
     if (result is Map<String, dynamic>) {
       return Map<String, dynamic>.from(result);
     }
@@ -228,12 +262,32 @@ class ReferralService {
       return Map<String, dynamic>.from(result);
     }
 
+    if (result is List && result.isNotEmpty) {
+      final first = result.first;
+
+      if (first is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(first);
+      }
+
+      if (first is Map) {
+        return Map<String, dynamic>.from(first);
+      }
+    }
+
     throw Exception(
       'Unexpected referral RPC response.',
     );
   }
 
+  // ============================================================
+  // INTEGER PARSER
+  // ============================================================
+
   int _toInt(dynamic value) {
+    if (value == null) {
+      return 0;
+    }
+
     if (value is int) {
       return value;
     }
@@ -243,15 +297,23 @@ class ReferralService {
     }
 
     return int.tryParse(
-          value?.toString() ?? '',
+          value.toString().trim(),
         ) ??
         0;
   }
 
+  // ============================================================
+  // DOUBLE PARSER
+  // ============================================================
+
   double _toDouble(
     dynamic value, {
-    double fallback = 0,
+    double fallback = 0.0,
   }) {
+    if (value == null) {
+      return fallback;
+    }
+
     if (value is double) {
       return value;
     }
@@ -261,7 +323,7 @@ class ReferralService {
     }
 
     return double.tryParse(
-          value?.toString() ?? '',
+          value.toString().trim(),
         ) ??
         fallback;
   }
