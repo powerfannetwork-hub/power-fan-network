@@ -552,7 +552,7 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 SizedBox(height: 3),
                 Text(
-                  'Coming Soon • 2027 Q1',
+                  'Coming Soon',
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.grey,
