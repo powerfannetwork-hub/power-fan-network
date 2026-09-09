@@ -22,6 +22,13 @@ class ProfileData {
   final DateTime? miningStartedAt;
   final DateTime? miningEndsAt;
 
+  // ============================================================
+  // INACTIVITY PENALTY
+  // ============================================================
+
+  final DateTime? lastMiningAt;
+  final DateTime? inactivityPenaltyAt;
+
   final int consecutiveCheckIns;
 
   final int kycCheckinStreak;
@@ -71,6 +78,8 @@ class ProfileData {
     required this.miningActive,
     required this.miningStartedAt,
     required this.miningEndsAt,
+    required this.lastMiningAt,
+    required this.inactivityPenaltyAt,
     required this.consecutiveCheckIns,
     required this.kycCheckinStreak,
     required this.kycBoostStreak,
@@ -139,6 +148,18 @@ class ProfileData {
       miningEndsAt: _dateTimeValue(
         map['mining_ends_at'],
       ),
+
+      // ========================================================
+      // INACTIVITY PENALTY
+      // ========================================================
+
+      lastMiningAt: _dateTimeValue(
+        map['last_mining_at'],
+      ),
+      inactivityPenaltyAt: _dateTimeValue(
+        map['inactivity_penalty_at'],
+      ),
+
       consecutiveCheckIns: _intValue(
         map['consecutive_check_ins'],
       ),
@@ -227,6 +248,65 @@ class ProfileData {
     );
   }
 
+  // ============================================================
+  // INACTIVITY PENALTY STATUS
+  // ============================================================
+
+  bool get hasMiningHistory {
+    return lastMiningAt != null;
+  }
+
+  bool get inactivityPenaltyStarted {
+    if (lastMiningAt == null) {
+      return false;
+    }
+
+    return DateTime.now().toUtc().isAfter(
+      lastMiningAt!.add(
+        const Duration(hours: 72),
+      ),
+    );
+  }
+
+  double get inactiveHours {
+    if (lastMiningAt == null) {
+      return 0.0;
+    }
+
+    final elapsed = DateTime.now()
+        .toUtc()
+        .difference(lastMiningAt!)
+        .inSeconds;
+
+    if (elapsed <= 0) {
+      return 0.0;
+    }
+
+    return elapsed / 3600.0;
+  }
+
+  int get inactivityPenaltyPeriodsDue {
+    if (lastMiningAt == null) {
+      return 0;
+    }
+
+    final hours = inactiveHours;
+
+    if (hours <= 72) {
+      return 0;
+    }
+
+    return ((hours - 72) / 24).floor();
+  }
+
+  bool get penaltyDue {
+    return inactivityPenaltyPeriodsDue > 0;
+  }
+
+  // ============================================================
+  // KYC
+  // ============================================================
+
   bool get kyc30DayRequirementComplete {
     return kycCheckinStreak >= 30 &&
         kycBoostStreak >= 30;
@@ -244,6 +324,10 @@ class ProfileData {
         !migrationCompleted;
   }
 
+  // ============================================================
+  // COPY WITH
+  // ============================================================
+
   ProfileData copyWith({
     String? name,
     String? username,
@@ -259,6 +343,11 @@ class ProfileData {
     bool? miningActive,
     DateTime? miningStartedAt,
     DateTime? miningEndsAt,
+
+    // Inactivity penalty
+    DateTime? lastMiningAt,
+    DateTime? inactivityPenaltyAt,
+
     int? consecutiveCheckIns,
     int? kycCheckinStreak,
     int? kycBoostStreak,
@@ -312,6 +401,14 @@ class ProfileData {
           miningStartedAt ?? this.miningStartedAt,
       miningEndsAt:
           miningEndsAt ?? this.miningEndsAt,
+
+      // Inactivity penalty
+      lastMiningAt:
+          lastMiningAt ?? this.lastMiningAt,
+      inactivityPenaltyAt:
+          inactivityPenaltyAt ??
+              this.inactivityPenaltyAt,
+
       consecutiveCheckIns:
           consecutiveCheckIns ??
               this.consecutiveCheckIns,
@@ -382,6 +479,10 @@ class ProfileData {
           updatedAt ?? this.updatedAt,
     );
   }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
 
   static String _stringValue(dynamic value) {
     return value?.toString().trim() ?? '';
@@ -471,6 +572,10 @@ class ProfileData {
   }
 }
 
+// ================================================================
+// PROFILE SERVICE
+// ================================================================
+
 class ProfileService {
   ProfileService._internal();
 
@@ -485,6 +590,10 @@ class ProfileService {
 
   String? get currentUserId =>
       _supabase.auth.currentUser?.id;
+
+  // ============================================================
+  // PROFILE COLUMNS
+  // ============================================================
 
   static const String _profileColumns = '''
     id,
@@ -502,6 +611,8 @@ class ProfileService {
     mining_active,
     mining_started_at,
     mining_ends_at,
+    last_mining_at,
+    inactivity_penalty_at,
     consecutive_check_ins,
     kyc_checkin_streak,
     kyc_boost_streak,
@@ -528,6 +639,10 @@ class ProfileService {
     created_at,
     updated_at
   ''';
+
+  // ============================================================
+  // GET PROFILE
+  // ============================================================
 
   Future<ProfileData?> getProfile() async {
     final userId = currentUserId;
@@ -566,6 +681,10 @@ class ProfileService {
   Future<ProfileData?> refreshProfile() async {
     return getProfile();
   }
+
+  // ============================================================
+  // NAME
+  // ============================================================
 
   Future<ProfileData> updateName(
     String name,
@@ -606,6 +725,10 @@ class ProfileService {
     );
   }
 
+  // ============================================================
+  // BALANCES
+  // ============================================================
+
   Future<Map<String, double>> getBalances() async {
     final profile = await requireProfile();
 
@@ -626,6 +749,10 @@ class ProfileService {
 
     return profile.afamBalance;
   }
+
+  // ============================================================
+  // USER INFORMATION
+  // ============================================================
 
   Future<String> getDisplayName() async {
     final profile = await requireProfile();
@@ -671,6 +798,10 @@ class ProfileService {
     return profile.referralCode;
   }
 
+  // ============================================================
+  // MINING
+  // ============================================================
+
   Future<int> getActiveReferralCount() async {
     final profile = await requireProfile();
 
@@ -688,6 +819,44 @@ class ProfileService {
 
     return profile.miningActive;
   }
+
+  // ============================================================
+  // INACTIVITY PENALTY
+  // ============================================================
+
+  Future<DateTime?> getLastMiningAt() async {
+    final profile = await requireProfile();
+
+    return profile.lastMiningAt;
+  }
+
+  Future<DateTime?> getInactivityPenaltyAt() async {
+    final profile = await requireProfile();
+
+    return profile.inactivityPenaltyAt;
+  }
+
+  Future<double> getInactiveHours() async {
+    final profile = await requireProfile();
+
+    return profile.inactiveHours;
+  }
+
+  Future<int> getInactivityPenaltyPeriodsDue() async {
+    final profile = await requireProfile();
+
+    return profile.inactivityPenaltyPeriodsDue;
+  }
+
+  Future<bool> isInactivityPenaltyDue() async {
+    final profile = await requireProfile();
+
+    return profile.penaltyDue;
+  }
+
+  // ============================================================
+  // KYC
+  // ============================================================
 
   Future<int> getKycCheckinStreak() async {
     final profile = await requireProfile();
@@ -719,6 +888,10 @@ class ProfileService {
     return profile.kycFaceVerified;
   }
 
+  // ============================================================
+  // MIGRATION
+  // ============================================================
+
   Future<bool> isMigrationAvailable() async {
     final profile = await requireProfile();
 
@@ -730,6 +903,10 @@ class ProfileService {
 
     return profile.migrationCompleted;
   }
+
+  // ============================================================
+  // SECURITY
+  // ============================================================
 
   Future<bool> isSuspended() async {
     final profile = await requireProfile();
@@ -746,6 +923,10 @@ class ProfileService {
   Future<ProfileData> getSecurityProfile() async {
     return requireProfile();
   }
+
+  // ============================================================
+  // PROFILE EXISTENCE
+  // ============================================================
 
   Future<void> ensureProfileExists() async {
     final user = currentUser;
