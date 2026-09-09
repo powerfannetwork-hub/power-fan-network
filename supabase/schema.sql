@@ -26,6 +26,7 @@ create table if not exists public.profiles (
 );
 
 alter table public.profiles add column if not exists name text;
+alter table public.profiles add column if not exists username text;
 alter table public.profiles add column if not exists email text;
 alter table public.profiles add column if not exists referral_code text;
 alter table public.profiles add column if not exists referred_by uuid;
@@ -536,14 +537,9 @@ $$;
 --
 -- This trigger creates the profile and, when a valid referral
 -- code is supplied, applies the referral once during account
--- creation.
+-- creation. Rewards are written atomically with the profile.
 --
 -- Invalid/self referral codes do not block registration.
---
--- IMPORTANT FIX:
--- Do NOT use:
---     ON CONFLICT (referred_id)
--- because referred_id uses a partial unique index.
 -- ============================================================
 
 create or replace function public.handle_new_user()
@@ -554,6 +550,7 @@ set search_path = public
 as $$
 declare
     v_name text;
+    v_username text;
     v_email text;
     v_code text;
     v_referral_code text;
@@ -565,14 +562,17 @@ declare
     v_inviter_reward numeric(24,8) := 5;
     v_mining_bonus numeric(12,4) := 0.02;
 begin
-
-    v_name := coalesce(
-        new.raw_user_meta_data ->> 'name',
-        new.raw_user_meta_data ->> 'full_name',
-        new.raw_user_meta_data ->> 'display_name',
-        new.raw_user_meta_data ->> 'username',
-        ''
+    v_username := trim(
+        coalesce(
+            new.raw_user_meta_data ->> 'username',
+            new.raw_user_meta_data ->> 'name',
+            new.raw_user_meta_data ->> 'full_name',
+            new.raw_user_meta_data ->> 'display_name',
+            ''
+        )
     );
+
+    v_name := v_username;
 
     v_email := new.email;
 
@@ -587,16 +587,17 @@ begin
 
     v_code := public.generate_referral_code(v_name);
 
-    -- Create profile.
     insert into public.profiles (
         id,
         name,
+        username,
         email,
         referral_code
     )
     values (
         new.id,
-        nullif(v_name, ''),
+        nullif(v_username, ''),
+        nullif(v_username, ''),
         v_email,
         v_code
     )
@@ -607,8 +608,7 @@ begin
         return new;
     end if;
 
-    -- Find inviter.
-    -- Self-referral is forbidden.
+    -- Never allow self-referral.
     select id
     into v_inviter_id
     from public.profiles
@@ -616,8 +616,7 @@ begin
       and id <> new.id
     limit 1;
 
-    -- Invalid referral code.
-    -- Registration continues normally.
+    -- Invalid referral code: registration continues normally.
     if v_inviter_id is null then
         return new;
     end if;
@@ -632,25 +631,11 @@ begin
         return new;
     end if;
 
-    -- ========================================================
-    -- CREATE REFERRAL FIRST
-    -- ========================================================
-    --
-    -- This is intentionally before balance updates.
-    --
-    -- We cannot use:
-    --     ON CONFLICT (referred_id)
-    --
-    -- because ux_referrals_referred_user is a partial
-    -- unique index.
-    --
-    -- If another referral already exists, the unique violation
-    -- is caught here and registration continues without
-    -- duplicate rewards.
-    -- ========================================================
-
+    -- Create the relationship and give the new-user reward.
+    -- Create referral record first. The unique partial index on referred_id
+    -- cannot be targeted by ON CONFLICT (referred_id), so handle a race
+    -- with a local unique_violation block instead.
     begin
-
         insert into public.referrals (
             referrer_id,
             referred_id,
@@ -670,50 +655,28 @@ begin
             now()
         )
         returning id into v_referral_id;
-
     exception
         when unique_violation then
             return new;
     end;
 
-    -- ========================================================
-    -- NEW USER +20 FAN
-    -- ========================================================
-
+    -- Give the new user reward only after the referral row exists.
     update public.profiles
     set
         referred_by = v_inviter_id,
-        fan_balance = coalesce(fan_balance, 0)
-            + v_new_user_reward,
+        fan_balance = coalesce(fan_balance, 0) + v_new_user_reward,
         updated_at = now()
     where id = new.id;
 
-    -- ========================================================
-    -- INVITER +5 FAN
-    -- ========================================================
-    --
-    -- active_referrals is NOT incremented here.
-    --
-    -- Active referral is calculated dynamically from:
-    --     referred_by
-    --     mining_active
-    --     mining_started_at
-    --     mining_ends_at
-    --
-    -- This prevents stale active_referrals values.
-    -- ========================================================
-
+    -- Give inviter reward. active_referrals is intentionally NOT incremented
+    -- here because active referrals are calculated from live mining status.
     update public.profiles
     set
-        fan_balance = coalesce(fan_balance, 0)
-            + v_inviter_reward,
+        fan_balance = coalesce(fan_balance, 0) + v_inviter_reward,
         updated_at = now()
     where id = v_inviter_id;
 
-    -- ========================================================
-    -- REFERRAL REWARD HISTORY
-    -- ========================================================
-
+    -- Referral reward history.
     insert into public.referral_rewards (
         inviter_id,
         referred_user_id,
@@ -727,10 +690,7 @@ begin
         v_new_user_reward
     );
 
-    -- ========================================================
-    -- WALLET HISTORY
-    -- ========================================================
-
+    -- Wallet history.
     insert into public.wallet_transactions (
         user_id,
         coin,
@@ -761,7 +721,8 @@ begin
 
 exception
     when others then
-        -- Any unexpected error aborts the complete transaction.
+        -- Do not silently create a partially rewarded referral.
+        -- Any exception aborts the trigger transaction.
         raise;
 end;
 $$;
@@ -797,42 +758,36 @@ $$;
 -- ============================================================
 
 drop trigger if exists profiles_updated_at on public.profiles;
-
 create trigger profiles_updated_at
 before update on public.profiles
 for each row
 execute function public.set_updated_at();
 
 drop trigger if exists kyc_verifications_updated_at on public.kyc_verifications;
-
 create trigger kyc_verifications_updated_at
 before update on public.kyc_verifications
 for each row
 execute function public.set_updated_at();
 
 drop trigger if exists social_tasks_updated_at on public.social_tasks;
-
 create trigger social_tasks_updated_at
 before update on public.social_tasks
 for each row
 execute function public.set_updated_at();
 
 drop trigger if exists user_social_follows_updated_at on public.user_social_follows;
-
 create trigger user_social_follows_updated_at
 before update on public.user_social_follows
 for each row
 execute function public.set_updated_at();
 
 drop trigger if exists app_settings_updated_at on public.app_settings;
-
 create trigger app_settings_updated_at
 before update on public.app_settings
 for each row
 execute function public.set_updated_at();
 
 drop trigger if exists device_registrations_updated_at on public.device_registrations;
-
 create trigger device_registrations_updated_at
 before update on public.device_registrations
 for each row
@@ -842,45 +797,20 @@ execute function public.set_updated_at();
 -- 28. DEFAULT MINING VALUES
 -- ============================================================
 
-update public.profiles
-set mining_rate = 0.20
-where mining_rate is null;
-
-update public.profiles
-set fan_balance = 0
-where fan_balance is null;
-
-update public.profiles
-set afam_balance = 0
-where afam_balance is null;
-
-update public.profiles
-set active_referrals = 0
-where active_referrals is null;
-
-update public.profiles
-set daily_ads_watched = 0
-where daily_ads_watched is null;
-
-update public.profiles
-set ad_boost = 0
-where ad_boost is null;
-
-update public.profiles
-set mining_active = false
-where mining_active is null;
-
-update public.profiles
-set consecutive_check_ins = 0
-where consecutive_check_ins is null;
+update public.profiles set mining_rate = 0.20 where mining_rate is null;
+update public.profiles set fan_balance = 0 where fan_balance is null;
+update public.profiles set afam_balance = 0 where afam_balance is null;
+update public.profiles set active_referrals = 0 where active_referrals is null;
+update public.profiles set daily_ads_watched = 0 where daily_ads_watched is null;
+update public.profiles set ad_boost = 0 where ad_boost is null;
+update public.profiles set mining_active = false where mining_active is null;
+update public.profiles set consecutive_check_ins = 0 where consecutive_check_ins is null;
 
 -- ============================================================
 -- 29. APPLY REFERRAL CODE
 -- ============================================================
 
-create or replace function public.apply_referral_code(
-    p_referral_code text
-)
+create or replace function public.apply_referral_code(p_referral_code text)
 returns jsonb
 language plpgsql
 security definer
@@ -891,18 +821,11 @@ declare
     v_code text;
     v_inviter_id uuid;
     v_existing_referrer uuid;
-
     v_new_user_reward numeric(24,8) := 20;
     v_inviter_reward numeric(24,8) := 5;
     v_mining_bonus numeric(12,4) := 0.02;
-
     v_referral_id uuid;
 begin
-
-    -- ========================================================
-    -- AUTH CHECK
-    -- ========================================================
-
     if v_user_id is null then
         return jsonb_build_object(
             'success', false,
@@ -910,18 +833,7 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- CLEAN CODE
-    -- ========================================================
-
-    v_code := upper(
-        trim(
-            coalesce(
-                p_referral_code,
-                ''
-            )
-        )
-    );
+    v_code := upper(trim(coalesce(p_referral_code, '')));
 
     if v_code = '' then
         return jsonb_build_object(
@@ -929,10 +841,6 @@ begin
             'message', 'Referral code is required'
         );
     end if;
-
-    -- ========================================================
-    -- LOCK USER PROFILE
-    -- ========================================================
 
     select referred_by
     into v_existing_referrer
@@ -947,20 +855,12 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- ALREADY REFERRED
-    -- ========================================================
-
     if v_existing_referrer is not null then
         return jsonb_build_object(
             'success', false,
             'message', 'Referral code has already been used'
         );
     end if;
-
-    -- ========================================================
-    -- FIND INVITER
-    -- ========================================================
 
     select id
     into v_inviter_id
@@ -976,10 +876,7 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- EXTRA PROTECTION
-    -- ========================================================
-
+    -- Extra protection against a race/previous referral record.
     if exists (
         select 1
         from public.referrals
@@ -991,79 +888,38 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- CREATE REFERRAL FIRST
-    -- ========================================================
-    --
-    -- IMPORTANT:
-    -- No ON CONFLICT (referred_id) is used because the
-    -- unique index is partial.
-    --
-    -- If a concurrent request creates the referral first,
-    -- the unique_violation handler below returns a safe
-    -- response and prevents duplicate rewards.
-    -- ========================================================
-
-    begin
-
-        insert into public.referrals (
-            referrer_id,
-            referred_id,
-            status,
-            new_user_reward,
-            referrer_reward,
-            mining_rate_bonus,
-            activated_at
-        )
-        values (
-            v_inviter_id,
-            v_user_id,
-            'active',
-            v_new_user_reward,
-            v_inviter_reward,
-            v_mining_bonus,
-            now()
-        )
-        returning id into v_referral_id;
-
-    exception
-        when unique_violation then
-            return jsonb_build_object(
-                'success', false,
-                'message', 'Referral code has already been used'
-            );
-    end;
-
-    -- ========================================================
-    -- NEW USER +20 FAN
-    -- ========================================================
+    insert into public.referrals (
+        referrer_id,
+        referred_id,
+        status,
+        new_user_reward,
+        referrer_reward,
+        mining_rate_bonus,
+        activated_at
+    )
+    values (
+        v_inviter_id,
+        v_user_id,
+        'active',
+        v_new_user_reward,
+        v_inviter_reward,
+        v_mining_bonus,
+        now()
+    )
+    returning id into v_referral_id;
 
     update public.profiles
     set
         referred_by = v_inviter_id,
-        fan_balance = coalesce(fan_balance, 0)
-            + v_new_user_reward,
+        fan_balance = coalesce(fan_balance, 0) + v_new_user_reward,
         updated_at = now()
     where id = v_user_id;
 
-    -- ========================================================
-    -- INVITER +5 FAN
-    -- ========================================================
-    --
-    -- Do not increment active_referrals here.
-    -- Active referrals are calculated dynamically from mining.
-    -- ========================================================
-
     update public.profiles
     set
-        fan_balance = coalesce(fan_balance, 0)
-            + v_inviter_reward,
+        fan_balance = coalesce(fan_balance, 0) + v_inviter_reward,
         updated_at = now()
     where id = v_inviter_id;
-
-    -- ========================================================
-    -- REWARD HISTORY
-    -- ========================================================
 
     insert into public.referral_rewards (
         inviter_id,
@@ -1077,10 +933,6 @@ begin
         v_inviter_reward,
         v_new_user_reward
     );
-
-    -- ========================================================
-    -- WALLET HISTORY
-    -- ========================================================
 
     insert into public.wallet_transactions (
         user_id,
@@ -1107,10 +959,6 @@ begin
         v_referral_id,
         'Inviter referral bonus'
     );
-
-    -- ========================================================
-    -- SUCCESS
-    -- ========================================================
 
     return jsonb_build_object(
         'success', true,
@@ -1144,16 +992,12 @@ declare
     v_user_id uuid := auth.uid();
     v_referral_code text;
     v_referred_by uuid;
-
     v_total_referrals integer := 0;
     v_active_referrals integer := 0;
-
     v_total_inviter_rewards numeric(24,8) := 0;
-
     v_bonus_per_referral numeric(12,4) := 0.02;
     v_total_mining_bonus numeric(24,8) := 0;
 begin
-
     if v_user_id is null then
         return jsonb_build_object(
             'success', false,
@@ -1161,16 +1005,8 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- USER PROFILE
-    -- ========================================================
-
-    select
-        referral_code,
-        referred_by
-    into
-        v_referral_code,
-        v_referred_by
+    select referral_code, referred_by
+    into v_referral_code, v_referred_by
     from public.profiles
     where id = v_user_id;
 
@@ -1181,22 +1017,10 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- TOTAL REFERRALS
-    -- ========================================================
-
     select count(*)
     into v_total_referrals
     from public.profiles
     where referred_by = v_user_id;
-
-    -- ========================================================
-    -- ACTIVE REFERRALS
-    -- ========================================================
-    --
-    -- An active referral is someone whose mining session
-    -- is currently active.
-    -- ========================================================
 
     select count(*)
     into v_active_referrals
@@ -1207,24 +1031,12 @@ begin
       and mining_ends_at is not null
       and mining_ends_at > now();
 
-    -- ========================================================
-    -- INVITER REWARDS
-    -- ========================================================
-
-    select coalesce(
-        sum(inviter_reward),
-        0
-    )
+    select coalesce(sum(inviter_reward), 0)
     into v_total_inviter_rewards
     from public.referral_rewards
     where inviter_id = v_user_id;
 
-    -- ========================================================
-    -- MINING BONUS
-    -- ========================================================
-
-    v_total_mining_bonus :=
-        v_active_referrals * v_bonus_per_referral;
+    v_total_mining_bonus := v_active_referrals * v_bonus_per_referral;
 
     return jsonb_build_object(
         'success', true,
@@ -1232,12 +1044,9 @@ begin
         'referred_by', v_referred_by,
         'total_referrals', v_total_referrals,
         'active_referrals', v_active_referrals,
-        'mining_bonus_per_active_referral',
-            v_bonus_per_referral,
-        'mining_bonus',
-            v_total_mining_bonus,
-        'total_inviter_rewards',
-            v_total_inviter_rewards
+        'mining_bonus_per_active_referral', v_bonus_per_referral,
+        'mining_bonus', v_total_mining_bonus,
+        'total_inviter_rewards', v_total_inviter_rewards
     );
 end;
 $$;
@@ -1246,9 +1055,7 @@ $$;
 -- 31. GET REFERRAL MINING BONUS
 -- ============================================================
 
-create or replace function public.get_referral_mining_bonus(
-    p_user_id uuid
-)
+create or replace function public.get_referral_mining_bonus(p_user_id uuid)
 returns numeric
 language plpgsql
 security definer
@@ -1257,7 +1064,6 @@ as $$
 declare
     v_active_referrals integer := 0;
 begin
-
     if p_user_id is null then
         return 0;
     end if;
@@ -1279,9 +1085,7 @@ $$;
 -- 32. CALCULATE ACTIVE REFERRALS
 -- ============================================================
 
-create or replace function public.calculate_active_referrals(
-    p_user_id uuid
-)
+create or replace function public.calculate_active_referrals(p_user_id uuid)
 returns integer
 language plpgsql
 security definer
@@ -1290,7 +1094,6 @@ as $$
 declare
     v_count integer := 0;
 begin
-
     if p_user_id is null then
         return 0;
     end if;
@@ -1312,18 +1115,14 @@ $$;
 -- 33. LEGACY USE REFERRAL CODE
 -- ============================================================
 
-create or replace function public.use_referral_code(
-    p_referral_code text
-)
+create or replace function public.use_referral_code(p_referral_code text)
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-    return public.apply_referral_code(
-        p_referral_code
-    );
+    return public.apply_referral_code(p_referral_code);
 end;
 $$;
 
@@ -1339,13 +1138,10 @@ set search_path = public
 as $$
 declare
     v_user_id uuid := auth.uid();
-
     v_total integer := 0;
     v_active integer := 0;
-
     v_bonus numeric(24,8) := 0;
 begin
-
     if v_user_id is null then
         return jsonb_build_object(
             'success', false,
@@ -1353,18 +1149,10 @@ begin
         );
     end if;
 
-    -- ========================================================
-    -- TOTAL REFERRALS
-    -- ========================================================
-
     select count(*)
     into v_total
     from public.profiles
     where referred_by = v_user_id;
-
-    -- ========================================================
-    -- ACTIVE REFERRALS
-    -- ========================================================
 
     select count(*)
     into v_active
@@ -1374,10 +1162,6 @@ begin
       and mining_started_at is not null
       and mining_ends_at is not null
       and mining_ends_at > now();
-
-    -- ========================================================
-    -- BONUS
-    -- ========================================================
 
     v_bonus := v_active * 0.02;
 
@@ -1397,137 +1181,47 @@ $$;
 
 grant usage on schema public to authenticated;
 
-grant select, insert, update
-on public.profiles
-to authenticated;
-
-grant select, insert
-on public.mining_sessions
-to authenticated;
-
-grant select, insert
-on public.ad_rewards
-to authenticated;
-
-grant select, insert, update
-on public.notifications
-to authenticated;
-
-grant select, insert
-on public.referral_rewards
-to authenticated;
-
-grant select, insert
-on public.referrals
-to authenticated;
-
-grant select, insert
-on public.wallet_transactions
-to authenticated;
-
-grant select, insert
-on public.daily_check_ins
-to authenticated;
-
-grant select, insert, update
-on public.kyc_verifications
-to authenticated;
-
-grant select, insert, update
-on public.social_tasks
-to authenticated;
-
-grant select, insert, update
-on public.social_task_claims
-to authenticated;
-
-grant select, insert, update
-on public.user_social_follows
-to authenticated;
-
-grant select, insert
-on public.social_rewards
-to authenticated;
-
-grant select, insert
-on public.transactions
-to authenticated;
-
-grant select
-on public.app_settings
-to authenticated;
-
-grant select, insert, update
-on public.device_registrations
-to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert on public.mining_sessions to authenticated;
+grant select, insert on public.ad_rewards to authenticated;
+grant select, insert, update on public.notifications to authenticated;
+grant select, insert on public.referral_rewards to authenticated;
+grant select, insert on public.referrals to authenticated;
+grant select, insert on public.wallet_transactions to authenticated;
+grant select, insert on public.daily_check_ins to authenticated;
+grant select, insert, update on public.kyc_verifications to authenticated;
+grant select, insert, update on public.social_tasks to authenticated;
+grant select, insert, update on public.social_task_claims to authenticated;
+grant select, insert, update on public.user_social_follows to authenticated;
+grant select, insert on public.social_rewards to authenticated;
+grant select, insert on public.transactions to authenticated;
+grant select on public.app_settings to authenticated;
+grant select, insert, update on public.device_registrations to authenticated;
 
 -- ============================================================
 -- 36. FUNCTION GRANTS
 -- ============================================================
 
-grant execute
-on function public.generate_referral_code(text)
-to authenticated;
-
-grant execute
-on function public.apply_referral_code(text)
-to authenticated;
-
-grant execute
-on function public.get_referral_info()
-to authenticated;
-
-grant execute
-on function public.get_referral_mining_bonus(uuid)
-to authenticated;
-
-grant execute
-on function public.calculate_active_referrals(uuid)
-to authenticated;
-
-grant execute
-on function public.use_referral_code(text)
-to authenticated;
-
-grant execute
-on function public.get_referral_stats()
-to authenticated;
+grant execute on function public.generate_referral_code(text) to authenticated;
+grant execute on function public.apply_referral_code(text) to authenticated;
+grant execute on function public.get_referral_info() to authenticated;
+grant execute on function public.get_referral_mining_bonus(uuid) to authenticated;
+grant execute on function public.calculate_active_referrals(uuid) to authenticated;
+grant execute on function public.use_referral_code(text) to authenticated;
+grant execute on function public.get_referral_stats() to authenticated;
 
 -- ============================================================
 -- 37. FINAL DEFAULTS
 -- ============================================================
 
-update public.profiles
-set mining_rate = 0.20
-where mining_rate is null;
-
-update public.profiles
-set fan_balance = 0
-where fan_balance is null;
-
-update public.profiles
-set afam_balance = 0
-where afam_balance is null;
-
-update public.profiles
-set active_referrals = 0
-where active_referrals is null;
-
-update public.profiles
-set daily_ads_watched = 0
-where daily_ads_watched is null;
-
-update public.profiles
-set ad_boost = 0
-where ad_boost is null;
-
-update public.profiles
-set mining_active = false
-where mining_active is null;
-
-update public.profiles
-set consecutive_check_ins = 0
-where consecutive_check_ins is null;
+update public.profiles set mining_rate = 0.20 where mining_rate is null;
+update public.profiles set fan_balance = 0 where fan_balance is null;
+update public.profiles set afam_balance = 0 where afam_balance is null;
+update public.profiles set active_referrals = 0 where active_referrals is null;
+update public.profiles set daily_ads_watched = 0 where daily_ads_watched is null;
+update public.profiles set ad_boost = 0 where ad_boost is null;
+update public.profiles set mining_active = false where mining_active is null;
+update public.profiles set consecutive_check_ins = 0 where consecutive_check_ins is null;
 
 -- ============================================================
 -- FINAL
@@ -1551,3 +1245,4 @@ where consecutive_check_ins is null;
 -- ============================================================
 -- END OF POWER FAN NETWORK SCHEMA
 -- ============================================================
+
