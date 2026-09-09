@@ -38,7 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _t(String key, [String fallback = '']) {
-    final value = AppLocalizations.of(context).translate(key);
+    final value =
+        AppLocalizations.of(context).translate(key);
 
     if (value.isEmpty || value == key) {
       return fallback.isEmpty ? key : fallback;
@@ -95,7 +96,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String get _name {
-    final name = _profile?['name']?.toString().trim() ?? '';
+    final name =
+        _profile?['name']?.toString().trim() ?? '';
 
     if (name.isNotEmpty) {
       return name;
@@ -119,7 +121,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String get _email {
-    final email = _profile?['email']?.toString().trim() ?? '';
+    final email =
+        _profile?['email']?.toString().trim() ?? '';
 
     if (email.isNotEmpty) {
       return email;
@@ -150,9 +153,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String get _languageName {
-    final code = _languageController.languageCode;
+    final code =
+        _languageController.languageCode;
 
-    for (final language in AppLocalizations.languages) {
+    for (final language
+        in AppLocalizations.languages) {
       if (language.code == code) {
         return language.nativeName;
       }
@@ -162,7 +167,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _selectLanguage() async {
-    final selected = await showModalBottomSheet<String>(
+    final selected =
+        await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.white,
       isScrollControlled: true,
@@ -184,10 +190,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   width: 42,
                   height: 4,
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin:
+                      const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius:
+                        BorderRadius.circular(10),
                   ),
                 ),
                 Padding(
@@ -203,7 +211,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: purple.withOpacity(0.08),
+                          color:
+                              purple.withValues(alpha: 0.08),
                           borderRadius:
                               BorderRadius.circular(12),
                         ),
@@ -219,9 +228,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'selectLanguage',
                             'Select Language',
                           ),
-                          style: const TextStyle(
+                          style:
+                              const TextStyle(
                             fontSize: 19,
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                FontWeight.w800,
                             color: deepPurple,
                           ),
                         ),
@@ -234,40 +245,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ListView.builder(
                     shrinkWrap: true,
                     itemCount:
-                        AppLocalizations.languages.length,
-                    itemBuilder: (context, index) {
+                        AppLocalizations
+                            .languages
+                            .length,
+                    itemBuilder:
+                        (context, index) {
                       final language =
-                          AppLocalizations.languages[index];
+                          AppLocalizations
+                              .languages[index];
 
                       final isSelected =
-                          _languageController.languageCode ==
+                          _languageController
+                                  .languageCode ==
                               language.code;
 
                       return ListTile(
                         contentPadding:
-                            const EdgeInsets.symmetric(
+                            const EdgeInsets
+                                .symmetric(
                           horizontal: 20,
                           vertical: 2,
                         ),
                         leading: Container(
                           width: 44,
                           height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
+                          alignment:
+                              Alignment.center,
+                          decoration:
+                              BoxDecoration(
                             color: isSelected
-                                ? purple.withOpacity(0.12)
-                                : Colors.grey.shade100,
+                                ? purple.withValues(
+                                    alpha: 0.12,
+                                  )
+                                : Colors
+                                    .grey
+                                    .shade100,
                             borderRadius:
-                                BorderRadius.circular(12),
+                                BorderRadius
+                                    .circular(12),
                           ),
                           child: Text(
-                            language.code.toUpperCase(),
+                            language.code
+                                .toUpperCase(),
                             style: TextStyle(
                               color: isSelected
                                   ? purple
-                                  : Colors.grey.shade700,
+                                  : Colors
+                                      .grey
+                                      .shade700,
                               fontSize: 11,
-                              fontWeight: FontWeight.w900,
+                              fontWeight:
+                                  FontWeight.w900,
                             ),
                           ),
                         ),
@@ -275,9 +303,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           language.nativeName,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: isSelected
-                                ? FontWeight.w800
-                                : FontWeight.w600,
+                            fontWeight:
+                                isSelected
+                                    ? FontWeight
+                                        .w800
+                                    : FontWeight
+                                        .w600,
                             color: isSelected
                                 ? purple
                                 : Colors.black87,
@@ -285,20 +316,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         subtitle: Text(
                           language.name,
-                          style: const TextStyle(
+                          style:
+                              const TextStyle(
                             fontSize: 11,
                             color: Colors.grey,
                           ),
                         ),
                         trailing: isSelected
                             ? const Icon(
-                                Icons.check_circle_rounded,
+                                Icons
+                                    .check_circle_rounded,
                                 color: purple,
                               )
                             : null,
                         onTap: () {
-                          Navigator.of(sheetContext)
-                              .pop(language.code);
+                          Navigator.of(
+                            sheetContext,
+                          ).pop(language.code);
                         },
                       );
                     },
@@ -315,11 +349,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    if (_languageController.languageCode == selected) {
+    if (_languageController.languageCode ==
+        selected) {
       return;
     }
 
-    await _languageController.setLanguage(selected);
+    await _languageController
+        .setLanguage(selected);
 
     if (!mounted) return;
 
@@ -350,11 +386,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           activeReferrals: _integer(
             _profile?['active_referrals'],
           ),
-          checkInDays: kyc?.checkInDays ?? 0,
-          boostDays: kyc?.boostDays ?? 0,
+          checkInDays:
+              kyc?.checkInDays ?? 0,
+          boostDays:
+              kyc?.boostDays ?? 0,
           faceVerificationUnlocked:
-              kyc?.faceVerificationUnlocked ?? false,
-          faceVerified: kyc?.faceVerified ?? false,
+              kyc?.faceVerificationUnlocked ??
+                  false,
+          faceVerified:
+              kyc?.faceVerified ?? false,
         ),
       ),
     );
@@ -370,7 +410,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius:
+                BorderRadius.circular(20),
           ),
           title: Row(
             children: [
@@ -378,8 +419,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: purple.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
+                  color:
+                      purple.withValues(alpha: 0.08),
+                  borderRadius:
+                      BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.security_rounded,
@@ -387,10 +430,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              Expanded(
+              const Expanded(
                 child: Text(
                   'Security',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     color: deepPurple,
                   ),
@@ -398,7 +441,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-          content: const SingleChildScrollView(
+          content:
+              const SingleChildScrollView(
             child: Text(
               'POWER FAN NETWORK is designed to protect '
               'the integrity of the network and its users.\n\n'
@@ -420,7 +464,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(dialogContext).pop();
+                Navigator.of(
+                  dialogContext,
+                ).pop();
               },
               child: const Text(
                 'CLOSE',
@@ -442,12 +488,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (dialogContext) {
         return Dialog(
           backgroundColor: Colors.white,
-          insetPadding: const EdgeInsets.symmetric(
+          insetPadding:
+              const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 28,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius:
+                BorderRadius.circular(26),
           ),
           child: SafeArea(
             child: SingleChildScrollView(
@@ -465,17 +513,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Container(
                       width: 76,
                       height: 76,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
+                      decoration:
+                          const BoxDecoration(
+                        gradient:
+                            LinearGradient(
                           colors: [
                             deepPurple,
                             purple,
                           ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                          begin:
+                              Alignment.topLeft,
+                          end:
+                              Alignment.bottomRight,
                         ),
                         borderRadius:
-                            BorderRadius.circular(22),
+                            BorderRadius.all(
+                          Radius.circular(22),
+                        ),
                       ),
                       child: const Icon(
                         Icons.bolt_rounded,
@@ -488,10 +542,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Center(
                     child: Text(
                       'POWER FAN NETWORK',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         fontSize: 21,
-                        fontWeight: FontWeight.w900,
+                        fontWeight:
+                            FontWeight.w900,
                         color: deepPurple,
                         letterSpacing: 0.2,
                       ),
@@ -501,10 +557,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Center(
                     child: Text(
                       'THIS IS NOT JUST ANOTHER PROJECT.',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontWeight:
+                            FontWeight.w800,
                         color: purple,
                         letterSpacing: 0.4,
                       ),
@@ -608,13 +666,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 18),
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(16),
+                    padding:
+                        const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: purple.withOpacity(0.06),
+                      color:
+                          purple.withValues(alpha: 0.06),
                       borderRadius:
                           BorderRadius.circular(16),
                       border: Border.all(
-                        color: purple.withOpacity(0.10),
+                        color: purple.withValues(
+                          alpha: 0.10,
+                        ),
                       ),
                     ),
                     child: const Text(
@@ -625,7 +687,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.6,
-                        fontWeight: FontWeight.w700,
+                        fontWeight:
+                            FontWeight.w700,
                         color: deepPurple,
                       ),
                     ),
@@ -635,10 +698,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Text(
                       'STAY ACTIVE. STAY GENUINE. '
                       'STAY CONSISTENT.',
-                      textAlign: TextAlign.center,
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w900,
+                        fontWeight:
+                            FontWeight.w900,
                         color: purple,
                         letterSpacing: 0.5,
                       ),
@@ -650,21 +715,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     height: 48,
                     child: ElevatedButton(
                       onPressed: () {
-                        Navigator.of(dialogContext).pop();
+                        Navigator.of(
+                          dialogContext,
+                        ).pop();
                       },
-                      style: ElevatedButton.styleFrom(
+                      style:
+                          ElevatedButton.styleFrom(
                         backgroundColor: purple,
-                        foregroundColor: Colors.white,
+                        foregroundColor:
+                            Colors.white,
                         elevation: 0,
-                        shape: RoundedRectangleBorder(
+                        shape:
+                            RoundedRectangleBorder(
                           borderRadius:
-                              BorderRadius.circular(14),
+                              BorderRadius.circular(
+                            14,
+                          ),
                         ),
                       ),
                       child: const Text(
                         'CLOSE',
                         style: TextStyle(
-                          fontWeight: FontWeight.w900,
+                          fontWeight:
+                              FontWeight.w900,
                         ),
                       ),
                     ),
@@ -679,12 +752,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius:
+                BorderRadius.circular(20),
           ),
           title: Text(
             _t('logout', 'Logout'),
@@ -706,10 +781,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(dialogContext).pop(false);
+                Navigator.of(
+                  dialogContext,
+                ).pop(false);
               },
               child: Text(
-                _t('cancel', 'Cancel').toUpperCase(),
+                _t(
+                  'cancel',
+                  'Cancel',
+                ).toUpperCase(),
                 style: const TextStyle(
                   color: Colors.grey,
                   fontWeight: FontWeight.w800,
@@ -718,18 +798,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.of(dialogContext).pop(true);
+                Navigator.of(
+                  dialogContext,
+                ).pop(true);
               },
-              style: ElevatedButton.styleFrom(
+              style:
+                  ElevatedButton.styleFrom(
                 backgroundColor: purple,
-                foregroundColor: Colors.white,
+                foregroundColor:
+                    Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(12),
                 ),
               ),
               child: Text(
-                _t('logout', 'Logout').toUpperCase(),
+                _t(
+                  'logout',
+                  'Logout',
+                ).toUpperCase(),
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                 ),
@@ -767,9 +856,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius:
+                BorderRadius.circular(14),
           ),
         ),
       );
@@ -811,8 +902,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             elevation: 0,
             actions: [
               IconButton(
-                tooltip: _t('refresh', 'Refresh'),
-                onPressed: _loading ? null : _loadData,
+                tooltip:
+                    _t('refresh', 'Refresh'),
+                onPressed:
+                    _loading ? null : _loadData,
                 icon: const Icon(
                   Icons.refresh_rounded,
                 ),
@@ -821,7 +914,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           body: _loading
               ? const Center(
-                  child: CircularProgressIndicator(
+                  child:
+                      CircularProgressIndicator(
                     color: purple,
                   ),
                 )
@@ -831,7 +925,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: ListView(
                     physics:
                         const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(
+                    padding:
+                        const EdgeInsets.fromLTRB(
                       16,
                       8,
                       16,
@@ -841,41 +936,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _buildProfileCard(),
                       const SizedBox(height: 16),
                       _buildSection(
-                        title: _t('account', 'Account'),
+                        title:
+                            _t('account', 'Account'),
                         children: [
                           _buildSettingTile(
-                            icon:
-                                Icons.person_outline_rounded,
-                            title: _t('profile', 'Profile'),
-                            subtitle:
-                                _t('account', 'Account'),
+                            icon: Icons
+                                .person_outline_rounded,
+                            title: _t(
+                              'profile',
+                              'Profile',
+                            ),
+                            subtitle: _t(
+                              'account',
+                              'Account',
+                            ),
                             onTap: _openProfile,
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       _buildSection(
-                        title: _t('language', 'Language'),
+                        title:
+                            _t('language', 'Language'),
                         children: [
                           _buildNotificationTile(),
                           _buildSettingTile(
-                            icon:
-                                Icons.language_rounded,
-                            title: _t('language', 'Language'),
+                            icon: Icons
+                                .language_rounded,
+                            title: _t(
+                              'language',
+                              'Language',
+                            ),
                             subtitle: _languageName,
-                            onTap: _selectLanguage,
+                            onTap:
+                                _selectLanguage,
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       _buildSection(
-                        title: _t('security', 'Security'),
+                        title:
+                            _t('security', 'Security'),
                         children: [
                           _buildSettingTile(
-                            icon:
-                                Icons.security_rounded,
-                            title:
-                                _t('security', 'Security'),
+                            icon: Icons
+                                .security_rounded,
+                            title: _t(
+                              'security',
+                              'Security',
+                            ),
                             subtitle: _t(
                               'deviceSecurity',
                               'Device security',
@@ -886,11 +995,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 16),
                       _buildSection(
-                        title: _t('about', 'About'),
+                        title:
+                            _t('about', 'About'),
                         children: [
                           _buildSettingTile(
-                            icon:
-                                Icons.info_outline_rounded,
+                            icon: Icons
+                                .info_outline_rounded,
                             title:
                                 'About POWER FAN NETWORK',
                             subtitle:
@@ -925,10 +1035,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius:
+            BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: purple.withOpacity(0.16),
+            color:
+                purple.withValues(alpha: 0.16),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -941,10 +1053,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             height: 58,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
+              color: Colors.white.withValues(
+                alpha: 0.14,
+              ),
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(
+                  alpha: 0.15,
+                ),
               ),
             ),
             child: Text(
@@ -965,18 +1081,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Text(
                   _name,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 17,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _email,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 11,
@@ -986,7 +1105,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Row(
                   children: [
                     const Icon(
-                      Icons.account_balance_wallet_rounded,
+                      Icons
+                          .account_balance_wallet_rounded,
                       color: Colors.white70,
                       size: 14,
                     ),
@@ -994,10 +1114,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       '${fanBalance.toStringAsFixed(4)} '
                       '${_t('fan', 'FAN')}',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         color: Colors.white,
                         fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontWeight:
+                            FontWeight.w800,
                       ),
                     ),
                   ],
@@ -1021,7 +1143,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return 'PF';
     }
 
-    final parts = value.split(RegExp(r'\s+'));
+    final parts =
+        value.split(RegExp(r'\s+'));
 
     if (parts.length == 1) {
       final text = parts.first;
@@ -1029,7 +1152,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return text
           .substring(
             0,
-            text.length > 2 ? 2 : text.length,
+            text.length > 2
+                ? 2
+                : text.length,
           )
           .toUpperCase();
     }
@@ -1046,7 +1171,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(20),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -1056,7 +1182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(
+            padding:
+                const EdgeInsets.fromLTRB(
               16,
               15,
               16,
@@ -1067,7 +1194,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(
                 color: deepPurple,
                 fontSize: 14,
-                fontWeight: FontWeight.w800,
+                fontWeight:
+                    FontWeight.w800,
               ),
             ),
           ),
@@ -1084,7 +1212,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 3,
       ),
@@ -1092,8 +1221,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: purple.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
+          color:
+              purple.withValues(alpha: 0.08),
+          borderRadius:
+              BorderRadius.circular(12),
         ),
         child: Icon(
           icon,
@@ -1111,7 +1242,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       subtitle: Text(
         subtitle,
         maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+        overflow:
+            TextOverflow.ellipsis,
         style: const TextStyle(
           fontSize: 10.5,
           color: Colors.grey,
@@ -1127,7 +1259,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildNotificationTile() {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 3,
       ),
@@ -1135,8 +1268,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: purple.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
+          color:
+              purple.withValues(alpha: 0.08),
+          borderRadius:
+              BorderRadius.circular(12),
         ),
         child: const Icon(
           Icons.notifications_none_rounded,
@@ -1145,7 +1280,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       title: Text(
-        _t('notifications', 'Notifications'),
+        _t(
+          'notifications',
+          'Notifications',
+        ),
         style: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
@@ -1182,18 +1320,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Icons.logout_rounded,
         ),
         label: Text(
-          _t('logout', 'Logout').toUpperCase(),
+          _t(
+            'logout',
+            'Logout',
+          ).toUpperCase(),
           style: const TextStyle(
             fontWeight: FontWeight.w900,
           ),
         ),
-        style: OutlinedButton.styleFrom(
+        style:
+            OutlinedButton.styleFrom(
           foregroundColor: Colors.red,
           side: BorderSide(
             color: Colors.red.shade200,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(15),
           ),
         ),
       ),
