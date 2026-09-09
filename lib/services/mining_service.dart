@@ -288,8 +288,7 @@ class MiningService {
 
     final referralRate = _toDouble(mining['referral_rate']);
 
-    final calculatedRate =
-        baseRate + adRate + referralRate;
+    final calculatedRate = baseRate + adRate + referralRate;
 
     if (calculatedRate <= 0) {
       return defaultMiningRate;
@@ -340,8 +339,7 @@ class MiningService {
 
     final now = DateTime.now().toUtc();
 
-    return !endsAt.isAfter(now) &&
-        mining['claimed'] != true;
+    return !endsAt.isAfter(now) && mining['claimed'] != true;
   }
 
   Future<bool> isExpired() async {
@@ -422,74 +420,13 @@ class MiningService {
 
   // ============================================================
   // ESTIMATED EARNED
+  // SERVER AUTHORITATIVE
   // ============================================================
 
   Future<double> getEstimatedEarned() async {
     final mining = await getActiveMining();
 
-    final serverReward = _toDouble(mining['reward']);
-
-    if (serverReward > 0) {
-      return serverReward;
-    }
-
-    final startedAt = _parseDateTime(mining['started_at']);
-    final endsAt = _parseDateTime(mining['ends_at']);
-
-    if (startedAt == null || endsAt == null) {
-      return 0.0;
-    }
-
-    final now = DateTime.now().toUtc();
-
-    if (!endsAt.isAfter(startedAt)) {
-      return 0.0;
-    }
-
-    final effectiveNow =
-        now.isAfter(endsAt) ? endsAt : now;
-
-    if (!effectiveNow.isAfter(startedAt)) {
-      return 0.0;
-    }
-
-    final elapsedSeconds =
-        effectiveNow.difference(startedAt).inSeconds;
-
-    if (elapsedSeconds <= 0) {
-      return 0.0;
-    }
-
-    final totalSeconds =
-        endsAt.difference(startedAt).inSeconds;
-
-    if (totalSeconds <= 0) {
-      return 0.0;
-    }
-
-    final baseRate = _toDouble(
-      mining['base_rate'],
-      fallback: defaultMiningRate,
-    );
-
-    final adRate = _toDouble(mining['ad_rate']);
-
-    final referralRate =
-        _toDouble(mining['referral_rate']);
-
-    final totalRate =
-        baseRate + adRate + referralRate;
-
-    if (totalRate <= 0) {
-      return 0.0;
-    }
-
-    final earned =
-        totalRate * elapsedSeconds / 3600.0;
-
-    return double.parse(
-      earned.toStringAsFixed(6),
-    );
+    return _toDouble(mining['reward']);
   }
 
   // ============================================================
