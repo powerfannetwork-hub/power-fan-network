@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:crypto/crypto.dart';
 
 class DeviceService {
   DeviceService._();
@@ -17,84 +17,49 @@ class DeviceService {
   static const String _deviceRegisteredKey = 'device_registered';
 
   static const MethodChannel _deviceChannel =
-      MethodChannel('power_fan_network/device');
+      MethodChannel('power_fan/device');
 
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Returns a stable device identifier.
-  ///
-  /// Android:
-  ///   Uses Settings.Secure.ANDROID_ID obtained from native Android.
-  ///
-  /// Other platforms:
-  ///   Uses a locally persisted random identifier.
-  ///
-  /// The Android identifier is hashed before being sent to Supabase.
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // ------------------------------------------------------------
-    // ANDROID
-    // ------------------------------------------------------------
+    /*
+     * Android:
+     * Android ANDROID_ID -> SHA-256 -> Supabase
+     *
+     * We intentionally do not generate a new random/timestamp
+     * identity on Android because that would weaken device binding.
+     */
     if (!kIsWeb && Platform.isAndroid) {
-      try {
-        final androidId = await _deviceChannel.invokeMethod<String>(
-          'getAndroidId',
-        );
+      final androidId = await _getAndroidId();
 
-        if (androidId != null &&
-            androidId.trim().isNotEmpty &&
-            androidId != 'unknown') {
-          final normalized = androidId.trim().toLowerCase();
+      final hashedDeviceId = sha256
+          .convert(utf8.encode(androidId))
+          .toString();
 
-          final hash = sha256.convert(
-            utf8.encode(
-              'POWER_FAN_NETWORK_DEVICE:$normalized',
-            ),
-          );
+      final deviceId = 'ANDROID-$hashedDeviceId';
 
-          final deviceId = 'PFN-A-$hash';
+      await prefs.setString(_deviceIdKey, deviceId);
 
-          // Cache only as a performance fallback.
-          await prefs.setString(
-            _deviceIdKey,
-            deviceId,
-          );
-
-          return deviceId;
-        }
-      } catch (_) {
-        // Continue to cached/fallback identifier.
-      }
+      return deviceId;
     }
 
-    // ------------------------------------------------------------
-    // CACHED IDENTIFIER
-    // ------------------------------------------------------------
+    /*
+     * Non-Android fallback.
+     *
+     * Android uses the native ANDROID_ID above.
+     */
     final savedDeviceId = prefs.getString(_deviceIdKey);
 
     if (savedDeviceId != null && savedDeviceId.isNotEmpty) {
       return savedDeviceId;
     }
 
-    // ------------------------------------------------------------
-    // FALLBACK
-    // ------------------------------------------------------------
-    //
-    // This is only used when the native stable identifier cannot
-    // be obtained.
-    //
-    // Android normally reaches the ANDROID_ID branch above.
-    //
-    final randomSource = DateTime.now().microsecondsSinceEpoch.toString();
+    final platform = _getPlatformName();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    final hash = sha256.convert(
-      utf8.encode(
-        'POWER_FAN_NETWORK_FALLBACK:$randomSource',
-      ),
-    );
-
-    final deviceId = 'PFN-F-$hash';
+    final deviceId = 'PFN-$platform-$timestamp';
 
     await prefs.setString(
       _deviceIdKey,
@@ -102,6 +67,27 @@ class DeviceService {
     );
 
     return deviceId;
+  }
+
+  Future<String> _getAndroidId() async {
+    try {
+      final androidId =
+          await _deviceChannel.invokeMethod<String>(
+        'getAndroidId',
+      );
+
+      if (androidId == null || androidId.trim().isEmpty) {
+        throw Exception(
+          'Android device ID is unavailable.',
+        );
+      }
+
+      return androidId.trim();
+    } on PlatformException catch (e) {
+      throw Exception(
+        'Unable to read Android device ID: ${e.message ?? e.code}',
+      );
+    }
   }
 
   Future<String> getAppVersion() async {
@@ -184,11 +170,14 @@ class DeviceService {
   Future<void> clearDeviceRegistration() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // IMPORTANT:
-    // We intentionally DO NOT delete _deviceIdKey.
-    //
-    // Logging out or clearing registration state must not create
-    // a new device identity.
+    /*
+     * IMPORTANT:
+     * We only clear the local registration flag.
+     *
+     * We DO NOT delete the actual device ID.
+     * This preserves the one-device-one-account binding
+     * even after logout.
+     */
     await prefs.remove(_deviceRegisteredKey);
   }
 
