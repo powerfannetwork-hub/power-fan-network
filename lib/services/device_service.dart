@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:crypto/crypto.dart';
 
 class DeviceService {
   DeviceService._();
@@ -13,23 +16,90 @@ class DeviceService {
   static const String _deviceIdKey = 'power_fan_device_id';
   static const String _deviceRegisteredKey = 'device_registered';
 
+  static const MethodChannel _deviceChannel =
+      MethodChannel('power_fan_network/device');
+
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  /// Returns a stable device identifier.
+  ///
+  /// Android:
+  ///   Uses Settings.Secure.ANDROID_ID obtained from native Android.
+  ///
+  /// Other platforms:
+  ///   Uses a locally persisted random identifier.
+  ///
+  /// The Android identifier is hashed before being sent to Supabase.
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
 
+    // ------------------------------------------------------------
+    // ANDROID
+    // ------------------------------------------------------------
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final androidId = await _deviceChannel.invokeMethod<String>(
+          'getAndroidId',
+        );
+
+        if (androidId != null &&
+            androidId.trim().isNotEmpty &&
+            androidId != 'unknown') {
+          final normalized = androidId.trim().toLowerCase();
+
+          final hash = sha256.convert(
+            utf8.encode(
+              'POWER_FAN_NETWORK_DEVICE:$normalized',
+            ),
+          );
+
+          final deviceId = 'PFN-A-$hash';
+
+          // Cache only as a performance fallback.
+          await prefs.setString(
+            _deviceIdKey,
+            deviceId,
+          );
+
+          return deviceId;
+        }
+      } catch (_) {
+        // Continue to cached/fallback identifier.
+      }
+    }
+
+    // ------------------------------------------------------------
+    // CACHED IDENTIFIER
+    // ------------------------------------------------------------
     final savedDeviceId = prefs.getString(_deviceIdKey);
 
     if (savedDeviceId != null && savedDeviceId.isNotEmpty) {
       return savedDeviceId;
     }
 
-    final platform = _getPlatformName();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    // ------------------------------------------------------------
+    // FALLBACK
+    // ------------------------------------------------------------
+    //
+    // This is only used when the native stable identifier cannot
+    // be obtained.
+    //
+    // Android normally reaches the ANDROID_ID branch above.
+    //
+    final randomSource = DateTime.now().microsecondsSinceEpoch.toString();
 
-    final deviceId = 'PFN-$platform-$timestamp';
+    final hash = sha256.convert(
+      utf8.encode(
+        'POWER_FAN_NETWORK_FALLBACK:$randomSource',
+      ),
+    );
 
-    await prefs.setString(_deviceIdKey, deviceId);
+    final deviceId = 'PFN-F-$hash';
+
+    await prefs.setString(
+      _deviceIdKey,
+      deviceId,
+    );
 
     return deviceId;
   }
@@ -114,6 +184,11 @@ class DeviceService {
   Future<void> clearDeviceRegistration() async {
     final prefs = await SharedPreferences.getInstance();
 
+    // IMPORTANT:
+    // We intentionally DO NOT delete _deviceIdKey.
+    //
+    // Logging out or clearing registration state must not create
+    // a new device identity.
     await prefs.remove(_deviceRegisteredKey);
   }
 
