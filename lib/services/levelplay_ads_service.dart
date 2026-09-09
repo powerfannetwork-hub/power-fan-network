@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:unity_levelplay_mediation/unity_levelplay_mediation.dart';
 
+import 'kyc_service.dart';
 import 'mining_service.dart';
 import 'supabase_service.dart';
 
@@ -32,7 +33,6 @@ class LevelPlayAdsService
   bool _loading = false;
   bool _showing = false;
 
-  // Prevent duplicate processing of the same rewarded-ad event.
   bool _rewardProcessing = false;
   bool _rewardGrantedForCurrentAd = false;
 
@@ -210,8 +210,6 @@ class LevelPlayAdsService
         return false;
       }
 
-      // Set the authenticated Supabase user as
-      // LevelPlay dynamic user ID.
       await LevelPlay.setDynamicUserId(userId);
 
       _onRewarded = onRewarded;
@@ -219,7 +217,6 @@ class LevelPlayAdsService
 
       _showing = true;
 
-      // Reset reward-processing state for this ad.
       _rewardProcessing = false;
       _rewardGrantedForCurrentAd = false;
 
@@ -284,7 +281,6 @@ class LevelPlayAdsService
 
     _createRewardedAd();
 
-    // Start loading the first rewarded ad.
     loadRewardedAd();
   }
 
@@ -372,7 +368,6 @@ class LevelPlayAdsService
       '$reward | $adInfo',
     );
 
-    // Protect against duplicate reward callbacks.
     if (_rewardProcessing ||
         _rewardGrantedForCurrentAd) {
       debugPrint(
@@ -389,8 +384,8 @@ class LevelPlayAdsService
        *
        * FAN is NOT added directly on the device.
        *
-       * Supabase is responsible for recording the ad
-       * and calculating the mining boost.
+       * Supabase records the rewarded ad and
+       * calculates the mining boost.
        *
        * Base rate:
        *   0.20 FAN/H
@@ -407,6 +402,35 @@ class LevelPlayAdsService
 
       await MiningService.instance
           .recordAndVerifyRewardedAd();
+
+      /*
+       * KYC DAILY BOOST
+       *
+       * Only record the boost day AFTER the
+       * server successfully records and verifies
+       * the rewarded ad.
+       *
+       * The database prevents duplicate boost
+       * records for the same day.
+       */
+      try {
+        await KycService().recordDailyBoost();
+
+        debugPrint(
+          'KYC: daily boost recorded successfully.',
+        );
+      } catch (e) {
+        /*
+         * Do not undo the mining reward if the
+         * KYC progress refresh fails.
+         *
+         * The ad reward has already been verified
+         * by the mining backend.
+         */
+        debugPrint(
+          'KYC daily boost recording failed: $e',
+        );
+      }
 
       _rewardGrantedForCurrentAd = true;
 
@@ -455,7 +479,6 @@ class LevelPlayAdsService
     _rewardProcessing = false;
     _rewardGrantedForCurrentAd = false;
 
-    // Load the next rewarded ad.
     loadRewardedAd();
   }
 
