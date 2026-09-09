@@ -75,6 +75,10 @@ class AuthService {
       final Map<String, dynamic> metadata =
           <String, dynamic>{
         'username': cleanUsername,
+
+        // This records that the registration flow
+        // contains the one-person-one-account notice.
+        'registration_notice_presented': true,
       };
 
       if (cleanReferral != null &&
@@ -88,6 +92,22 @@ class AuthService {
         password: password,
         data: metadata,
       );
+
+      // ----------------------------------------------------------
+      // ACCEPT REGISTRATION NOTICE
+      // ----------------------------------------------------------
+      //
+      // If Supabase returns an active session immediately,
+      // save the acceptance now.
+      //
+      // If email confirmation is enabled, there may be no
+      // session yet. In that case the login() method below
+      // will save the acceptance after the user confirms email.
+      // ----------------------------------------------------------
+
+      if (response.session != null) {
+        await acceptRegistrationNotice();
+      }
 
       return response;
     } on AuthException catch (e) {
@@ -133,8 +153,113 @@ class AuthService {
         password: password,
       );
 
+      // ----------------------------------------------------------
+      // REGISTRATION NOTICE
+      // ----------------------------------------------------------
+      //
+      // This also handles users who registered while email
+      // confirmation was enabled and therefore had no session
+      // immediately after signUp().
+      //
+      // Existing accounts are safe because schema.plus.sql
+      // already backfills old profiles as accepted.
+      // ----------------------------------------------------------
+
+      if (response.session != null) {
+        try {
+          await acceptRegistrationNotice();
+        } catch (_) {
+          // Do not block a valid login if saving the notice
+          // temporarily fails.
+        }
+      }
+
       return response;
     } on AuthException catch (e) {
+      throw Exception(e.message);
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+
+      throw Exception(e.toString());
+    }
+  }
+
+  // ============================================================
+  // ACCEPT REGISTRATION NOTICE
+  // ============================================================
+
+  Future<Map<String, dynamic>>
+      acceptRegistrationNotice() async {
+    try {
+      final user = _supabase.auth.currentUser;
+
+      if (user == null) {
+        return <String, dynamic>{
+          'success': false,
+          'message': 'Authentication required',
+        };
+      }
+
+      final result = await _supabase.rpc(
+        'accept_registration_notice',
+      );
+
+      if (result is Map<String, dynamic>) {
+        return result;
+      }
+
+      if (result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+
+      throw Exception(
+        'Invalid response from accept_registration_notice.',
+      );
+    } on PostgrestException catch (e) {
+      throw Exception(e.message);
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+
+      throw Exception(e.toString());
+    }
+  }
+
+  // ============================================================
+  // ACCOUNT SECURITY STATUS
+  // ============================================================
+
+  Future<Map<String, dynamic>>
+      getAccountSecurityStatus() async {
+    try {
+      final user = _supabase.auth.currentUser;
+
+      if (user == null) {
+        return <String, dynamic>{
+          'success': false,
+          'message': 'Authentication required',
+        };
+      }
+
+      final result = await _supabase.rpc(
+        'get_account_security_status',
+      );
+
+      if (result is Map<String, dynamic>) {
+        return result;
+      }
+
+      if (result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+
+      throw Exception(
+        'Invalid response from get_account_security_status.',
+      );
+    } on PostgrestException catch (e) {
       throw Exception(e.message);
     } catch (e) {
       if (e is Exception) {
