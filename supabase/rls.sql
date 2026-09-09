@@ -35,6 +35,7 @@ enable row level security;
 -- ============================================================
 -- 2. PROTECTED PROFILE FIELDS
 -- ============================================================
+
 --
 -- Users may update normal profile information such as:
 -- name and email.
@@ -44,7 +45,7 @@ enable row level security;
 --
 -- SECURITY DEFINER functions run as the database owner,
 -- so current_user is different from the authenticated user.
--- ============================================================
+--
 
 create or replace function public.protect_profile_fields()
 returns trigger
@@ -61,6 +62,7 @@ begin
 
 
     -- Authenticated users cannot modify reward/mining state.
+
     if new.id is distinct from old.id then
         raise exception 'Profile ID cannot be changed';
     end if;
@@ -182,30 +184,40 @@ on public.profiles;
 drop policy if exists "Users can update own profile"
 on public.profiles;
 
+
 drop policy if exists "Users can view own notifications"
 on public.notifications;
 
 drop policy if exists "Users can update own notifications"
 on public.notifications;
 
+
 drop policy if exists "Users can view own mining sessions"
 on public.mining_sessions;
+
 
 drop policy if exists "Users can view own ad rewards"
 on public.ad_rewards;
 
+
 drop policy if exists "Users can view own social rewards"
 on public.social_rewards;
+
 
 drop policy if exists "Users can view own referral rewards"
 on public.referral_rewards;
 
+
 drop policy if exists "Users can view own check ins"
 on public.daily_check_ins;
+
 
 drop policy if exists "Users can view own kyc"
 on public.kyc_verifications;
 
+
+-- IMPORTANT:
+-- KYC UPDATE policy is intentionally removed.
 drop policy if exists "Users can update own kyc"
 on public.kyc_verifications;
 
@@ -330,6 +342,7 @@ using (
 -- 11. KYC
 -- ============================================================
 
+-- Users can READ their own KYC status.
 create policy "Users can view own kyc"
 on public.kyc_verifications
 for select
@@ -338,17 +351,18 @@ using (
     auth.uid() = user_id
 );
 
-
-create policy "Users can update own kyc"
-on public.kyc_verifications
-for update
-to authenticated
-using (
-    auth.uid() = user_id
-)
-with check (
-    auth.uid() = user_id
-);
+-- NO UPDATE POLICY HERE.
+--
+-- KYC verification records must only be changed by
+-- trusted SECURITY DEFINER / service_role backend functions.
+--
+-- Examples:
+--   start_face_verification()
+--   complete_face_verification()
+--   confirm_face_verification()
+--
+-- The authenticated client must NOT be able to directly
+-- modify KYC verification status.
 
 
 -- ============================================================
@@ -359,29 +373,36 @@ revoke all
 on public.profiles
 from anon;
 
+
 revoke all
 on public.notifications
 from anon;
+
 
 revoke all
 on public.mining_sessions
 from anon;
 
+
 revoke all
 on public.ad_rewards
 from anon;
+
 
 revoke all
 on public.social_rewards
 from anon;
 
+
 revoke all
 on public.referral_rewards
 from anon;
 
+
 revoke all
 on public.daily_check_ins
 from anon;
+
 
 revoke all
 on public.kyc_verifications
@@ -396,6 +417,7 @@ grant select
 on public.profiles
 to authenticated;
 
+
 grant update
 on public.profiles
 to authenticated;
@@ -404,6 +426,7 @@ to authenticated;
 grant select
 on public.notifications
 to authenticated;
+
 
 grant update
 on public.notifications
@@ -439,9 +462,14 @@ grant select
 on public.kyc_verifications
 to authenticated;
 
-grant update
-on public.kyc_verifications
-to authenticated;
+
+-- IMPORTANT:
+-- There is intentionally NO:
+--
+-- grant update on public.kyc_verifications
+-- to authenticated;
+--
+-- KYC changes must go through trusted backend functions.
 
 
 -- ============================================================
