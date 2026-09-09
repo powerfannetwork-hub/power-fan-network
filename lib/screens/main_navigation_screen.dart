@@ -36,7 +36,8 @@ class _MainNavigationScreenState
         index: _currentIndex,
         children: screens,
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(context),
+      bottomNavigationBar:
+          _buildBottomNavigationBar(context),
     );
   }
 
@@ -48,7 +49,7 @@ class _MainNavigationScreenState
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.07),
+            color: Colors.black.withValues(alpha: 0.07),
             blurRadius: 18,
             offset: const Offset(0, -4),
           ),
