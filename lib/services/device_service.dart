@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,9 +11,9 @@ class DeviceService {
   static final DeviceService instance = DeviceService._();
 
   static const String _deviceIdKey = 'power_fan_device_id';
+  static const String _deviceRegisteredKey = 'device_registered';
 
-  final SupabaseClient _supabase =
-      Supabase.instance.client;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<String> getDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
@@ -33,19 +34,40 @@ class DeviceService {
     return deviceId;
   }
 
+  Future<String> getAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+
+    if (packageInfo.version.isEmpty) {
+      return 'unknown';
+    }
+
+    if (packageInfo.buildNumber.isEmpty) {
+      return packageInfo.version;
+    }
+
+    return '${packageInfo.version}+${packageInfo.buildNumber}';
+  }
+
   Future<Map<String, dynamic>> registerDevice() async {
     final user = _supabase.auth.currentUser;
 
     if (user == null) {
-      throw Exception('Authentication required');
+      return {
+        'success': false,
+        'message': 'Authentication required',
+      };
     }
 
     final deviceId = await getDeviceId();
+    final platform = _getPlatformName();
+    final appVersion = await getAppVersion();
 
     final result = await _supabase.rpc(
       'register_device',
       params: {
         'p_device_id': deviceId,
+        'p_platform': platform,
+        'p_app_version': appVersion,
       },
     );
 
@@ -62,27 +84,6 @@ class DeviceService {
     );
   }
 
-  Future<bool> isDeviceRegistered() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    return prefs.getBool('device_registered') ?? false;
-  }
-
-  Future<void> markDeviceRegistered() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setBool(
-      'device_registered',
-      true,
-    );
-  }
-
-  Future<void> clearDeviceRegistration() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.remove('device_registered');
-  }
-
   Future<Map<String, dynamic>> registerAndSave() async {
     final result = await registerDevice();
 
@@ -93,6 +94,27 @@ class DeviceService {
     }
 
     return result;
+  }
+
+  Future<bool> isDeviceRegistered() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getBool(_deviceRegisteredKey) ?? false;
+  }
+
+  Future<void> markDeviceRegistered() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool(
+      _deviceRegisteredKey,
+      true,
+    );
+  }
+
+  Future<void> clearDeviceRegistration() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove(_deviceRegisteredKey);
   }
 
   String _getPlatformName() {
