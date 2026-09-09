@@ -210,7 +210,9 @@ class MiningService {
     final adId = recorded['id']?.toString();
 
     if (adId == null || adId.isEmpty) {
-      throw Exception('Rewarded ad was recorded without an ID.');
+      throw Exception(
+        'Rewarded ad was recorded without an ID.',
+      );
     }
 
     return verifyRewardedAd(adId);
@@ -237,7 +239,9 @@ class MiningService {
   Future<int> getActiveReferrals() async {
     final mining = await getActiveMining();
 
-    return _toInt(mining['active_referrals']);
+    return _toInt(
+      mining['active_referrals'],
+    );
   }
 
   // ============================================================
@@ -273,7 +277,9 @@ class MiningService {
   Future<double> getCurrentMiningRate() async {
     final mining = await getActiveMining();
 
-    final totalRate = _toDouble(mining['total_rate']);
+    final totalRate = _toDouble(
+      mining['total_rate'],
+    );
 
     if (totalRate > 0) {
       return totalRate;
@@ -284,11 +290,18 @@ class MiningService {
       fallback: defaultMiningRate,
     );
 
-    final adRate = _toDouble(mining['ad_rate']);
+    final adRate = _toDouble(
+      mining['ad_rate'],
+    );
 
-    final referralRate = _toDouble(mining['referral_rate']);
+    final referralRate = _toDouble(
+      mining['referral_rate'],
+    );
 
-    final calculatedRate = baseRate + adRate + referralRate;
+    final calculatedRate =
+        baseRate +
+        adRate +
+        referralRate;
 
     if (calculatedRate <= 0) {
       return defaultMiningRate;
@@ -304,14 +317,18 @@ class MiningService {
   Future<bool> isMining() async {
     final mining = await getActiveMining();
 
-    final status = mining['status']?.toString().toLowerCase();
+    final status =
+        mining['status']?.toString().toLowerCase();
 
     if (status == 'active' || status == 'mining') {
       return true;
     }
 
-    final startedAt = _parseDateTime(mining['started_at']);
-    final endsAt = _parseDateTime(mining['ends_at']);
+    final startedAt =
+        _parseDateTime(mining['started_at']);
+
+    final endsAt =
+        _parseDateTime(mining['ends_at']);
 
     if (startedAt == null || endsAt == null) {
       return false;
@@ -319,19 +336,23 @@ class MiningService {
 
     final now = DateTime.now().toUtc();
 
-    return now.isAfter(startedAt) && now.isBefore(endsAt);
+    return now.isAfter(startedAt) &&
+        now.isBefore(endsAt);
   }
 
   Future<bool> isClaimable() async {
     final mining = await getActiveMining();
 
-    final status = mining['status']?.toString().toLowerCase();
+    final status =
+        mining['status']?.toString().toLowerCase();
 
-    if (status == 'claimable' || status == 'completed') {
+    if (status == 'claimable' ||
+        status == 'completed') {
       return true;
     }
 
-    final endsAt = _parseDateTime(mining['ends_at']);
+    final endsAt =
+        _parseDateTime(mining['ends_at']);
 
     if (endsAt == null) {
       return false;
@@ -339,19 +360,23 @@ class MiningService {
 
     final now = DateTime.now().toUtc();
 
-    return !endsAt.isAfter(now) && mining['claimed'] != true;
+    return !endsAt.isAfter(now) &&
+        mining['claimed'] != true;
   }
 
   Future<bool> isExpired() async {
     final mining = await getActiveMining();
 
-    final endsAt = _parseDateTime(mining['ends_at']);
+    final endsAt =
+        _parseDateTime(mining['ends_at']);
 
     if (endsAt == null) {
       return false;
     }
 
-    return !endsAt.isAfter(DateTime.now().toUtc());
+    return !endsAt.isAfter(
+      DateTime.now().toUtc(),
+    );
   }
 
   // ============================================================
@@ -361,13 +386,17 @@ class MiningService {
   Future<DateTime?> getMiningStartedAt() async {
     final mining = await getActiveMining();
 
-    return _parseDateTime(mining['started_at']);
+    return _parseDateTime(
+      mining['started_at'],
+    );
   }
 
   Future<DateTime?> getMiningEndsAt() async {
     final mining = await getActiveMining();
 
-    return _parseDateTime(mining['ends_at']);
+    return _parseDateTime(
+      mining['ends_at'],
+    );
   }
 
   // ============================================================
@@ -426,7 +455,9 @@ class MiningService {
   Future<double> getEstimatedEarned() async {
     final mining = await getActiveMining();
 
-    return _toDouble(mining['reward']);
+    return _toDouble(
+      mining['reward'],
+    );
   }
 
   // ============================================================
@@ -436,7 +467,9 @@ class MiningService {
   Future<double> getCurrentReward() async {
     final mining = await getActiveMining();
 
-    return _toDouble(mining['reward']);
+    return _toDouble(
+      mining['reward'],
+    );
   }
 
   // ============================================================
@@ -478,13 +511,15 @@ class MiningService {
       }
     }
 
-    final claimed = mining['claimed'] == true;
+    final claimed =
+        mining['claimed'] == true;
 
     if (claimed) {
       return 'claimed';
     }
 
-    final endsAt = _parseDateTime(mining['ends_at']);
+    final endsAt =
+        _parseDateTime(mining['ends_at']);
 
     if (endsAt != null) {
       final now = DateTime.now().toUtc();
@@ -503,11 +538,14 @@ class MiningService {
   // COMPLETE EXPIRED MINING SESSION
   // ============================================================
 
-  Future<Map<String, dynamic>> completeExpiredMiningSession() async {
+  Future<Map<String, dynamic>>
+      completeExpiredMiningSession() async {
     userId;
 
     final result =
-        await _client.rpc('complete_expired_mining_session');
+        await _client.rpc(
+      'complete_expired_mining_session',
+    );
 
     return _mapFromRpcResult(result);
   }
@@ -516,11 +554,13 @@ class MiningService {
   // REFRESH MINING DATA
   // ============================================================
 
-  Future<Map<String, dynamic>> refreshMining() async {
+  Future<Map<String, dynamic>>
+      refreshMining() async {
     try {
       await completeExpiredMiningSession();
     } catch (_) {
-      // The mining engine itself handles the authoritative state.
+      // The mining engine itself handles
+      // the authoritative state.
     }
 
     return getActiveMining();
@@ -530,17 +570,23 @@ class MiningService {
   // HELPERS
   // ============================================================
 
-  Map<String, dynamic> _mapFromRpcResult(dynamic result) {
+  Map<String, dynamic> _mapFromRpcResult(
+    dynamic result,
+  ) {
     if (result == null) {
       return <String, dynamic>{};
     }
 
     if (result is Map<String, dynamic>) {
-      return Map<String, dynamic>.from(result);
+      return Map<String, dynamic>.from(
+        result,
+      );
     }
 
     if (result is Map) {
-      return Map<String, dynamic>.from(result);
+      return Map<String, dynamic>.from(
+        result,
+      );
     }
 
     if (result is List) {
@@ -551,11 +597,15 @@ class MiningService {
       final first = result.first;
 
       if (first is Map<String, dynamic>) {
-        return Map<String, dynamic>.from(first);
+        return Map<String, dynamic>.from(
+          first,
+        );
       }
 
       if (first is Map) {
-        return Map<String, dynamic>.from(first);
+        return Map<String, dynamic>.from(
+          first,
+        );
       }
     }
 
@@ -632,7 +682,9 @@ class MiningService {
     return value;
   }
 
-  DateTime? _parseDateTime(dynamic value) {
+  DateTime? _parseDateTime(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
@@ -650,31 +702,5 @@ class MiningService {
     final parsed = DateTime.tryParse(text);
 
     return parsed?.toUtc();
-  }
-
-  DateTime? _fromTimestamp(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-
-    if (value is DateTime) {
-      return value.toUtc();
-    }
-
-    if (value is int) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        value,
-        isUtc: true,
-      );
-    }
-
-    if (value is double) {
-      return DateTime.fromMillisecondsSinceEpoch(
-        value.toInt(),
-        isUtc: true,
-      );
-    }
-
-    return _parseDateTime(value);
   }
 }
