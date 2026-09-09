@@ -10,6 +10,7 @@ import 'localization/app_localizations.dart';
 import 'localization/language_controller.dart';
 import 'pages/auth_page.dart';
 import 'screens/main_navigation_screen.dart';
+import 'services/device_service.dart';
 import 'services/notification_service.dart';
 
 const String supabaseUrl =
@@ -30,7 +31,6 @@ Future<void> main() async {
   );
 
   await NotificationService.instance.initialize();
-
   await LanguageController.instance.loadSavedLanguage();
 
   runApp(const PowerFanApp());
@@ -202,6 +202,13 @@ class _AppRootState extends State<AppRoot> {
         setState(() {});
       }
       return;
+    }
+
+    try {
+      await DeviceService.instance.registerAndSave();
+    } catch (_) {
+      // Device registration must not prevent
+      // the app from starting.
     }
 
     try {
