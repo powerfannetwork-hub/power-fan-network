@@ -28,7 +28,8 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? get user => _user;
 
   Future<void> refresh() async {
-    final currentUser = SupabaseService.client.auth.currentUser;
+    final currentUser =
+        SupabaseService.client.auth.currentUser;
 
     if (currentUser == null) {
       _clearState();
@@ -39,7 +40,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final profile = await MiningService.instance.getProfile();
+      final profile =
+          await MiningService.instance.getProfile();
+
+      if (profile == null) {
+        return;
+      }
 
       _user = profile;
 
@@ -51,7 +57,8 @@ class AppState extends ChangeNotifier {
         profile['afam_balance'],
       );
 
-      final mining = await MiningService.instance.getActiveMining();
+      final mining =
+          await MiningService.instance.getActiveMining();
 
       _miningActive =
           mining['is_mining'] == true ||
@@ -148,6 +155,10 @@ class AppState extends ChangeNotifier {
     try {
       final profile =
           await MiningService.instance.getProfile();
+
+      if (profile == null) {
+        return;
+      }
 
       _user = profile;
 
