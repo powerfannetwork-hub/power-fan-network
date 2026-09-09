@@ -16,14 +16,17 @@ class DailySocialTask {
   final bool likeVerified;
   final bool commentVerified;
   final bool shareVerified;
+  final bool joinVerified;
+  final bool subscribeVerified;
 
   final bool requiresFollow;
+  final bool requiresLike;
   final bool requiresComment;
   final bool requiresShare;
+  final bool requiresJoin;
+  final bool requiresSubscribe;
 
   // Kept for compatibility with the existing UI/code.
-  // The new social system does NOT use taskDate
-  // to decide whether a task is available.
   final DateTime? taskDate;
 
   // New-post system fields.
@@ -43,15 +46,22 @@ class DailySocialTask {
     required this.likeVerified,
     required this.commentVerified,
     required this.shareVerified,
+    required this.joinVerified,
+    required this.subscribeVerified,
     required this.requiresFollow,
+    required this.requiresLike,
     required this.requiresComment,
     required this.requiresShare,
+    required this.requiresJoin,
+    required this.requiresSubscribe,
     required this.taskDate,
     required this.postExternalId,
     required this.postPublishedAt,
   });
 
-  factory DailySocialTask.fromMap(Map<String, dynamic> map) {
+  factory DailySocialTask.fromMap(
+    Map<String, dynamic> map,
+  ) {
     return DailySocialTask(
       id: (map['id'] ?? '').toString(),
 
@@ -59,31 +69,80 @@ class DailySocialTask {
 
       description: (map['description'] ?? '').toString(),
 
-      url: (map['task_url'] ?? map['url'] ?? '').toString(),
+      url: (
+        map['task_url'] ??
+        map['url'] ??
+        ''
+      ).toString(),
 
-      platform: (map['platform'] ?? '').toString(),
+      platform: (
+        map['platform'] ??
+        ''
+      ).toString(),
 
-      rewardFan: _toDouble(map['reward_fan']),
+      rewardFan: _toDouble(
+        map['reward_fan'],
+      ),
 
-      claimed: _toBool(map['claimed']),
+      claimed: _toBool(
+        map['claimed'],
+      ),
 
-      canClaim: _toBool(map['can_claim']),
+      canClaim: _toBool(
+        map['can_claim'],
+      ),
 
-      followVerified: _toBool(map['follow_verified']),
+      followVerified: _toBool(
+        map['follow_verified'],
+      ),
 
-      likeVerified: _toBool(map['like_verified']),
+      likeVerified: _toBool(
+        map['like_verified'],
+      ),
 
-      commentVerified: _toBool(map['comment_verified']),
+      commentVerified: _toBool(
+        map['comment_verified'],
+      ),
 
-      shareVerified: _toBool(map['share_verified']),
+      shareVerified: _toBool(
+        map['share_verified'],
+      ),
 
-      requiresFollow: _toBool(map['requires_follow']),
+      joinVerified: _toBool(
+        map['join_verified'],
+      ),
 
-      requiresComment: _toBool(map['requires_comment']),
+      subscribeVerified: _toBool(
+        map['subscribe_verified'],
+      ),
 
-      requiresShare: _toBool(map['requires_share']),
+      requiresFollow: _toBool(
+        map['requires_follow'],
+      ),
 
-      taskDate: _toDate(map['task_date']),
+      requiresLike: _toBool(
+        map['requires_like'],
+      ),
+
+      requiresComment: _toBool(
+        map['requires_comment'],
+      ),
+
+      requiresShare: _toBool(
+        map['requires_share'],
+      ),
+
+      requiresJoin: _toBool(
+        map['requires_join'],
+      ),
+
+      requiresSubscribe: _toBool(
+        map['requires_subscribe'],
+      ),
+
+      taskDate: _toDate(
+        map['task_date'],
+      ),
 
       postExternalId: _toNullableString(
         map['post_external_id'],
@@ -95,7 +154,9 @@ class DailySocialTask {
     );
   }
 
-  static double _toDouble(dynamic value) {
+  static double _toDouble(
+    dynamic value,
+  ) {
     if (value == null) {
       return 0.0;
     }
@@ -110,7 +171,9 @@ class DailySocialTask {
         0.0;
   }
 
-  static bool _toBool(dynamic value) {
+  static bool _toBool(
+    dynamic value,
+  ) {
     if (value is bool) {
       return value;
     }
@@ -119,17 +182,21 @@ class DailySocialTask {
       return value != 0;
     }
 
-    final text = value?.toString().toLowerCase().trim();
+    final text =
+        value?.toString().toLowerCase().trim();
 
     return text == 'true' || text == '1';
   }
 
-  static DateTime? _toDate(dynamic value) {
+  static DateTime? _toDate(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
 
-    final text = value.toString().trim();
+    final text =
+        value.toString().trim();
 
     if (text.isEmpty) {
       return null;
@@ -138,12 +205,15 @@ class DailySocialTask {
     return DateTime.tryParse(text);
   }
 
-  static String? _toNullableString(dynamic value) {
+  static String? _toNullableString(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
 
-    final text = value.toString().trim();
+    final text =
+        value.toString().trim();
 
     if (text.isEmpty) {
       return null;
@@ -158,8 +228,38 @@ class DailySocialTask {
         postExternalId!.trim().isNotEmpty;
   }
 
-  /// Whether the user has completed the three actions
-  /// required for a post reward.
+  /// Whether all configured actions for this task
+  /// have been verified.
+  bool get allRequiredActionsVerified {
+    if (requiresFollow && !followVerified) {
+      return false;
+    }
+
+    if (requiresLike && !likeVerified) {
+      return false;
+    }
+
+    if (requiresComment && !commentVerified) {
+      return false;
+    }
+
+    if (requiresShare && !shareVerified) {
+      return false;
+    }
+
+    if (requiresJoin && !joinVerified) {
+      return false;
+    }
+
+    if (requiresSubscribe && !subscribeVerified) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /// Whether the user has completed the three
+  /// mandatory actions for a post reward.
   bool get postActionsVerified {
     return likeVerified &&
         commentVerified &&
@@ -168,21 +268,13 @@ class DailySocialTask {
 }
 
 class SocialTaskService {
-  final SupabaseClient _client = Supabase.instance.client;
+  final SupabaseClient _client =
+      Supabase.instance.client;
 
   /// Gets currently available official social-post tasks
   /// for the logged-in user.
-  ///
-  /// IMPORTANT:
-  /// The Supabase RPC keeps the existing name
-  /// `get_daily_social_tasks()` for compatibility.
-  ///
-  /// The database function no longer uses:
-  ///     task_date = current_date
-  ///
-  /// It now returns active official posts that have
-  /// a post_external_id.
-  Future<List<DailySocialTask>> getDailyTasksForCard() async {
+  Future<List<DailySocialTask>>
+      getDailyTasksForCard() async {
     try {
       final response = await _client.rpc(
         'get_daily_social_tasks',
@@ -208,7 +300,9 @@ class SocialTaskService {
               }
 
               return DailySocialTask.fromMap(
-                Map<String, dynamic>.from(item),
+                Map<String, dynamic>.from(
+                  item,
+                ),
               );
             },
           )
@@ -224,13 +318,7 @@ class SocialTaskService {
     }
   }
 
-  /// Starts one specific official social post task.
-  ///
-  /// Supabase function:
-  /// public.start_social_task(p_task_id uuid)
-  ///
-  /// The user ID is NOT sent from Flutter.
-  /// Supabase uses auth.uid().
+  /// Starts one specific official social task.
   Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
@@ -276,8 +364,10 @@ class SocialTaskService {
     }
   }
 
-  /// Opens the official social-media post URL.
-  Future<bool> openTaskUrl(String url) async {
+  /// Opens the official social-media task URL.
+  Future<bool> openTaskUrl(
+    String url,
+  ) async {
     final cleanUrl = url.trim();
 
     if (cleanUrl.isEmpty) {
@@ -308,22 +398,9 @@ class SocialTaskService {
     }
   }
 
-  /// Claims the reward for a verified social post.
+  /// Claims the reward for a verified social task.
   ///
-  /// IMPORTANT:
-  /// This method DOES NOT perform fake verification.
-  ///
-  /// Verification must already have been completed by the
-  /// trusted backend/server process.
-  ///
-  /// Required post actions:
-  ///   Like + Comment + Share
-  ///
-  /// Follow/Subscribe/Join is handled separately through
-  /// user_social_follows and is not repeated for every post.
-  ///
-  /// Supabase function:
-  /// public.claim_daily_social_reward(p_task_id uuid)
+  /// Verification is performed by the trusted backend.
   Future<Map<String, dynamic>> verifyAndClaim({
     required String taskId,
   }) async {
@@ -332,11 +409,7 @@ class SocialTaskService {
     );
   }
 
-  /// Claims a verified social-post reward.
-  ///
-  /// This is the preferred method name for new code.
-  /// `verifyAndClaim()` is kept above for compatibility
-  /// with existing HomeScreen code.
+  /// Claims a verified social-task reward.
   Future<Map<String, dynamic>> claimReward({
     required String taskId,
   }) async {
@@ -382,11 +455,9 @@ class SocialTaskService {
     }
   }
 
-  /// Reloads currently available social-post tasks.
-  ///
-  /// The method name is kept for compatibility with
-  /// existing HomeScreen code.
-  Future<List<DailySocialTask>> refreshTasks() async {
+  /// Reloads currently available social tasks.
+  Future<List<DailySocialTask>>
+      refreshTasks() async {
     return getDailyTasksForCard();
   }
 }
