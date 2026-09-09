@@ -18,9 +18,11 @@ class _KycPageState extends State<KycPage> {
   final KycService _kycService = KycService();
 
   KycStatus _status = KycStatus.initial();
+  MigrationStatus _migrationStatus = MigrationStatus.initial();
 
   bool _loading = true;
   bool _checkingIn = false;
+  bool _migrating = false;
 
   String? _errorMessage;
 
@@ -39,12 +41,16 @@ class _KycPageState extends State<KycPage> {
     });
 
     try {
-      final status = await _kycService.getProgress();
+      final results = await Future.wait([
+        _kycService.getProgress(),
+        _kycService.getMigrationStatus(),
+      ]);
 
       if (!mounted) return;
 
       setState(() {
-        _status = status;
+        _status = results[0] as KycStatus;
+        _migrationStatus = results[1] as MigrationStatus;
         _loading = false;
       });
     } catch (error) {
@@ -68,8 +74,7 @@ class _KycPageState extends State<KycPage> {
     });
 
     try {
-      final updatedStatus =
-          await _kycService.claimDailyCheckIn();
+      final updatedStatus = await _kycService.claimDailyCheckIn();
 
       if (!mounted) return;
 
@@ -83,6 +88,8 @@ class _KycPageState extends State<KycPage> {
             ? 'Daily Check-in completed successfully.'
             : 'Daily Check-in completed.',
       );
+
+      await _refreshMigrationStatus();
     } catch (error) {
       if (!mounted) return;
 
@@ -96,6 +103,143 @@ class _KycPageState extends State<KycPage> {
         isError: true,
       );
     }
+  }
+
+  Future<void> _refreshMigrationStatus() async {
+    try {
+      final migrationStatus =
+          await _kycService.getMigrationStatus();
+
+      if (!mounted) return;
+
+      setState(() {
+        _migrationStatus = migrationStatus;
+      });
+    } catch (_) {
+      // Migration status refresh must not interrupt KYC UI.
+    }
+  }
+
+  Future<void> _migrateFanToAfam() async {
+    if (_migrating) return;
+
+    if (!_migrationStatus.migrationAvailable) {
+      _showMessage(
+        _migrationStatus.message.isNotEmpty
+            ? _migrationStatus.message
+            : 'AFAM migration is not available yet.',
+        isError: true,
+      );
+      return;
+    }
+
+    final confirmed = await _showMigrationConfirmation();
+
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _migrating = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await _kycService.migrateFanToAfam();
+
+      if (!mounted) return;
+
+      setState(() {
+        _migrating = false;
+      });
+
+      final success = result['success'] == true;
+      final message = result['message']?.toString();
+
+      if (success) {
+        _showMessage(
+          message?.isNotEmpty == true
+              ? message!
+              : 'FAN migration to AFAM completed successfully.',
+        );
+
+        await _loadKyc();
+      } else {
+        _showMessage(
+          message?.isNotEmpty == true
+              ? message!
+              : 'AFAM migration could not be completed.',
+          isError: true,
+        );
+
+        await _refreshMigrationStatus();
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _migrating = false;
+        _errorMessage = _cleanError(error);
+      });
+
+      _showMessage(
+        _errorMessage ?? 'AFAM migration failed.',
+        isError: true,
+      );
+    }
+  }
+
+  Future<bool> _showMigrationConfirmation() async {
+    final fanBalance = _migrationStatus.fanBalance;
+    final conversion = _migrationStatus.fanPerAfam;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Confirm AFAM Migration',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: deepPurple,
+            ),
+          ),
+          content: Text(
+            'You are about to migrate your entire FAN balance.\n\n'
+            'FAN balance: ${fanBalance.toStringAsFixed(4)} FAN\n'
+            'Conversion: $conversion FAN = 1 AFAM\n\n'
+            'This action cannot be reversed.',
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'MIGRATE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result ?? false;
   }
 
   String _cleanError(Object error) {
@@ -326,7 +470,8 @@ class _KycPageState extends State<KycPage> {
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.error_outline_rounded,
@@ -734,61 +879,261 @@ class _KycPageState extends State<KycPage> {
   }
 
   Widget _buildMigrationCard() {
-    return _card(
-      child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.10),
-              borderRadius:
-                  BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.swap_horiz_rounded,
-              color: Colors.orange,
-              size: 25,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+    final bool available =
+        _migrationStatus.migrationAvailable;
+
+    final bool completed =
+        _migrationStatus.migrationCompleted;
+
+    final bool faceVerified =
+        _migrationStatus.faceVerified;
+
+    final double fanBalance =
+        _migrationStatus.fanBalance;
+
+    final double afamBalance =
+        _migrationStatus.afamBalance;
+
+    final double conversion =
+        _migrationStatus.fanPerAfam;
+
+    if (completed) {
+      return _card(
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  'AFAM Migration',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color:
+                        greenColor.withOpacity(0.10),
+                    borderRadius:
+                        BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: greenColor,
+                    size: 25,
                   ),
                 ),
-                SizedBox(height: 5),
-                Text(
-                  'Migration is currently COMING SOON. Your FAN balance will remain available until the official migration period.',
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 12,
-                    height: 1.45,
-                  ),
-                ),
-                SizedBox(height: 9),
-                Text(
-                  'COMING SOON',
-                  style: TextStyle(
-                    color: Colors.orange,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'AFAM Migration',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: deepPurple,
+                    ),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 14),
+            _balanceRow(
+              label: 'FAN Balance',
+              value:
+                  '${fanBalance.toStringAsFixed(4)} FAN',
+            ),
+            const SizedBox(height: 8),
+            _balanceRow(
+              label: 'AFAM Balance',
+              value:
+                  '${afamBalance.toStringAsFixed(4)} AFAM',
+            ),
+            const SizedBox(height: 12),
+            _statusBox(
+              icon:
+                  Icons.verified_rounded,
+              title: 'MIGRATION COMPLETED',
+              message:
+                  'Your FAN balance has been migrated to AFAM.',
+              color: greenColor,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _card(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color:
+                      Colors.orange.withOpacity(0.10),
+                  borderRadius:
+                      BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  available
+                      ? Icons.swap_horiz_rounded
+                      : Icons.lock_outline_rounded,
+                  color: Colors.orange,
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'AFAM Migration',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: deepPurple,
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 14),
+          _balanceRow(
+            label: 'FAN Balance',
+            value:
+                '${fanBalance.toStringAsFixed(4)} FAN',
+          ),
+          const SizedBox(height: 8),
+          _balanceRow(
+            label: 'AFAM Balance',
+            value:
+                '${afamBalance.toStringAsFixed(4)} AFAM',
+          ),
+          const SizedBox(height: 8),
+          _balanceRow(
+            label: 'Conversion',
+            value:
+                '${conversion.toStringAsFixed(0)} FAN = 1 AFAM',
+          ),
+          const SizedBox(height: 14),
+          if (!faceVerified)
+            _statusBox(
+              icon:
+                  Icons.lock_outline_rounded,
+              title: 'FACE VERIFICATION REQUIRED',
+              message:
+                  'Complete the KYC requirements and face verification before FAN migration becomes available.',
+              color: Colors.grey.shade700,
+            )
+          else if (!available)
+            _statusBox(
+              icon:
+                  Icons.schedule_rounded,
+              title: 'COMING SOON',
+              message:
+                  _migrationStatus.message.isNotEmpty
+                      ? _migrationStatus.message
+                      : 'AFAM migration is not open yet. Your FAN balance remains safe.',
+              color: Colors.orange,
+            )
+          else if (fanBalance <= 0)
+            _statusBox(
+              icon:
+                  Icons.account_balance_wallet_outlined,
+              title: 'NO FAN BALANCE',
+              message:
+                  'There is no FAN balance available for migration.',
+              color: Colors.grey.shade700,
+            )
+          else
+            Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.stretch,
+              children: [
+                _statusBox(
+                  icon:
+                      Icons.verified_rounded,
+                  title: 'MIGRATION AVAILABLE',
+                  message:
+                      'Your account is eligible to migrate FAN to AFAM.',
+                  color: greenColor,
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed:
+                        _migrating
+                            ? null
+                            : _migrateFanToAfam,
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          primaryColor,
+                      foregroundColor:
+                          Colors.white,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          13,
+                        ),
+                      ),
+                    ),
+                    icon: _migrating
+                        ? const SizedBox(
+                            width: 19,
+                            height: 19,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.swap_horiz_rounded,
+                          ),
+                    label: Text(
+                      _migrating
+                          ? 'MIGRATING...'
+                          : 'MIGRATE FAN TO AFAM',
+                      style: const TextStyle(
+                        fontWeight:
+                            FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
+    );
+  }
+
+  Widget _balanceRow({
+    required String label,
+    required String value,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: deepPurple,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 
@@ -804,7 +1149,8 @@ class _KycPageState extends State<KycPage> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.08),
+                  color:
+                      primaryColor.withOpacity(0.08),
                   borderRadius:
                       BorderRadius.circular(12),
                 ),
@@ -827,7 +1173,8 @@ class _KycPageState extends State<KycPage> {
           const SizedBox(height: 13),
           Text(
             'KYC progress is controlled by the Supabase backend. '
-            'Daily check-ins and boosts are protected against duplicate claims.',
+            'Daily check-ins, boosts, face verification, and migration '
+            'are protected by server-side checks.',
             style: TextStyle(
               color: Colors.grey.shade700,
               fontSize: 12,
@@ -855,7 +1202,8 @@ class _KycPageState extends State<KycPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.025),
+            color:
+                Colors.black.withOpacity(0.025),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
