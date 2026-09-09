@@ -5,22 +5,21 @@
 --
 -- BASE MINING RATE:        0.20 FAN/H
 -- SESSION:                 24 HOURS
--- AD BOOST:                +0.10 FAN/H
+-- BASE SESSION REWARD:     4.80 FAN
+--
+-- AD BOOST:                +0.10 FAN/H PER AD
 -- MAX ADS:                 7 PER SESSION
+--
 -- REFERRAL BOOST:          +0.02 FAN/H PER ACTIVE REFERRAL
 --
 -- INACTIVITY PENALTY:
---   0-72h       = 0 FAN penalty
---   72-96h      = 0 FAN penalty
---   96-120h     = -20 FAN
+--   0-72h       = 0 FAN
+--   72-96h      = 0 FAN
+--   96h         = -20 FAN
+--   120h        = -40 FAN total
+--   144h        = -60 FAN total
 --   Every 24h   = additional -20 FAN
 --   Minimum     = 0 FAN
---
--- REWARD MODEL:
---   Base mining      = 0.20 FAN/H for full session
---   Ads              = +0.10 FAN/H from watched_at onward
---   Referrals        = +0.02 FAN/H while referred user's
---                      mining session is active
 --
 -- SERVER TIMESTAMPS ARE THE SOURCE OF TRUTH.
 -- ============================================================
@@ -35,6 +34,10 @@ add column if not exists last_mining_at timestamptz;
 
 alter table public.profiles
 add column if not exists inactivity_penalty_at timestamptz;
+
+create index if not exists idx_profiles_last_mining_at
+on public.profiles(last_mining_at)
+where last_mining_at is not null;
 
 
 -- ============================================================
@@ -172,15 +175,22 @@ begin
     )
     into v_reward
     from public.profiles referred
+
     join public.mining_sessions rs
       on rs.user_id = referred.id
+
     join public.referrals r
       on r.referred_id = referred.id
      and r.referrer_id = p_user_id
+
     where referred.referred_by = p_user_id
+
       and r.activated_at is not null
+
       and rs.started_at < p_ends_at
+
       and rs.ends_at > p_started_at
+
       and greatest(
           rs.started_at,
           p_started_at,
@@ -203,24 +213,6 @@ $function$;
 
 -- ============================================================
 -- 5. APPLY INACTIVITY PENALTY
--- ============================================================
---
--- 0-72 hours:
---     no penalty
---
--- 72-96 hours:
---     still no penalty
---
--- 96-120 hours:
---     -20 FAN
---
--- 120-144 hours:
---     another -20 FAN
---
--- Every additional 24 hours:
---     -20 FAN
---
--- Balance can never go below 0.
 -- ============================================================
 
 create or replace function public.apply_inactivity_penalty(
@@ -249,12 +241,16 @@ begin
         last_mining_at,
         inactivity_penalty_at,
         coalesce(fan_balance, 0)
+
     into
         v_last_mining,
         v_penalty_at,
         v_old_balance
+
     from public.profiles
+
     where id = p_user_id
+
     for update;
 
 
@@ -268,7 +264,7 @@ begin
     end if;
 
 
-    -- No mining history yet.
+    -- No mining history = no inactivity penalty.
     if v_last_mining is null then
 
         return jsonb_build_object(
@@ -289,7 +285,7 @@ begin
         ) / 3600.0;
 
 
-    -- First 72 hours are penalty-free.
+    -- First 72 hours are completely free.
     if v_elapsed_hours <= 72 then
 
         return jsonb_build_object(
@@ -304,7 +300,7 @@ begin
     end if;
 
 
-    -- First penalty becomes due at 96 hours.
+    -- 72h -> 96h = no penalty.
     v_due_periods :=
         floor(
             (v_elapsed_hours - 72) / 24
@@ -325,7 +321,8 @@ begin
     end if;
 
 
-    -- Prevent duplicate deductions.
+    -- If penalties were already applied,
+    -- only calculate NEW penalty periods.
     if v_penalty_at is not null then
 
         v_due_periods :=
@@ -361,21 +358,23 @@ begin
         v_due_periods * 20.0;
 
 
-    -- Never allow negative FAN balance.
+    -- Balance can NEVER become negative.
     v_new_balance :=
         greatest(
-            v_old_balance - v_penalty,
+            coalesce(v_old_balance, 0) - v_penalty,
             0
         );
 
 
     update public.profiles
+
     set
         fan_balance = v_new_balance,
 
         inactivity_penalty_at =
             coalesce(
                 inactivity_penalty_at,
+
                 last_mining_at
                     + interval '72 hours'
             )
@@ -393,10 +392,19 @@ begin
     return jsonb_build_object(
         'success', true,
         'penalty_applied', true,
-        'penalty_periods', v_due_periods,
-        'penalty', v_penalty,
-        'old_balance', v_old_balance,
-        'fan_balance', v_new_balance,
+
+        'penalty_periods',
+            v_due_periods,
+
+        'penalty',
+            v_penalty,
+
+        'old_balance',
+            v_old_balance,
+
+        'fan_balance',
+            v_new_balance,
+
         'inactive_hours',
             round(v_elapsed_hours, 2)
     );
@@ -427,6 +435,7 @@ begin
 
     v_user_id := auth.uid();
 
+
     if v_user_id is null then
         raise exception 'Authentication required';
     end if;
@@ -434,11 +443,15 @@ begin
 
     select *
     into v_session
+
     from public.mining_sessions
+
     where user_id = v_user_id
       and claimed = false
       and ends_at > now()
+
     order by started_at desc
+
     limit 1;
 
 
@@ -452,7 +465,9 @@ begin
 
         select count(*)::integer
         into v_ads
+
         from public.ad_rewards
+
         where user_id = v_user_id
           and session_id = v_session.id;
 
@@ -461,7 +476,10 @@ begin
 
     v_ads :=
         least(
-            coalesce(v_ads, 0),
+            greatest(
+                coalesce(v_ads, 0),
+                0
+            ),
             7
         );
 
@@ -476,15 +494,25 @@ begin
 
 
     update public.profiles
+
     set
         mining_rate = v_rate,
-        active_referrals = v_referrals,
-        daily_ads_watched = v_ads,
-        ad_boost = round(
-            v_ads * 0.10,
-            4
-        ),
-        updated_at = now()
+
+        active_referrals =
+            v_referrals,
+
+        daily_ads_watched =
+            v_ads,
+
+        ad_boost =
+            round(
+                v_ads * 0.10,
+                4
+            ),
+
+        updated_at =
+            now()
+
     where id = v_user_id;
 
 
@@ -538,6 +566,7 @@ declare
     v_existing public.mining_sessions%rowtype;
 
     v_session_id uuid;
+
     v_started_at timestamptz;
     v_ends_at timestamptz;
 
@@ -549,15 +578,19 @@ begin
 
     v_user_id := auth.uid();
 
+
     if v_user_id is null then
         raise exception 'Authentication required';
     end if;
 
 
-    -- Lock profile.
+    -- Lock the profile to prevent concurrent mining starts.
     perform 1
+
     from public.profiles
+
     where id = v_user_id
+
     for update;
 
 
@@ -566,54 +599,81 @@ begin
     end if;
 
 
-    -- Apply any inactivity penalty before starting.
+    -- Apply any pending inactivity penalty first.
     v_penalty_result :=
         public.apply_inactivity_penalty(
             v_user_id
         );
 
 
-    -- Prevent concurrent/new sessions.
     select *
     into v_existing
+
     from public.mining_sessions
+
     where user_id = v_user_id
       and claimed = false
+
     order by started_at desc
+
     limit 1
+
     for update;
 
 
     if found then
 
-        -- Existing session is still active.
+        -- Existing active session.
         if now() < v_existing.ends_at then
 
             return jsonb_build_object(
                 'success', true,
+
                 'already_active', true,
+
                 'claim_required', false,
-                'session_id', v_existing.id,
-                'started_at', v_existing.started_at,
-                'ends_at', v_existing.ends_at,
+
+                'session_id',
+                    v_existing.id,
+
+                'started_at',
+                    v_existing.started_at,
+
+                'ends_at',
+                    v_existing.ends_at,
+
                 'mining_rate',
                     public.get_user_mining_rate(),
-                'status', 'active'
+
+                'status',
+                    'active'
             );
 
         end if;
 
 
-        -- Existing session expired and must be claimed.
+        -- Existing expired but unclaimed session.
         return jsonb_build_object(
             'success', false,
+
             'already_active', false,
+
             'claim_required', true,
+
             'expired', true,
-            'session_id', v_existing.id,
-            'started_at', v_existing.started_at,
-            'ends_at', v_existing.ends_at,
-            'status', 'claimable',
+
+            'session_id',
+                v_existing.id,
+
+            'started_at',
+                v_existing.started_at,
+
+            'ends_at',
+                v_existing.ends_at,
+
+            'status',
+                'claimable',
+
             'message',
                 'Claim your completed mining session before starting a new one'
         );
@@ -621,8 +681,9 @@ begin
     end if;
 
 
-    -- New 24-hour session.
-    v_started_at := now();
+    v_started_at :=
+        now();
+
 
     v_ends_at :=
         v_started_at
@@ -635,7 +696,6 @@ begin
         );
 
 
-    -- Base rate + active referral bonus.
     v_rate :=
         round(
             0.20
@@ -645,26 +705,43 @@ begin
 
 
     insert into public.mining_sessions (
+
         user_id,
+
         started_at,
+
         ends_at,
+
         mining_rate,
+
         claimed,
+
         reward_amount
+
     )
+
     values (
+
         v_user_id,
+
         v_started_at,
+
         v_ends_at,
+
         v_rate,
+
         false,
+
         0
+
     )
+
     returning id
     into v_session_id;
 
 
     update public.profiles
+
     set
         mining_active = true,
 
@@ -686,11 +763,9 @@ begin
         ad_boost =
             0,
 
-        -- RESET INACTIVITY CLOCK.
         last_mining_at =
             v_started_at,
 
-        -- RESET PENALTY CLOCK.
         inactivity_penalty_at =
             null,
 
@@ -701,9 +776,15 @@ begin
 
 
     return jsonb_build_object(
-        'success', true,
-        'already_active', false,
-        'claim_required', false,
+
+        'success',
+            true,
+
+        'already_active',
+            false,
+
+        'claim_required',
+            false,
 
         'session_id',
             v_session_id,
@@ -734,6 +815,7 @@ begin
                 v_penalty_result -> 'penalty',
                 '0'::jsonb
             )
+
     );
 
 end;
@@ -795,7 +877,9 @@ declare
     v_until_now timestamptz;
 begin
 
-    v_user_id := auth.uid();
+    v_user_id :=
+        auth.uid();
+
 
     if v_user_id is null then
         raise exception 'Authentication required';
@@ -804,61 +888,108 @@ begin
 
     select *
     into v_session
+
     from public.mining_sessions
+
     where user_id = v_user_id
       and claimed = false
+
     order by started_at desc
+
     limit 1
+
     for update;
 
 
     if not found then
 
         return jsonb_build_object(
-            'success', true,
-            'active', false,
-            'mining_active', false,
-            'expired', false,
-            'claimable', false,
-            'reward', 0,
-            'mining_rate', 0.20,
-            'ads_watched', 0,
-            'ad_boost', 0,
-            'active_referrals', 0
+
+            'success',
+                true,
+
+            'active',
+                false,
+
+            'mining_active',
+                false,
+
+            'expired',
+                false,
+
+            'claimable',
+                false,
+
+            'reward',
+                0,
+
+            'mining_rate',
+                0.20,
+
+            'ads_watched',
+                0,
+
+            'ad_boost',
+                0,
+
+            'active_referrals',
+                0
+
         );
 
     end if;
 
 
-    -- Session expired.
     if now() >= v_session.ends_at then
 
         update public.profiles
+
         set
             mining_active = false,
+
             mining_started_at = null,
+
             mining_ends_at = null,
+
             updated_at = now()
+
         where id = v_user_id;
 
 
         return jsonb_build_object(
-            'success', true,
-            'active', false,
-            'mining_active', false,
-            'expired', true,
-            'claimable', true,
-            'session_id', v_session.id,
-            'started_at', v_session.started_at,
-            'ends_at', v_session.ends_at,
+
+            'success',
+                true,
+
+            'active',
+                false,
+
+            'mining_active',
+                false,
+
+            'expired',
+                true,
+
+            'claimable',
+                true,
+
+            'session_id',
+                v_session.id,
+
+            'started_at',
+                v_session.started_at,
+
+            'ends_at',
+                v_session.ends_at,
+
             'message',
                 'Mining session completed and ready to claim'
+
         );
 
     end if;
 
 
-    -- Current active session.
     v_until_now :=
         least(
             now(),
@@ -868,14 +999,19 @@ begin
 
     select count(*)::integer
     into v_ads
+
     from public.ad_rewards
+
     where user_id = v_user_id
       and session_id = v_session.id;
 
 
     v_ads :=
         least(
-            coalesce(v_ads, 0),
+            greatest(
+                coalesce(v_ads, 0),
+                0
+            ),
             7
         );
 
@@ -913,7 +1049,7 @@ begin
         );
 
 
-    -- Base mining reward.
+    -- Base mining.
     v_reward :=
         (
             greatest(
@@ -921,57 +1057,90 @@ begin
                 0
             )
             / 3600.0
-        ) * 0.20;
+        )
+        * 0.20;
 
 
-    -- Time-weighted ad reward.
+    -- Time-weighted ad rewards.
     v_reward :=
         v_reward
         +
         public.calculate_ad_bonus_reward(
+
             v_user_id,
+
             v_session.started_at,
+
             v_until_now
+
         );
 
 
-    -- Time-weighted referral reward.
+    -- Time-weighted referral rewards.
     v_reward :=
         v_reward
         +
         public.calculate_referral_bonus_reward(
+
             v_user_id,
+
             v_session.started_at,
+
             v_until_now
+
         );
 
 
     v_reward :=
         round(
-            greatest(v_reward, 0),
+            greatest(
+                v_reward,
+                0
+            ),
             8
         );
 
 
     update public.profiles
+
     set
-        mining_rate = v_rate,
-        active_referrals = v_referrals,
-        daily_ads_watched = v_ads,
-        ad_boost = round(
-            v_ads * 0.10,
-            4
-        ),
-        updated_at = now()
+        mining_rate =
+            v_rate,
+
+        active_referrals =
+            v_referrals,
+
+        daily_ads_watched =
+            v_ads,
+
+        ad_boost =
+            round(
+                v_ads * 0.10,
+                4
+            ),
+
+        updated_at =
+            now()
+
     where id = v_user_id;
 
 
     return jsonb_build_object(
-        'success', true,
-        'active', true,
-        'mining_active', true,
-        'expired', false,
-        'claimable', false,
+
+        'success',
+            true,
+
+        'active',
+            true,
+
+        'mining_active',
+            true,
+
+        'expired',
+            false,
+
+        'claimable',
+            false,
 
         'session_id',
             v_session.id,
@@ -983,10 +1152,16 @@ begin
             v_session.ends_at,
 
         'elapsed_seconds',
-            greatest(v_elapsed, 0),
+            greatest(
+                v_elapsed,
+                0
+            ),
 
         'remaining_seconds',
-            greatest(v_remaining, 0),
+            greatest(
+                v_remaining,
+                0
+            ),
 
         'reward',
             v_reward,
@@ -1005,6 +1180,7 @@ begin
 
         'active_referrals',
             v_referrals
+
     );
 
 end;
@@ -1035,7 +1211,9 @@ declare
     v_rate numeric(12,4);
 begin
 
-    v_user_id := auth.uid();
+    v_user_id :=
+        auth.uid();
+
 
     if v_user_id is null then
         raise exception 'Authentication required';
@@ -1044,38 +1222,54 @@ begin
 
     select *
     into v_session
+
     from public.mining_sessions
+
     where user_id = v_user_id
+
       and claimed = false
+
       and ends_at > now()
+
     order by started_at desc
+
     limit 1
+
     for update;
 
 
     if not found then
+
         raise exception
             'Start mining before watching a rewarded ad';
+
     end if;
 
 
     select count(*)::integer
     into v_ads
+
     from public.ad_rewards
+
     where user_id = v_user_id
       and session_id = v_session.id;
 
 
     v_ads :=
         least(
-            coalesce(v_ads, 0),
+            greatest(
+                coalesce(v_ads, 0),
+                0
+            ),
             7
         );
 
 
     if v_ads >= 7 then
+
         raise exception
             'Maximum of 7 rewarded ads reached';
+
     end if;
 
 
@@ -1084,19 +1278,33 @@ begin
 
 
     insert into public.ad_rewards (
+
         user_id,
+
         session_id,
+
         ad_number,
+
         watched_at,
+
         reward_amount
+
     )
+
     values (
+
         v_user_id,
+
         v_session.id,
+
         v_next_ad,
+
         now(),
+
         0.10
+
     )
+
     returning id
     into v_ad_id;
 
@@ -1117,33 +1325,61 @@ begin
 
 
     update public.profiles
+
     set
-        mining_rate = v_rate,
-        daily_ads_watched = v_next_ad,
-        ad_boost = round(
-            v_next_ad * 0.10,
-            4
-        ),
-        active_referrals = v_referrals,
-        updated_at = now()
+        mining_rate =
+            v_rate,
+
+        daily_ads_watched =
+            v_next_ad,
+
+        ad_boost =
+            round(
+                v_next_ad * 0.10,
+                4
+            ),
+
+        active_referrals =
+            v_referrals,
+
+        updated_at =
+            now()
+
     where id = v_user_id;
 
 
     return jsonb_build_object(
-        'success', true,
-        'ad_id', v_ad_id,
-        'session_id', v_session.id,
-        'ad_number', v_next_ad,
-        'ads_watched', v_next_ad,
-        'reward_rate', 0.10,
+
+        'success',
+            true,
+
+        'ad_id',
+            v_ad_id,
+
+        'session_id',
+            v_session.id,
+
+        'ad_number',
+            v_next_ad,
+
+        'ads_watched',
+            v_next_ad,
+
+        'reward_rate',
+            0.10,
+
         'ad_boost',
             round(
                 v_next_ad * 0.10,
                 4
             ),
-        'mining_rate', v_rate,
+
+        'mining_rate',
+            v_rate,
+
         'message',
             'Rewarded ad recorded successfully'
+
     );
 
 end;
@@ -1197,7 +1433,9 @@ declare
     v_session public.mining_sessions%rowtype;
 begin
 
-    v_user_id := auth.uid();
+    v_user_id :=
+        auth.uid();
+
 
     if v_user_id is null then
         raise exception 'Authentication required';
@@ -1206,28 +1444,37 @@ begin
 
     select *
     into v_ad
+
     from public.ad_rewards
+
     where id = p_ad_id
       and user_id = v_user_id;
 
 
     if not found then
+
         raise exception
             'Rewarded ad record not found';
+
     end if;
 
 
     select *
     into v_session
+
     from public.mining_sessions
+
     where id = v_ad.session_id
       and user_id = v_user_id
+
     limit 1;
 
 
     if not found then
+
         raise exception
             'Advertisement is not linked to a valid mining session';
+
     end if;
 
 
@@ -1251,10 +1498,19 @@ begin
 
 
     return jsonb_build_object(
-        'success', true,
-        'verified', true,
-        'ad_id', v_ad.id,
-        'ad_number', v_ad.ad_number,
+
+        'success',
+            true,
+
+        'verified',
+            true,
+
+        'ad_id',
+            v_ad.id,
+
+        'ad_number',
+            v_ad.ad_number,
+
         'reward_rate',
             greatest(
                 least(
@@ -1266,10 +1522,13 @@ begin
                 ),
                 0
             ),
+
         'watched_at',
             v_ad.watched_at,
+
         'session_id',
             v_session.id
+
     );
 
 end;
@@ -1291,6 +1550,8 @@ declare
 
     v_session public.mining_sessions%rowtype;
 
+    v_penalty_result jsonb;
+
     v_old_balance numeric(24,8);
     v_new_balance numeric(24,8);
 
@@ -1304,18 +1565,34 @@ declare
     v_final_rate numeric(12,4);
 begin
 
-    v_user_id := auth.uid();
+    v_user_id :=
+        auth.uid();
+
 
     if v_user_id is null then
         raise exception 'Authentication required';
     end if;
 
 
-    -- Lock profile.
+    -- ========================================================
+    -- IMPORTANT:
+    -- Apply inactivity penalty BEFORE reading balance.
+    -- This prevents the old balance from overwriting the penalty.
+    -- ========================================================
+
+    v_penalty_result :=
+        public.apply_inactivity_penalty(
+            v_user_id
+        );
+
+
     select fan_balance
     into v_old_balance
+
     from public.profiles
+
     where id = v_user_id
+
     for update;
 
 
@@ -1327,25 +1604,38 @@ begin
     -- Find completed unclaimed session.
     select *
     into v_session
+
     from public.mining_sessions
+
     where user_id = v_user_id
+
       and claimed = false
+
       and ends_at <= now()
+
     order by ends_at desc
+
     limit 1
+
     for update;
 
 
     if not found then
+
         raise exception
             'No completed mining session is available to claim';
+
     end if;
 
 
-    -- Base reward:
-    -- 24 hours * 0.20 = 4.80 FAN.
+    -- ========================================================
+    -- BASE REWARD
+    -- 24 hours × 0.20 FAN/H = 4.80 FAN
+    -- ========================================================
+
     v_base_reward :=
         round(
+
             (
                 extract(
                     epoch from (
@@ -1353,60 +1643,103 @@ begin
                         - v_session.started_at
                     )
                 ) / 3600.0
+
             ) * 0.20,
+
             8
         );
 
 
-    -- Time-weighted ad reward.
+    -- ========================================================
+    -- AD REWARD
+    -- Time-weighted from watched_at until session end.
+    -- ========================================================
+
     v_ad_reward :=
         round(
+
             public.calculate_ad_bonus_reward(
+
                 v_user_id,
+
                 v_session.started_at,
+
                 v_session.ends_at
+
             ),
+
             8
         );
 
 
-    -- Time-weighted referral reward.
+    -- ========================================================
+    -- REFERRAL REWARD
+    -- Time-weighted while referral is actively mining.
+    -- ========================================================
+
     v_referral_reward :=
         round(
+
             public.calculate_referral_bonus_reward(
+
                 v_user_id,
+
                 v_session.started_at,
+
                 v_session.ends_at
+
             ),
+
             8
         );
 
 
-    -- Total reward.
+    -- ========================================================
+    -- TOTAL SESSION REWARD
+    -- ========================================================
+
     v_reward :=
         greatest(
+
             round(
+
                 v_base_reward
+
                 + v_ad_reward
+
                 + v_referral_reward,
+
                 8
+
             ),
+
             0
+
         );
 
+
+    -- ========================================================
+    -- ADD REWARD TO BALANCE AFTER PENALTY.
+    -- ========================================================
 
     v_new_balance :=
         round(
-            coalesce(
-                v_old_balance,
+
+            greatest(
+                coalesce(
+                    v_old_balance,
+                    0
+                ),
                 0
             )
+
             + v_reward,
+
             8
+
         );
 
 
-    -- Post-claim referral rate.
     v_active_referrals :=
         public.calculate_active_referrals(
             v_user_id
@@ -1415,66 +1748,124 @@ begin
 
     v_final_rate :=
         round(
+
             0.20
             + (v_active_referrals * 0.02),
+
             4
+
         );
 
 
-    -- Credit FAN and reset active mining state.
+    -- ========================================================
+    -- UPDATE PROFILE
+    -- ========================================================
+
     update public.profiles
+
     set
-        fan_balance = v_new_balance,
 
-        mining_active = false,
+        fan_balance =
+            v_new_balance,
 
-        mining_started_at = null,
+        mining_active =
+            false,
 
-        mining_ends_at = null,
+        mining_started_at =
+            null,
 
-        daily_ads_watched = 0,
+        mining_ends_at =
+            null,
 
-        ad_boost = 0,
+        daily_ads_watched =
+            0,
 
-        mining_rate = v_final_rate,
+        ad_boost =
+            0,
+
+        mining_rate =
+            v_final_rate,
 
         active_referrals =
             v_active_referrals,
 
-        updated_at = now()
+        updated_at =
+            now()
 
     where id = v_user_id;
 
 
-    -- Mark session claimed.
+    -- ========================================================
+    -- MARK SESSION CLAIMED.
+    -- ========================================================
+
     update public.mining_sessions
+
     set
-        claimed = true,
-        reward_amount = v_reward,
-        claimed_at = now()
+
+        claimed =
+            true,
+
+        reward_amount =
+            v_reward,
+
+        claimed_at =
+            now()
+
     where id = v_session.id
+
       and claimed = false;
 
 
     if not found then
+
         raise exception
             'Mining reward could not be claimed';
+
     end if;
 
 
     return jsonb_build_object(
-        'success', true,
-        'session_id', v_session.id,
-        'reward', v_reward,
-        'fan_reward', v_reward,
-        'base_reward', v_base_reward,
-        'ad_reward', v_ad_reward,
-        'referral_reward', v_referral_reward,
-        'fan_balance', v_new_balance,
-        'started_at', v_session.started_at,
-        'ends_at', v_session.ends_at,
+
+        'success',
+            true,
+
+        'session_id',
+            v_session.id,
+
+        'reward',
+            v_reward,
+
+        'fan_reward',
+            v_reward,
+
+        'base_reward',
+            v_base_reward,
+
+        'ad_reward',
+            v_ad_reward,
+
+        'referral_reward',
+            v_referral_reward,
+
+        'fan_balance',
+            v_new_balance,
+
+        'started_at',
+            v_session.started_at,
+
+        'ends_at',
+            v_session.ends_at,
+
+        'inactivity_penalty',
+            coalesce(
+                v_penalty_result -> 'penalty',
+                '0'::jsonb
+            ),
+
         'message',
             'Mining reward claimed successfully'
+
     );
 
 end;
@@ -1524,7 +1915,9 @@ declare
     v_session_id uuid;
 begin
 
-    v_user_id := auth.uid();
+    v_user_id :=
+        auth.uid();
+
 
     if v_user_id is null then
         raise exception 'Authentication required';
@@ -1533,12 +1926,19 @@ begin
 
     select id
     into v_session_id
+
     from public.mining_sessions
+
     where user_id = v_user_id
+
       and claimed = false
+
       and ends_at <= now()
+
     order by ends_at desc
+
     limit 1
+
     for update;
 
 
@@ -1548,11 +1948,21 @@ begin
 
 
     update public.profiles
+
     set
-        mining_active = false,
-        mining_started_at = null,
-        mining_ends_at = null,
-        updated_at = now()
+
+        mining_active =
+            false,
+
+        mining_started_at =
+            null,
+
+        mining_ends_at =
+            null,
+
+        updated_at =
+            now()
+
     where id = v_user_id;
 
 
@@ -1580,11 +1990,16 @@ declare
 begin
 
     for r in
+
         select id
+
         from public.profiles
+
         where last_mining_at is not null
+
           and last_mining_at
               <= now() - interval '72 hours'
+
     loop
 
         perform public.apply_inactivity_penalty(
@@ -1635,7 +2050,7 @@ from public, anon, authenticated;
 
 
 -- ============================================================
--- 19. PUBLIC RPC FUNCTIONS USED BY THE APPLICATION
+-- 19. APPLICATION RPC GRANTS
 -- ============================================================
 
 grant execute
@@ -1696,21 +2111,50 @@ to authenticated;
 -- ============================================================
 -- 20. AUTOMATIC INACTIVITY CRON
 -- ============================================================
---
--- Supabase pg_cron is already enabled in the production
--- project and this job already exists.
---
--- Reusing the same job name safely updates/overwrites the
--- existing job instead of creating another duplicate job.
--- ============================================================
 
 select cron.schedule(
+
     'pfn-inactivity-penalty-hourly',
+
     '0 * * * *',
+
     $$select public.run_inactivity_penalties();$$
+
 );
 
 
+-- ============================================================
+-- FINAL
+-- ============================================================
+--
+-- MINING:
+--   0.20 FAN/H
+--   24 HOURS
+--   4.80 FAN BASE
+--
+-- ADS:
+--   +0.10 FAN/H
+--   MAX 7
+--   TIME-WEIGHTED
+--
+-- REFERRALS:
+--   +0.02 FAN/H
+--   ACTIVE REFERRALS ONLY
+--   TIME-WEIGHTED
+--
+-- INACTIVITY:
+--   72 HOURS GRACE
+--   96 HOURS = -20
+--   EACH NEXT 24H = -20
+--   BALANCE MINIMUM = 0
+--
+-- CLAIM:
+--   PENALTY APPLIED FIRST
+--   THEN CURRENT BALANCE READ
+--   THEN REWARD ADDED
+--
+-- SERVER TIME = SOURCE OF TRUTH
+--
 -- ============================================================
 -- END OF FINAL MINING ENGINE
 -- ============================================================
