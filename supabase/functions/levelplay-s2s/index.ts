@@ -24,6 +24,7 @@ const admin = createClient(
   },
 );
 
+
 function response(
   body: string,
   status = 200,
@@ -37,11 +38,13 @@ function response(
   });
 }
 
+
 function clean(
   value: string | null,
 ): string {
   return (value ?? "").trim();
 }
+
 
 function md5(
   value: string,
@@ -50,6 +53,7 @@ function md5(
     .toString(CryptoJS.enc.Hex)
     .toLowerCase();
 }
+
 
 function safeEqual(
   a: string,
@@ -77,6 +81,7 @@ function safeEqual(
   return result === 0;
 }
 
+
 function isValidUuid(
   value: string,
 ): boolean {
@@ -84,6 +89,7 @@ function isValidUuid(
     value,
   );
 }
+
 
 function isValidLevelPlayTimestamp(
   timestamp: string,
@@ -111,6 +117,7 @@ function isValidLevelPlayTimestamp(
     month < 1 ||
     month > 12 ||
     day < 1 ||
+    day > 31 ||
     hour < 0 ||
     hour > 23 ||
     minute < 0 ||
@@ -147,32 +154,50 @@ function isValidLevelPlayTimestamp(
   );
 }
 
+
 Deno.serve(
   async (
     request: Request,
   ): Promise<Response> => {
+
     /*
      * ==========================================================
      * POWER FAN NETWORK
      * LEVELPLAY S2S REWARDED AD CALLBACK
      * ==========================================================
      *
-     * Security model:
+     * Supports:
      *
-     * 1. LevelPlay private-key signature
-     * 2. USER_ID UUID validation
-     * 3. EVENT_ID validation
-     * 4. REQUIRED APP_KEY validation
-     * 5. Supabase service_role RPC
-     * 6. Database duplicate EVENT_ID protection
-     * 7. Database active-session validation
-     * 8. Database maximum 7 ads/session
-     * 9. Database fixed +0.10 FAN/H reward rate
+     * 1. NORMAL MINING BOOST ADS
      *
-     * The Flutter client cannot call
-     * record_levelplay_reward().
+     * 2. CLAIM ADS
+     *
+     * NORMAL AD:
+     *
+     *   +0.10 FAN/H
+     *   maximum 7 per session
+     *
+     * CLAIM AD:
+     *
+     *   verifies claim permission only
+     *   does NOT add FAN immediately
+     *   does NOT extend mining
+     *   does NOT change mining rate
+     *
+     * SECURITY:
+     *
+     *   LevelPlay signature
+     *   App key
+     *   UUID validation
+     *   EVENT_ID validation
+     *   Supabase service_role
+     *   Database duplicate protection
+     *   Database session validation
+     *
+     * The Flutter client cannot call either S2S function.
      * ==========================================================
      */
+
 
     if (
       request.method !== "GET" &&
@@ -183,6 +208,7 @@ Deno.serve(
         405,
       );
     }
+
 
     if (
       !supabaseUrl ||
@@ -198,6 +224,7 @@ Deno.serve(
       );
     }
 
+
     if (!privateKey) {
       console.error(
         "LEVELPLAY_S2S_PRIVATE_KEY is missing.",
@@ -209,18 +236,6 @@ Deno.serve(
       );
     }
 
-    /*
-     * --------------------------------------------------------
-     * REQUIRED LEVELPLAY APP KEY
-     * --------------------------------------------------------
-     *
-     * The server MUST have LEVELPLAY_APP_KEY configured.
-     *
-     * This is intentionally NOT optional.
-     *
-     * Without the expected app key, the callback endpoint
-     * must not process any reward.
-     */
 
     if (!expectedAppKey) {
       console.error(
@@ -233,11 +248,13 @@ Deno.serve(
       );
     }
 
+
     try {
+
       /*
-       * --------------------------------------------------------
-       * Parse request
-       * --------------------------------------------------------
+       * ========================================================
+       * PARSE REQUEST
+       * ========================================================
        */
 
       const url =
@@ -249,13 +266,16 @@ Deno.serve(
       const body:
         Record<string, unknown> = {};
 
+
       if (
         request.method === "POST"
       ) {
+
         const contentType =
           request.headers.get(
             "content-type",
           ) ?? "";
+
 
         if (
           contentType
@@ -264,6 +284,7 @@ Deno.serve(
               "application/json",
             )
         ) {
+
           const json =
             await request
               .json()
@@ -271,17 +292,22 @@ Deno.serve(
                 () => ({}),
               );
 
+
           if (
             json &&
             typeof json === "object" &&
             !Array.isArray(json)
           ) {
+
             Object.assign(
               body,
               json,
             );
+
           }
+
         } else {
+
           const text =
             await request.text();
 
@@ -290,45 +316,58 @@ Deno.serve(
               text,
             );
 
+
           form.forEach(
             (
               value,
               key,
             ) => {
+
               body[key] = value;
+
             },
           );
+
         }
+
       }
 
+
       /*
-       * --------------------------------------------------------
-       * Parameter reader
-       * --------------------------------------------------------
+       * ========================================================
+       * PARAMETER READER
+       * ========================================================
        */
 
       const getParam = (
         ...names: string[]
       ): string => {
+
         for (
           const name of names
         ) {
+
           const queryValue =
             queryParams.get(
               name,
             );
 
+
           if (
             queryValue !== null &&
             queryValue.trim() !== ""
           ) {
+
             return clean(
               queryValue,
             );
+
           }
+
 
           const bodyValue =
             body[name];
+
 
           if (
             bodyValue !== undefined &&
@@ -337,26 +376,24 @@ Deno.serve(
               bodyValue,
             ).trim() !== ""
           ) {
+
             return clean(
               String(bodyValue),
             );
+
           }
+
         }
 
         return "";
+
       };
 
+
       /*
-       * --------------------------------------------------------
-       * LevelPlay parameters
-       * --------------------------------------------------------
-       *
-       * LevelPlay documentation commonly uses:
-       *
-       * applicationUserId
-       * appUserId
-       *
-       * We support both.
+       * ========================================================
+       * LEVELPLAY PARAMETERS
+       * ========================================================
        */
 
       const userId =
@@ -370,6 +407,7 @@ Deno.serve(
           "USER_ID",
         );
 
+
       const eventId =
         getParam(
           "eventId",
@@ -378,6 +416,7 @@ Deno.serve(
           "EVENT_ID",
         );
 
+
       const rewards =
         getParam(
           "rewards",
@@ -385,11 +424,13 @@ Deno.serve(
           "REWARDS",
         );
 
+
       const timestamp =
         getParam(
           "timestamp",
           "TIMESTAMP",
         );
+
 
       const signature =
         getParam(
@@ -397,16 +438,18 @@ Deno.serve(
           "SIGNATURE",
         );
 
+
       const appKey =
         getParam(
           "appKey",
           "APP_KEY",
         );
 
+
       /*
-       * --------------------------------------------------------
-       * Required parameter validation
-       * --------------------------------------------------------
+       * ========================================================
+       * REQUIRED PARAMETER VALIDATION
+       * ========================================================
        */
 
       if (!userId) {
@@ -416,12 +459,14 @@ Deno.serve(
         );
       }
 
+
       if (!eventId) {
         return response(
           "Missing event ID",
           400,
         );
       }
+
 
       if (!rewards) {
         return response(
@@ -430,12 +475,14 @@ Deno.serve(
         );
       }
 
+
       if (!timestamp) {
         return response(
           "Missing timestamp",
           400,
         );
       }
+
 
       if (!signature) {
         return response(
@@ -444,9 +491,6 @@ Deno.serve(
         );
       }
 
-      /*
-       * APP_KEY is mandatory.
-       */
 
       if (!appKey) {
         console.error(
@@ -459,10 +503,11 @@ Deno.serve(
         );
       }
 
+
       /*
-       * --------------------------------------------------------
-       * USER_ID validation
-       * --------------------------------------------------------
+       * ========================================================
+       * USER ID VALIDATION
+       * ========================================================
        */
 
       if (
@@ -475,6 +520,7 @@ Deno.serve(
         );
       }
 
+
       if (!isValidUuid(userId)) {
         return response(
           "Invalid user ID",
@@ -482,10 +528,11 @@ Deno.serve(
         );
       }
 
+
       /*
-       * --------------------------------------------------------
-       * EVENT_ID validation
-       * --------------------------------------------------------
+       * ========================================================
+       * EVENT ID VALIDATION
+       * ========================================================
        */
 
       if (
@@ -498,21 +545,25 @@ Deno.serve(
         );
       }
 
+
       /*
-       * --------------------------------------------------------
-       * REWARDS validation
-       * --------------------------------------------------------
+       * ========================================================
+       * REWARD VALIDATION
+       * ========================================================
        *
-       * This value is authenticated by the LevelPlay
-       * signature, but is NOT trusted for FAN calculation.
+       * The reward value is authenticated by LevelPlay,
+       * but the application NEVER trusts it for FAN calculation.
        *
-       * Database always controls the actual mining boost:
+       * Database controls the actual reward:
        *
-       * +0.10 FAN/H
+       * NORMAL AD = +0.10 FAN/H
+       *
+       * CLAIM AD = no immediate FAN
        */
 
       const rewardNumber =
         Number(rewards);
+
 
       if (
         !Number.isFinite(
@@ -526,19 +577,15 @@ Deno.serve(
         );
       }
 
+
       /*
-       * --------------------------------------------------------
-       * TIMESTAMP validation
-       * --------------------------------------------------------
+       * ========================================================
+       * TIMESTAMP VALIDATION
+       * ========================================================
        *
        * Expected:
        *
        * YYYYMMDDHHMM
-       *
-       * Example:
-       *
-       * 202609101245
-       * --------------------------------------------------------
        */
 
       if (
@@ -552,15 +599,11 @@ Deno.serve(
         );
       }
 
+
       /*
-       * --------------------------------------------------------
-       * REQUIRED APP KEY VALIDATION
-       * --------------------------------------------------------
-       *
-       * The LevelPlay callback MUST provide appKey.
-       *
-       * It MUST exactly match the LEVELPLAY_APP_KEY
-       * stored securely in Supabase Edge Function secrets.
+       * ========================================================
+       * APP KEY VALIDATION
+       * ========================================================
        */
 
       if (
@@ -569,6 +612,7 @@ Deno.serve(
           expectedAppKey,
         )
       ) {
+
         console.error(
           "LevelPlay app key mismatch.",
         );
@@ -577,14 +621,16 @@ Deno.serve(
           "Invalid app key",
           403,
         );
+
       }
 
+
       /*
-       * --------------------------------------------------------
-       * LEVELPLAY SIGNATURE
-       * --------------------------------------------------------
+       * ========================================================
+       * LEVELPLAY SIGNATURE VALIDATION
+       * ========================================================
        *
-       * Official formula:
+       * Formula:
        *
        * MD5(
        *   TIMESTAMP +
@@ -593,9 +639,6 @@ Deno.serve(
        *   REWARDS +
        *   PRIVATE_KEY
        * )
-       *
-       * URLSearchParams already gives us the decoded USER_ID.
-       * --------------------------------------------------------
        */
 
       const signaturePayload =
@@ -605,10 +648,12 @@ Deno.serve(
         rewards +
         privateKey;
 
+
       const expectedSignature =
         md5(
           signaturePayload,
         );
+
 
       if (
         !safeEqual(
@@ -616,6 +661,7 @@ Deno.serve(
           signature,
         )
       ) {
+
         console.error(
           "LevelPlay S2S signature validation failed.",
         );
@@ -624,33 +670,140 @@ Deno.serve(
           "Invalid signature",
           403,
         );
+
       }
 
+
       /*
-       * --------------------------------------------------------
-       * TRUSTED DATABASE RPC
-       * --------------------------------------------------------
+       * ========================================================
+       * STEP 1
+       * CHECK WHETHER THIS EVENT BELONGS TO A CLAIM AD
+       * ========================================================
        *
-       * Existing SQL function:
+       * We intentionally check the claim request first.
        *
-       * record_levelplay_reward(
-       *   uuid,
-       *   text
-       * )
+       * If the user has a valid pending claim-ad request,
+       * the verified LevelPlay event unlocks that claim.
        *
-       * It already controls:
-       *
-       * - duplicate EVENT_ID
-       * - active mining session
-       * - maximum 7 ads
-       * - +0.10 FAN/H
-       * - server timestamp
-       * - mining-rate update
+       * No FAN is added at this point.
        */
 
       const {
-        data,
-        error,
+        data: claimData,
+        error: claimError,
+      } = await admin.rpc(
+        "verify_levelplay_claim_ad",
+        {
+          p_user_id: userId,
+          p_event_id: eventId,
+        },
+      );
+
+
+      /*
+       * ========================================================
+       * CLAIM AD SUCCESS
+       * ========================================================
+       */
+
+      if (
+        !claimError &&
+        claimData &&
+        typeof claimData === "object"
+      ) {
+
+        const claimResult =
+          claimData as Record<
+            string,
+            unknown
+          >;
+
+
+        if (
+          claimResult.success === true &&
+          claimResult.verified === true
+        ) {
+
+          console.log(
+            "LevelPlay CLAIM AD verified:",
+            JSON.stringify(
+              claimData,
+            ),
+          );
+
+
+          return response(
+            `${eventId}:OK`,
+            200,
+          );
+
+        }
+
+      }
+
+
+      /*
+       * ========================================================
+       * CLAIM DUPLICATE
+       * ========================================================
+       *
+       * A previously verified claim event should still receive
+       * HTTP 200 so LevelPlay does not repeatedly retry it.
+       */
+
+      if (
+        !claimError &&
+        claimData &&
+        typeof claimData === "object"
+      ) {
+
+        const claimResult =
+          claimData as Record<
+            string,
+            unknown
+          >;
+
+
+        if (
+          claimResult.duplicate === true
+        ) {
+
+          console.log(
+            "LevelPlay duplicate CLAIM AD:",
+            eventId,
+          );
+
+
+          return response(
+            `${eventId}:OK`,
+            200,
+          );
+
+        }
+
+      }
+
+
+      /*
+       * ========================================================
+       * STEP 2
+       * NORMAL MINING AD
+       * ========================================================
+       *
+       * If there was no valid claim request,
+       * process this event as a normal mining boost ad.
+       *
+       * Database decides:
+       *
+       *   active session
+       *   maximum 7 ads
+       *   duplicate protection
+       *   +0.10 FAN/H
+       */
+
+      const {
+        data: normalData,
+        error: normalError,
       } = await admin.rpc(
         "record_levelplay_reward",
         {
@@ -659,18 +812,23 @@ Deno.serve(
         },
       );
 
-      if (error) {
+
+      /*
+       * ========================================================
+       * NORMAL AD DATABASE ERROR
+       * ========================================================
+       */
+
+      if (normalError) {
+
         const message =
           String(
-            error.message ?? "",
+            normalError.message ?? "",
           );
 
+
         /*
-         * Normally duplicate EVENT_ID is handled inside
-         * record_levelplay_reward() and returned as JSON.
-         *
-         * This fallback handles a duplicate-related database
-         * error without causing unnecessary LevelPlay retries.
+         * Duplicate event fallback.
          */
 
         if (
@@ -680,75 +838,83 @@ Deno.serve(
               "already processed",
             )
         ) {
+
           console.log(
-            "LevelPlay duplicate event acknowledged:",
+            "LevelPlay duplicate NORMAL AD acknowledged:",
             eventId,
           );
+
 
           return response(
             `${eventId}:OK`,
             200,
           );
+
         }
 
+
         console.error(
-          "LevelPlay S2S database reward error:",
-          error,
+          "LevelPlay normal ad database error:",
+          normalError,
         );
 
+
         /*
-         * Do not acknowledge failed processing.
+         * Do not acknowledge a failed reward.
          *
-         * LevelPlay can retry the event.
+         * LevelPlay may retry.
          */
 
         return response(
           "Reward processing failed",
           500,
         );
+
       }
 
+
       /*
-       * --------------------------------------------------------
-       * SUCCESS
-       * --------------------------------------------------------
+       * ========================================================
+       * NORMAL AD SUCCESS
+       * ========================================================
        */
 
       console.log(
-        "LevelPlay S2S reward processed:",
+        "LevelPlay NORMAL AD reward processed:",
         JSON.stringify(
-          data,
+          normalData,
         ),
       );
 
-      /*
-       * LevelPlay requires:
-       *
-       * HTTP 200
-       * EVENT_ID:OK
-       */
 
       return response(
         `${eventId}:OK`,
         200,
       );
+
+
     } catch (error) {
+
       console.error(
         "LevelPlay S2S callback error:",
         error,
       );
 
+
       /*
-       * Unexpected error:
-       * do NOT acknowledge.
+       * Unexpected server error.
        *
-       * LevelPlay may retry.
+       * Do NOT acknowledge the callback.
+       *
+       * LevelPlay can retry.
        */
 
       return response(
         "Internal server error",
         500,
       );
+
     }
+
   },
 );
