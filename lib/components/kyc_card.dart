@@ -24,8 +24,7 @@ class KycCard extends StatelessWidget {
       margin: EdgeInsets.zero,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(
           color: Colors.grey.shade200,
         ),
@@ -33,8 +32,7 @@ class KycCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(),
             const SizedBox(height: 16),
@@ -52,11 +50,10 @@ class KycCard extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: const Color(
-              0xFF3B159B,
-            ).withOpacity(0.10),
-            borderRadius:
-                BorderRadius.circular(14),
+            color: const Color(0xFF3B159B).withValues(
+              alpha: 0.10,
+            ),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: const Icon(
             Icons.verified_user,
@@ -66,15 +63,13 @@ class KycCard extends StatelessWidget {
         const SizedBox(width: 12),
         const Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'KYC Verification',
                 style: TextStyle(
                   fontSize: 17,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               SizedBox(height: 3),
@@ -99,23 +94,20 @@ class KycCard extends StatelessWidget {
   Widget _buildComingSoon() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(
-          0xFF3B159B,
-        ).withOpacity(0.06),
-        borderRadius:
-            BorderRadius.circular(15),
+        color: const Color(0xFF3B159B).withValues(
+          alpha: 0.06,
+        ),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: const Color(
-            0xFF3B159B,
-          ).withOpacity(0.12),
+          color: const Color(0xFF3B159B).withValues(
+            alpha: 0.12,
+          ),
         ),
       ),
       child: const Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -130,8 +122,7 @@ class KycCard extends StatelessWidget {
                   'Biometric Verification',
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -152,8 +143,7 @@ class KycCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               color: Color(0xFF3B159B),
-              fontWeight:
-                  FontWeight.w600,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -166,24 +156,22 @@ class KycCard extends StatelessWidget {
     Color color,
   ) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 8,
         vertical: 5,
       ),
       decoration: BoxDecoration(
-        color:
-            color.withOpacity(0.10),
-        borderRadius:
-            BorderRadius.circular(8),
+        color: color.withValues(
+          alpha: 0.10,
+        ),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         text,
         style: TextStyle(
           color: color,
           fontSize: 9,
-          fontWeight:
-              FontWeight.bold,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
