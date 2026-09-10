@@ -341,9 +341,7 @@ class DailySocialCard extends StatelessWidget {
                 ),
               ],
             ),
-
             const SizedBox(height: 16),
-
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -373,9 +371,7 @@ class DailySocialCard extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(height: 14),
-
             ...displayTasks.map(
               (task) => _buildTask(
                 context,
@@ -421,9 +417,7 @@ class DailySocialCard extends StatelessWidget {
               size: 22,
             ),
           ),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,9 +429,7 @@ class DailySocialCard extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 3),
-
                 Text(
                   task.description,
                   maxLines: 2,
@@ -447,9 +439,7 @@ class DailySocialCard extends StatelessWidget {
                     color: Colors.grey,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   '+${task.reward.toStringAsFixed(0)} FAN',
                   style: const TextStyle(
@@ -461,9 +451,7 @@ class DailySocialCard extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
           Column(
             children: [
               SizedBox(
@@ -492,9 +480,7 @@ class DailySocialCard extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 5),
-
               SizedBox(
                 height: 34,
                 child: ElevatedButton(
@@ -505,22 +491,51 @@ class DailySocialCard extends StatelessWidget {
                           : () => onClaim!(
                                 task,
                               ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B159B),
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor:
-                        Colors.grey.shade600,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                  style: ButtonStyle(
+                    backgroundColor:
+                        WidgetStateProperty.resolveWith<Color?>(
+                      (states) {
+                        if (states.contains(
+                          WidgetState.disabled,
+                        )) {
+                          return Colors.grey.shade300;
+                        }
+
+                        return const Color(0xFF3B159B);
+                      },
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                    foregroundColor:
+                        WidgetStateProperty.resolveWith<Color?>(
+                      (states) {
+                        if (states.contains(
+                          WidgetState.disabled,
+                        )) {
+                          return Colors.grey.shade600;
+                        }
+
+                        return Colors.white;
+                      },
                     ),
-                    elevation: 0,
-                  ).copyWith(
-                    disabledBackgroundColor:
-                        WidgetStatePropertyAll(
-                      Colors.grey.shade300,
+                    padding:
+                        const WidgetStatePropertyAll<
+                          EdgeInsetsGeometry
+                        >(
+                      EdgeInsets.symmetric(
+                        horizontal: 10,
+                      ),
+                    ),
+                    shape:
+                        WidgetStatePropertyAll<
+                          RoundedRectangleBorder
+                        >(
+                      RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(10),
+                      ),
+                    ),
+                    elevation:
+                        const WidgetStatePropertyAll<double>(
+                      0,
                     ),
                   ),
                   child: task.completed
