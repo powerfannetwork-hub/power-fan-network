@@ -350,13 +350,7 @@ class LevelPlayAdsService
       },
     );
 
-    if (result is Map<String, dynamic>) {
-      return result;
-    }
-
-    throw Exception(
-      'Invalid claim-ad request result.',
-    );
+    return result;
   }
 
   // ============================================================
@@ -699,7 +693,8 @@ class LevelPlayAdsService
           'verified=$verified',
         );
 
-        if (verified || status == 'verified') {
+        if (verified ||
+            status == 'verified') {
           return true;
         }
 
