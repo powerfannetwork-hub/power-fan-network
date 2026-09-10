@@ -9,8 +9,7 @@ class LevelPlayAdsService
     implements LevelPlayInitListener, LevelPlayRewardedAdListener {
   LevelPlayAdsService._();
 
-  static final LevelPlayAdsService instance =
-      LevelPlayAdsService._();
+  static final LevelPlayAdsService instance = LevelPlayAdsService._();
 
   // ============================================================
   // LEVELPLAY CONFIGURATION
@@ -18,8 +17,7 @@ class LevelPlayAdsService
 
   static const String appKeyAndroid = '27f58cf85';
 
-  static const String rewardedAdUnitId =
-      'z69e4f6g6emi98mbu';
+  static const String rewardedAdUnitId = 'z69e4f6g6emi98mbu';
 
   static const int maxAdsPerSession = 7;
 
@@ -70,8 +68,7 @@ class LevelPlayAdsService
     }
 
     try {
-      final user =
-          SupabaseService.client.auth.currentUser;
+      final user = SupabaseService.client.auth.currentUser;
 
       final userId = user?.id;
 
@@ -82,11 +79,10 @@ class LevelPlayAdsService
         return;
       }
 
-      final initRequest =
-          LevelPlayInitRequest
-              .builder(appKeyAndroid)
-              .withUserId(userId)
-              .build();
+      final initRequest = LevelPlayInitRequest
+          .builder(appKeyAndroid)
+          .withUserId(userId)
+          .build();
 
       await LevelPlay.init(
         initRequest: initRequest,
@@ -121,8 +117,7 @@ class LevelPlayAdsService
     }
 
     try {
-      final ready =
-          await _rewardedAd!.isAdReady();
+      final ready = await _rewardedAd!.isAdReady();
 
       if (ready) {
         return;
@@ -170,16 +165,13 @@ class LevelPlayAdsService
   // SHOW REWARDED AD
   // ============================================================
   //
-  // The service automatically detects the purpose:
-  //
   // ACTIVE SESSION:
   //   Normal mining boost advertisement.
   //
   // EXPIRED SESSION:
   //   Claim advertisement.
   //
-  // This allows the current HomeScreen flow to work without
-  // allowing the client to create a reward.
+  // The server remains authoritative for all rewards.
   // ============================================================
 
   Future<bool> showRewardedAd({
@@ -207,8 +199,7 @@ class LevelPlayAdsService
     }
 
     try {
-      final ready =
-          await _rewardedAd!.isAdReady();
+      final ready = await _rewardedAd!.isAdReady();
 
       if (!ready) {
         await loadRewardedAd();
@@ -220,8 +211,7 @@ class LevelPlayAdsService
         return false;
       }
 
-      final user =
-          SupabaseService.client.auth.currentUser;
+      final user = SupabaseService.client.auth.currentUser;
 
       final userId = user?.id;
 
@@ -249,30 +239,20 @@ class LevelPlayAdsService
       final mining =
           await MiningService.instance.getActiveMining();
 
-      final claimable =
-          _isMiningClaimable(mining);
+      final claimable = _isMiningClaimable(mining);
 
-      final miningActive =
-          _isMiningActive(mining);
+      final miningActive = _isMiningActive(mining);
 
       if (claimable && !miningActive) {
         // --------------------------------------------------------
         // CLAIM AD
         // --------------------------------------------------------
-        //
-        // The mining session has already ended.
-        // We create a secure server-side claim request BEFORE
-        // displaying the advertisement.
-        // --------------------------------------------------------
 
-        final request =
-            await _createClaimAdRequest();
+        final request = await _createClaimAdRequest();
 
-        final requestId =
-            _extractRequestId(request);
+        final requestId = _extractRequestId(request);
 
-        if (requestId == null ||
-            requestId.isEmpty) {
+        if (requestId == null || requestId.isEmpty) {
           debugPrint(
             'LevelPlay: failed to create claim-ad request.',
           );
@@ -353,24 +333,15 @@ class LevelPlayAdsService
   // CREATE CLAIM AD REQUEST
   // ============================================================
 
-  Future<Map<String, dynamic>>
-      _createClaimAdRequest() async {
-    final result =
-        await SupabaseService.safeCall(
+  Future<Map<String, dynamic>> _createClaimAdRequest() async {
+    final result = await SupabaseService.safeCall(
       () async {
-        final response =
-            await SupabaseService.client.rpc(
+        final response = await SupabaseService.client.rpc(
           'request_claim_ad',
         );
 
         if (response is Map<String, dynamic>) {
           return response;
-        }
-
-        if (response is Map) {
-          return Map<String, dynamic>.from(
-            response,
-          );
         }
 
         throw Exception(
@@ -381,12 +352,6 @@ class LevelPlayAdsService
 
     if (result is Map<String, dynamic>) {
       return result;
-    }
-
-    if (result is Map) {
-      return Map<String, dynamic>.from(
-        result,
-      );
     }
 
     throw Exception(
@@ -545,11 +510,9 @@ class LevelPlayAdsService
       // ========================================================
 
       if (_currentAdIsClaimAd) {
-        final requestId =
-            _claimRequestId;
+        final requestId = _claimRequestId;
 
-        if (requestId == null ||
-            requestId.isEmpty) {
+        if (requestId == null || requestId.isEmpty) {
           throw Exception(
             'Claim advertisement request ID is missing.',
           );
@@ -595,8 +558,7 @@ class LevelPlayAdsService
 
       final confirmed =
           await _waitForS2SRewardConfirmation(
-        previousAdsWatched:
-            previousAdsWatched,
+        previousAdsWatched: previousAdsWatched,
       );
 
       if (!confirmed) {
@@ -644,20 +606,17 @@ class LevelPlayAdsService
   Future<bool> _waitForS2SRewardConfirmation({
     required int previousAdsWatched,
   }) async {
-    const Duration timeout =
-        Duration(seconds: 25);
+    const Duration timeout = Duration(seconds: 25);
 
     const Duration pollInterval =
         Duration(milliseconds: 500);
 
-    final stopwatch =
-        Stopwatch()..start();
+    final stopwatch = Stopwatch()..start();
 
     while (stopwatch.elapsed < timeout) {
       try {
         final mining =
-            await MiningService.instance
-                .getActiveMining();
+            await MiningService.instance.getActiveMining();
 
         final currentAdsWatched =
             _extractAdsWatched(mining);
@@ -694,23 +653,19 @@ class LevelPlayAdsService
   Future<bool> _waitForClaimAdVerification({
     required String requestId,
   }) async {
-    const Duration timeout =
-        Duration(seconds: 30);
+    const Duration timeout = Duration(seconds: 30);
 
     const Duration pollInterval =
         Duration(milliseconds: 500);
 
-    final stopwatch =
-        Stopwatch()..start();
+    final stopwatch = Stopwatch()..start();
 
     while (stopwatch.elapsed < timeout) {
       try {
-        final response =
-            await SupabaseService.safeCall(
+        final response = await SupabaseService.safeCall(
           () async {
             final result =
-                await SupabaseService.client
-                    .rpc(
+                await SupabaseService.client.rpc(
               'get_claim_ad_status',
               params: {
                 'p_request_id': requestId,
@@ -721,26 +676,18 @@ class LevelPlayAdsService
               return result;
             }
 
-            if (result is Map) {
-              return Map<String, dynamic>.from(
-                result,
-              );
-            }
-
             throw Exception(
               'Invalid claim-ad status response.',
             );
           },
         );
 
-        final status =
-            _extractString(
+        final status = _extractString(
           response,
           'status',
         );
 
-        final verified =
-            _extractBool(
+        final verified = _extractBool(
           response,
           'verified',
         );
@@ -752,8 +699,7 @@ class LevelPlayAdsService
           'verified=$verified',
         );
 
-        if (verified ||
-            status == 'verified') {
+        if (verified || status == 'verified') {
           return true;
         }
 
@@ -783,8 +729,7 @@ class LevelPlayAdsService
   int _extractAdsWatched(
     Map<String, dynamic> mining,
   ) {
-    final value =
-        mining['ads_watched'];
+    final value = mining['ads_watched'];
 
     if (value is int) {
       return value;
@@ -820,9 +765,7 @@ class LevelPlayAdsService
     }
 
     if (value != null) {
-      return value
-          .toString()
-          .toLowerCase() == 'true';
+      return value.toString().toLowerCase() == 'true';
     }
 
     return false;
@@ -835,19 +778,15 @@ class LevelPlayAdsService
   bool _isMiningClaimable(
     Map<String, dynamic> mining,
   ) {
-    final claimable =
-        mining['claimable'];
+    final claimable = mining['claimable'];
 
-    if (claimable is bool &&
-        claimable) {
+    if (claimable is bool && claimable) {
       return true;
     }
 
-    final expired =
-        mining['expired'];
+    final expired = mining['expired'];
 
-    if (expired is bool &&
-        expired) {
+    if (expired is bool && expired) {
       return true;
     }
 
@@ -861,8 +800,7 @@ class LevelPlayAdsService
   String? _extractRequestId(
     Map<String, dynamic> response,
   ) {
-    final value =
-        response['request_id'];
+    final value = response['request_id'];
 
     if (value == null) {
       return null;
@@ -880,19 +818,7 @@ class LevelPlayAdsService
     String key,
   ) {
     if (response is Map<String, dynamic>) {
-      final value =
-          response[key];
-
-      if (value == null) {
-        return null;
-      }
-
-      return value.toString();
-    }
-
-    if (response is Map) {
-      final value =
-          response[key];
+      final value = response[key];
 
       if (value == null) {
         return null;
@@ -913,32 +839,14 @@ class LevelPlayAdsService
     String key,
   ) {
     if (response is Map<String, dynamic>) {
-      final value =
-          response[key];
+      final value = response[key];
 
       if (value is bool) {
         return value;
       }
 
       if (value != null) {
-        return value
-            .toString()
-            .toLowerCase() == 'true';
-      }
-    }
-
-    if (response is Map) {
-      final value =
-          response[key];
-
-      if (value is bool) {
-        return value;
-      }
-
-      if (value != null) {
-        return value
-            .toString()
-            .toLowerCase() == 'true';
+        return value.toString().toLowerCase() == 'true';
       }
     }
 
