@@ -35,6 +35,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isMining = false;
   bool _canClaim = false;
 
+  /*
+   * True only while the claim button is waiting for
+   * the rewarded ad to finish and be verified.
+   */
+  bool _claimAdWaiting = false;
+
   double _fan = 0.0;
   double _rate = MiningService.defaultMiningRate;
   double _sessionReward = 0.0;
@@ -147,13 +153,11 @@ class _HomeScreenState extends State<HomeScreen> {
     DateTime? finalEnds = ends;
 
     if (finalStarted == null && finalEnds != null) {
-      finalStarted =
-          finalEnds.subtract(miningDuration);
+      finalStarted = finalEnds.subtract(miningDuration);
     }
 
     if (finalEnds == null && finalStarted != null) {
-      finalEnds =
-          finalStarted.add(miningDuration);
+      finalEnds = finalStarted.add(miningDuration);
     }
 
     final now = DateTime.now();
@@ -161,10 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
     Duration remaining = Duration.zero;
 
     /*
-     * The server timestamps are the source of truth.
-     *
-     * This prevents the UI from showing READY/00:00:00 when
-     * a valid 24-hour mining session already exists.
+     * Supabase server timestamps are the source of truth.
      */
     if (finalEnds != null) {
       remaining = finalEnds.difference(now);
@@ -173,8 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
         remaining = Duration.zero;
       }
     } else if (serverRemaining > 0) {
-      remaining =
-          Duration(seconds: serverRemaining);
+      remaining = Duration(seconds: serverRemaining);
     }
 
     if (remaining > miningDuration) {
@@ -199,8 +199,9 @@ class _HomeScreenState extends State<HomeScreen> {
     /*
      * Server reward is authoritative.
      *
-     * If the server returns 0 immediately after starting,
-     * calculate a temporary live display from elapsed time.
+     * While the session is active, if the server has not yet
+     * returned a reward value, calculate a temporary live
+     * display from elapsed time.
      */
     double liveReward = serverReward;
 
@@ -220,13 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer?.cancel();
 
     setState(() {
-      /*
-       * A valid server session whose ends_at is in the future
-       * means the user is mining.
-       *
-       * We deliberately do not depend on the boolean "active"
-       * flag here.
-       */
       _isMining = activeByTime;
 
       _canClaim =
@@ -243,6 +237,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _adsWatched =
           ads.clamp(0, maxAds).toInt();
+
+      /*
+       * If Supabase says the session is active or claimable,
+       * the UI is no longer waiting for the previous claim-ad
+       * operation.
+       */
+      if (_isMining || _canClaim) {
+        _claimAdWaiting = false;
+      }
     });
 
     if (_isMining) {
@@ -301,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final active =
-        finalStarted.isBefore(now) &&
+        !finalStarted.isAfter(now) &&
         finalEnds.isAfter(now);
 
     final returnedRate =
@@ -326,6 +329,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (returnedReward > 0) {
         _sessionReward = returnedReward;
+      } else if (active) {
+        _sessionReward = 0.0;
       }
 
       _isMining = active;
@@ -372,9 +377,8 @@ class _HomeScreenState extends State<HomeScreen> {
         /*
          * Live FAN display.
          *
-         * Actual claimed reward remains server-authoritative.
-         * This only keeps the number visibly increasing every
-         * second while mining.
+         * This is display-only.
+         * The actual claimed amount is calculated by Supabase.
          */
         if (remaining > Duration.zero) {
           final fanPerSecond =
@@ -398,6 +402,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (finished) {
           _timer?.cancel();
+
+          /*
+           * Refresh from Supabase immediately when the
+           * local countdown reaches zero.
+           *
+           * This lets the server confirm that the session
+           * is really claimable.
+           */
+          unawaited(_loadMining());
         }
       },
     );
@@ -405,6 +418,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _startMining() async {
     if (_busy || _isMining || _canClaim) {
+      if (_canClaim && !_isMining && !_busy) {
+        _message(
+          'Please claim your completed mining session first.',
+        );
+      }
+
       return;
     }
 
@@ -429,10 +448,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       /*
-       * Apply the start_mining() response immediately.
-       *
-       * This is important because the RPC itself returns the
-       * authoritative started_at / ends_at values.
+       * Apply the authoritative start_mining() response
+       * immediately.
        */
       if (result.isNotEmpty) {
         _applyMiningResult(result);
@@ -441,8 +458,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadProfile();
 
       /*
-       * Reload from Supabase so the UI gets the current
-       * authoritative mining state.
+       * Reload from Supabase so the UI gets the authoritative
+       * mining state.
        */
       await _loadMining();
 
@@ -483,15 +500,119 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _claimMining() async {
-    if (_busy || !_canClaim) {
+    if (_busy || !_canClaim || _isMining) {
+      return;
+    }
+
+    /*
+     * Extra safety check:
+     *
+     * The app must not claim a session before its real
+     * server-side end time.
+     */
+    final ends = _endsAt;
+
+    if (ends != null &&
+        DateTime.now().isBefore(ends)) {
+      final difference =
+          ends.difference(DateTime.now());
+
+      if (mounted) {
+        _message(
+          'Mining is still active. ${_formatDuration(difference)} remaining.',
+        );
+      }
+
+      await _loadMining();
       return;
     }
 
     setState(() {
       _busy = true;
+      _claimAdWaiting = true;
     });
 
     try {
+      /*
+       * STEP 1:
+       * Show LevelPlay rewarded ad before the mining claim.
+       *
+       * The existing LevelPlay service is responsible for
+       * waiting for its server-side reward confirmation.
+       */
+      final adCompleted =
+          Completer<bool>();
+
+      var adCallbackReceived = false;
+
+      final shown =
+          await _ads.showRewardedAd(
+        onRewarded: () {
+          if (adCallbackReceived) {
+            return;
+          }
+
+          adCallbackReceived = true;
+
+          if (!adCompleted.isCompleted) {
+            adCompleted.complete(true);
+          }
+        },
+        onAdClosed: () {
+          /*
+           * Do not treat simply closing the ad as a successful
+           * reward. The reward callback must be received.
+           */
+        },
+      );
+
+      if (!shown) {
+        throw Exception(
+          'Rewarded ad is not ready. Please try again.',
+        );
+      }
+
+      /*
+       * The LevelPlay service normally calls onRewarded only
+       * after its S2S verification succeeds.
+       *
+       * Give the service time to deliver that callback.
+       */
+      final adVerified =
+          await adCompleted.future.timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => false,
+      );
+
+      if (!adVerified) {
+        throw Exception(
+          'Ad reward could not be verified. Your FAN was not claimed.',
+        );
+      }
+
+      if (!mounted) return;
+
+      /*
+       * STEP 2:
+       * Refresh mining state after the rewarded ad.
+       */
+      await _loadMining();
+
+      if (!mounted) return;
+
+      /*
+       * The session must still be claimable.
+       */
+      if (_isMining || !_canClaim) {
+        throw Exception(
+          'Mining session is not ready to claim.',
+        );
+      }
+
+      /*
+       * STEP 3:
+       * Claim only after the rewarded ad has been verified.
+       */
       final result =
           await _mining.claimMining();
 
@@ -507,6 +628,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
+      /*
+       * STEP 4:
+       * Refresh the actual FAN balance from Supabase.
+       */
       await _loadProfile();
       await _loadMining();
 
@@ -524,6 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _busy = false;
+        _claimAdWaiting = false;
       });
     }
   }
@@ -683,7 +809,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _kycStatus = status;
       });
     } catch (_) {
-      // KYC must not stop HomeScreen loading.
+      /*
+       * KYC must not stop HomeScreen loading.
+       */
     }
   }
 
@@ -968,6 +1096,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final fanPerSecond =
         _rate / 3600.0;
 
+    String buttonText;
+
+    if (_claimAdWaiting) {
+      buttonText = 'WATCHING AD...';
+    } else if (_busy && finished) {
+      buttonText = 'PROCESSING...';
+    } else if (finished) {
+      buttonText = 'CLAIM FAN';
+    } else if (_isMining) {
+      buttonText = 'MINING';
+    } else {
+      buttonText = 'START MINING';
+    }
+
     return _card(
       child: Column(
         children: [
@@ -1080,33 +1222,38 @@ class _HomeScreenState extends State<HomeScreen> {
             width: double.infinity,
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: _busy
-                  ? null
-                  : finished
-                      ? _claimMining
-                      : _isMining
-                          ? null
-                          : _startMining,
+              onPressed:
+                  _busy
+                      ? null
+                      : finished
+                          ? _claimMining
+                          : _isMining
+                              ? null
+                              : _startMining,
               icon: Icon(
-                finished
-                    ? Icons.card_giftcard_rounded
-                    : _isMining
-                        ? Icons.bolt_rounded
-                        : Icons.construction_rounded,
+                _claimAdWaiting
+                    ? Icons.ondemand_video_rounded
+                    : finished
+                        ? Icons.card_giftcard_rounded
+                        : _isMining
+                            ? Icons.bolt_rounded
+                            : Icons.construction_rounded,
                 size: 19,
               ),
               label: Text(
-                finished
-                    ? 'CLAIM FAN'
-                    : _isMining
-                        ? 'MINING'
-                        : 'START MINING',
+                buttonText,
               ),
               style:
                   ElevatedButton.styleFrom(
                 backgroundColor:
                     primaryPurple,
                 foregroundColor:
+                    Colors.white,
+                disabledBackgroundColor:
+                    primaryPurple.withValues(
+                  alpha: 0.55,
+                ),
+                disabledForegroundColor:
                     Colors.white,
                 elevation: 0,
                 shape:
@@ -1123,6 +1270,18 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+          if (_claimAdWaiting) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Please complete the rewarded ad. Your FAN will be claimed after the ad is verified.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: deepPurple,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
