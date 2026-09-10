@@ -205,13 +205,17 @@ class _HomeScreenState extends State<HomeScreen> {
     double liveReward = serverReward;
 
     if (liveReward <= 0 && activeByTime) {
-      final elapsedSeconds =
-          now.difference(finalStarted!).inSeconds;
+      final activeStarted = finalStarted;
 
-      if (elapsedSeconds > 0) {
-        liveReward =
-            (elapsedSeconds / 3600.0) *
-                effectiveRate;
+      if (activeStarted != null) {
+        final elapsedSeconds =
+            now.difference(activeStarted).inSeconds;
+
+        if (elapsedSeconds > 0) {
+          liveReward =
+              (elapsedSeconds / 3600.0) *
+                  effectiveRate;
+        }
       }
     }
 
