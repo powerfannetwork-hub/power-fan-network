@@ -86,18 +86,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     /*
-     * IMPORTANT:
+     * Home only waits for profile and mining.
      *
-     * Home only waits for the two things that are needed
-     * immediately for the mining screen:
-     *
-     * 1. FAN balance
-     * 2. Mining state
-     *
-     * Social tasks and KYC are loaded in the background.
-     *
-     * This prevents the whole HomeScreen from staying on
-     * the loading spinner while unrelated requests finish.
+     * Social tasks and KYC load in the background so they
+     * cannot unnecessarily delay the HomeScreen.
      */
     try {
       await Future.wait([
@@ -116,9 +108,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
 
-    /*
-     * These do not block the first HomeScreen render.
-     */
     unawaited(_loadTasks());
     unawaited(_loadKyc());
   }
@@ -126,11 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _load() async {
     if (!mounted) return;
 
-    /*
-     * Pull-to-refresh:
-     *
-     * Refresh the important mining/profile data first.
-     */
     try {
       await Future.wait([
         _loadProfile(),
@@ -142,9 +126,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    /*
-     * Refresh secondary cards in the background.
-     */
     unawaited(_loadTasks());
     unawaited(_loadKyc());
   }
@@ -172,9 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
 
-    /*
-     * Never assume the RPC always returns a non-null map.
-     */
     if (data.isEmpty) {
       if (!mounted) return;
 
@@ -194,11 +172,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    /*
-     * ----------------------------------------------------------
-     * DATE / TIME
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // DATES
+    // ----------------------------------------------------------
 
     final started = _parseDate(
       data['started_at'] ??
@@ -215,25 +191,16 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
-    /*
-     * ----------------------------------------------------------
-     * STATUS
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
 
     final status =
         data['status']?.toString().trim().toLowerCase();
 
-    /*
-     * ----------------------------------------------------------
-     * CLAIM DETECTION
-     *
-     * Different versions of the SQL/RPC may expose the same
-     * state under different JSON keys.
-     *
-     * We accept all of the server-side claim indicators here.
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // CLAIM DETECTION
+    // ----------------------------------------------------------
 
     final claimable =
         _toBool(data['claimable']) ||
@@ -247,29 +214,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final statusIsClaimable =
         _isClaimableStatus(status);
 
-    /*
-     * A claimed session must NEVER be shown as claimable.
-     */
     final alreadyClaimed =
         _toBool(data['claimed']) ||
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    /*
-     * ----------------------------------------------------------
-     * RATE
-     * ----------------------------------------------------------
-     *
-     * IMPORTANT:
-     * Do NOT call getUserMiningRate() every time.
-     *
-     * That extra RPC was one of the things making HomeScreen
-     * slower to open.
-     *
-     * Only ask the server for the user's rate if the mining
-     * response did not provide one.
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // RATE
+    // ----------------------------------------------------------
 
     var rate = _toDouble(
       data['total_rate'] ??
@@ -277,6 +229,10 @@ class _HomeScreenState extends State<HomeScreen> {
           data['rate'],
     );
 
+    /*
+     * Only make the additional RPC call if the mining response
+     * did not provide a valid rate.
+     */
     if (rate <= 0) {
       try {
         rate = await _mining.getUserMiningRate();
@@ -289,11 +245,9 @@ class _HomeScreenState extends State<HomeScreen> {
       rate = MiningService.defaultMiningRate;
     }
 
-    /*
-     * ----------------------------------------------------------
-     * ADS
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // ADS
+    // ----------------------------------------------------------
 
     final ads = _toInt(
       data['ads_watched'] ??
@@ -302,22 +256,18 @@ class _HomeScreenState extends State<HomeScreen> {
           data['daily_ads_watched'],
     );
 
-    /*
-     * ----------------------------------------------------------
-     * SERVER REMAINING
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // REMAINING
+    // ----------------------------------------------------------
 
     final serverRemaining = _toInt(
       data['remaining_seconds'] ??
           data['seconds_remaining'],
     );
 
-    /*
-     * ----------------------------------------------------------
-     * SERVER REWARD
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // REWARD
+    // ----------------------------------------------------------
 
     final serverReward = _toDouble(
       data['reward'] ??
@@ -325,21 +275,9 @@ class _HomeScreenState extends State<HomeScreen> {
           data['earned_reward'],
     );
 
-    /*
-     * ----------------------------------------------------------
-     * SESSION ID
-     * ----------------------------------------------------------
-     */
-
-    final sessionId =
-        data['session_id'] ??
-            data['mining_session_id'];
-
-    /*
-     * ----------------------------------------------------------
-     * NORMALIZE DATES
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // NORMALIZE DATES
+    // ----------------------------------------------------------
 
     DateTime? finalStarted = started;
     DateTime? finalEnds = ends;
@@ -377,11 +315,9 @@ class _HomeScreenState extends State<HomeScreen> {
       remaining = miningDuration;
     }
 
-    /*
-     * ----------------------------------------------------------
-     * ACTIVE DETECTION
-     * ----------------------------------------------------------
-     */
+    // ----------------------------------------------------------
+    // ACTIVE DETECTION
+    // ----------------------------------------------------------
 
     final activeByTime =
         finalStarted != null &&
@@ -414,20 +350,9 @@ class _HomeScreenState extends State<HomeScreen> {
           activeFlag == true
         );
 
-    /*
-     * ----------------------------------------------------------
-     * FINAL CLAIM STATE
-     * ----------------------------------------------------------
-     *
-     * Claim is allowed when:
-     *
-     * - server explicitly says claimable, OR
-     * - server explicitly requires claim, OR
-     * - status says completed/expired/ready-to-claim, OR
-     * - the known session end time has passed.
-     *
-     * But never if the session is already claimed.
-     */
+    // ----------------------------------------------------------
+    // FINAL CLAIM STATE
+    // ----------------------------------------------------------
 
     final finalCanClaim =
         !alreadyClaimed &&
@@ -439,14 +364,26 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
     /*
-     * ----------------------------------------------------------
-     * LIVE DISPLAY REWARD
-     * ----------------------------------------------------------
-     *
-     * This is DISPLAY ONLY.
-     *
-     * Supabase calculates the real reward during claim.
+     * Explicit claim_required is especially important for the
+     * situation where Supabase has a completed session but the
+     * response does not contain a normal end timestamp.
      */
+    final explicitClaimRequired =
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']);
+
+    final forceClaim =
+        explicitClaimRequired &&
+        !alreadyClaimed &&
+        !active;
+
+    final finalClaim =
+        finalCanClaim || forceClaim;
+
+    // ----------------------------------------------------------
+    // DISPLAY REWARD
+    // ----------------------------------------------------------
 
     double liveReward = serverReward;
 
@@ -464,10 +401,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     /*
-     * If the session is completed and server returned a reward,
-     * preserve it for the claim display.
+     * If completed and the server didn't return a display
+     * reward, show the calculated 24-hour display estimate.
+     *
+     * Actual claim remains fully server-authoritative.
      */
-    if (finalCanClaim &&
+    if (finalClaim &&
         liveReward <= 0 &&
         rate > 0) {
       liveReward =
@@ -475,38 +414,12 @@ class _HomeScreenState extends State<HomeScreen> {
               rate;
     }
 
-    /*
-     * ----------------------------------------------------------
-     * IMPORTANT FALLBACK:
-     *
-     * If server explicitly says claim_required, we should not
-     * leave the user on START MINING.
-     *
-     * This directly handles the situation seen in your
-     * screenshot.
-     * ----------------------------------------------------------
-     */
-
-    final explicitClaimRequired =
-        _toBool(data['claim_required']) ||
-        _toBool(data['requires_claim']) ||
-        _toBool(data['needs_claim']);
-
-    final forceClaim =
-        explicitClaimRequired &&
-        !alreadyClaimed &&
-        !active;
-
-    final finalClaim =
-        finalCanClaim || forceClaim;
-
     if (!mounted) return;
 
     _timer?.cancel();
 
     setState(() {
       _isMining = active;
-
       _canClaim = finalClaim;
 
       _rate = rate;
@@ -535,7 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // CLAIMABLE STATUS DETECTION
+  // CLAIMABLE STATUS
   // ============================================================
 
   bool _isClaimableStatus(
@@ -570,10 +483,8 @@ class _HomeScreenState extends State<HomeScreen> {
     Map<String, dynamic> data,
   ) {
     /*
-     * Server may return claim_required even though startMining
-     * was rejected.
-     *
-     * Do NOT keep showing START MINING in that case.
+     * If the server explicitly says that a claim is required,
+     * expose CLAIM FAN immediately.
      */
     if (_toBool(data['claim_required']) ||
         _toBool(data['requires_claim']) ||
@@ -756,7 +667,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _timer?.cancel();
 
           /*
-           * Ask Supabase to confirm the final state.
+           * Let Supabase confirm the completed/claimable state.
            */
           unawaited(_loadMining());
         }
@@ -796,10 +707,6 @@ class _HomeScreenState extends State<HomeScreen> {
           result['success'] == true;
 
       if (!success) {
-        /*
-         * If the server says claim is required, immediately
-         * expose CLAIM FAN instead of leaving the UI on START.
-         */
         if (_toBool(result['claim_required']) ||
             _toBool(result['requires_claim']) ||
             _toBool(result['needs_claim'])) {
@@ -858,13 +765,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } catch (e) {
-      /*
-       * Some Supabase RPC errors arrive as an Exception string
-       * rather than a JSON response.
-       *
-       * Detect the claim-required server message so the UI
-       * cannot remain stuck on START MINING.
-       */
       final errorText =
           _error(e).toLowerCase();
 
@@ -907,11 +807,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    /*
-     * Extra client-side protection.
-     *
-     * Database remains the final authority.
-     */
     final ends = _endsAt;
 
     if (ends != null &&
@@ -970,7 +865,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 2
        *
-       * Wait for server-side LevelPlay verification.
+       * Wait for server-side verification.
        */
       final adVerified =
           await adCompleted.future.timeout(
@@ -989,15 +884,12 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 3
        *
-       * Refresh mining state.
+       * Refresh the mining state.
        */
       await _loadMining();
 
       if (!mounted) return;
 
-      /*
-       * The session must still be claimable.
-       */
       if (_isMining ||
           !_canClaim) {
         throw Exception(
@@ -1008,7 +900,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 4
        *
-       * Supabase calculates the actual FAN reward.
+       * Server calculates and applies the actual reward.
        */
       final result =
           await _mining.claimMining();
@@ -1028,7 +920,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 5
        *
-       * Clear old session immediately.
+       * Clear old session state immediately.
        */
       if (mounted) {
         setState(() {
@@ -1045,7 +937,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 6
        *
-       * Load authoritative balance/state.
+       * Reload authoritative state.
        */
       await _loadProfile();
       await _loadMining();
@@ -1070,7 +962,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // NORMAL MINING BOOST AD
+  // NORMAL BOOST AD
   // ============================================================
 
   Future<void> _watchAd() async {
@@ -1094,10 +986,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () {
-          /*
-           * LevelPlayAdsService only calls this after
-           * server-side reward verification.
-           */
           unawaited(_loadMining());
         },
         onAdClosed: () {},
@@ -1235,9 +1123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _kycStatus = status;
       });
     } catch (_) {
-      /*
-       * KYC must never block HomeScreen.
-       */
+      // KYC must never block HomeScreen.
     }
   }
 
