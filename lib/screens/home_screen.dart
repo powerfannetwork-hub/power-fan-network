@@ -26,7 +26,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
   final KycService _kyc = KycService();
-  final LevelPlayAdsService _ads = LevelPlayAdsService.instance;
+  final LevelPlayAdsService _ads =
+      LevelPlayAdsService.instance;
 
   Timer? _timer;
 
@@ -55,8 +56,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
-    unawaited(_load());
-    unawaited(_ads.initialize());
+    unawaited(_loadInitial());
+    unawaited(_initializeAds());
   }
 
   @override
@@ -66,22 +67,42 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // LOAD EVERYTHING
+  // INITIAL LOAD
   // ============================================================
 
-  Future<void> _load() async {
+  Future<void> _initializeAds() async {
+    try {
+      await _ads.initialize();
+    } catch (_) {
+      // Ads initialization must never block HomeScreen.
+    }
+  }
+
+  Future<void> _loadInitial() async {
     if (!mounted) return;
 
     setState(() {
       _loading = true;
     });
 
+    /*
+     * IMPORTANT:
+     *
+     * Home only waits for the two things that are needed
+     * immediately for the mining screen:
+     *
+     * 1. FAN balance
+     * 2. Mining state
+     *
+     * Social tasks and KYC are loaded in the background.
+     *
+     * This prevents the whole HomeScreen from staying on
+     * the loading spinner while unrelated requests finish.
+     */
     try {
       await Future.wait([
         _loadProfile(),
         _loadMining(),
-        _loadTasks(),
-        _loadKyc(),
       ]);
     } catch (e) {
       if (mounted) {
@@ -94,6 +115,38 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
     }
+
+    /*
+     * These do not block the first HomeScreen render.
+     */
+    unawaited(_loadTasks());
+    unawaited(_loadKyc());
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+
+    /*
+     * Pull-to-refresh:
+     *
+     * Refresh the important mining/profile data first.
+     */
+    try {
+      await Future.wait([
+        _loadProfile(),
+        _loadMining(),
+      ]);
+    } catch (e) {
+      if (mounted) {
+        _message(_error(e));
+      }
+    }
+
+    /*
+     * Refresh secondary cards in the background.
+     */
+    unawaited(_loadTasks());
+    unawaited(_loadKyc());
   }
 
   // ============================================================
@@ -119,63 +172,194 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
 
-    final serverRate = await _mining.getUserMiningRate();
+    /*
+     * Never assume the RPC always returns a non-null map.
+     */
+    if (data.isEmpty) {
+      if (!mounted) return;
+
+      _timer?.cancel();
+
+      setState(() {
+        _isMining = false;
+        _canClaim = false;
+        _sessionReward = 0.0;
+        _remaining = Duration.zero;
+        _startedAt = null;
+        _endsAt = null;
+        _adsWatched = 0;
+        _rate = MiningService.defaultMiningRate;
+      });
+
+      return;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * DATE / TIME
+     * ----------------------------------------------------------
+     */
 
     final started = _parseDate(
       data['started_at'] ??
           data['start_time'] ??
-          data['started'],
+          data['started'] ??
+          data['mining_started_at'],
     );
 
     final ends = _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
-          data['ended_at'],
+          data['ended_at'] ??
+          data['mining_ends_at'],
     );
 
-    final claimable = data['claimable'] == true;
+    /*
+     * ----------------------------------------------------------
+     * STATUS
+     * ----------------------------------------------------------
+     */
 
     final status =
-        data['status']?.toString().toLowerCase();
+        data['status']?.toString().trim().toLowerCase();
 
-    final rate = _toDouble(
+    /*
+     * ----------------------------------------------------------
+     * CLAIM DETECTION
+     *
+     * Different versions of the SQL/RPC may expose the same
+     * state under different JSON keys.
+     *
+     * We accept all of the server-side claim indicators here.
+     * ----------------------------------------------------------
+     */
+
+    final claimable =
+        _toBool(data['claimable']) ||
+        _toBool(data['can_claim']) ||
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']) ||
+        _toBool(data['session_completed']) ||
+        _toBool(data['completed']);
+
+    final statusIsClaimable =
+        _isClaimableStatus(status);
+
+    /*
+     * A claimed session must NEVER be shown as claimable.
+     */
+    final alreadyClaimed =
+        _toBool(data['claimed']) ||
+        _toBool(data['is_claimed']) ||
+        status == 'claimed';
+
+    /*
+     * ----------------------------------------------------------
+     * RATE
+     * ----------------------------------------------------------
+     *
+     * IMPORTANT:
+     * Do NOT call getUserMiningRate() every time.
+     *
+     * That extra RPC was one of the things making HomeScreen
+     * slower to open.
+     *
+     * Only ask the server for the user's rate if the mining
+     * response did not provide one.
+     * ----------------------------------------------------------
+     */
+
+    var rate = _toDouble(
       data['total_rate'] ??
           data['mining_rate'] ??
-          data['rate'] ??
-          serverRate,
+          data['rate'],
     );
+
+    if (rate <= 0) {
+      try {
+        rate = await _mining.getUserMiningRate();
+      } catch (_) {
+        rate = MiningService.defaultMiningRate;
+      }
+    }
+
+    if (rate <= 0) {
+      rate = MiningService.defaultMiningRate;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * ADS
+     * ----------------------------------------------------------
+     */
 
     final ads = _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
-          data['ads_count'],
+          data['ads_count'] ??
+          data['daily_ads_watched'],
     );
+
+    /*
+     * ----------------------------------------------------------
+     * SERVER REMAINING
+     * ----------------------------------------------------------
+     */
 
     final serverRemaining = _toInt(
-      data['remaining_seconds'],
+      data['remaining_seconds'] ??
+          data['seconds_remaining'],
     );
 
+    /*
+     * ----------------------------------------------------------
+     * SERVER REWARD
+     * ----------------------------------------------------------
+     */
+
     final serverReward = _toDouble(
-      data['reward'],
+      data['reward'] ??
+          data['session_reward'] ??
+          data['earned_reward'],
     );
+
+    /*
+     * ----------------------------------------------------------
+     * SESSION ID
+     * ----------------------------------------------------------
+     */
+
+    final sessionId =
+        data['session_id'] ??
+            data['mining_session_id'];
+
+    /*
+     * ----------------------------------------------------------
+     * NORMALIZE DATES
+     * ----------------------------------------------------------
+     */
 
     DateTime? finalStarted = started;
     DateTime? finalEnds = ends;
 
-    if (finalStarted == null && finalEnds != null) {
+    if (finalStarted == null &&
+        finalEnds != null) {
       finalStarted =
           finalEnds.subtract(miningDuration);
     }
 
-    if (finalEnds == null && finalStarted != null) {
+    if (finalEnds == null &&
+        finalStarted != null) {
       finalEnds =
           finalStarted.add(miningDuration);
     }
 
     final now = DateTime.now();
 
-    Duration remaining = Duration.zero;
+    Duration remaining =
+        Duration.zero;
 
     if (finalEnds != null) {
       remaining =
@@ -193,6 +377,12 @@ class _HomeScreenState extends State<HomeScreen> {
       remaining = miningDuration;
     }
 
+    /*
+     * ----------------------------------------------------------
+     * ACTIVE DETECTION
+     * ----------------------------------------------------------
+     */
+
     final activeByTime =
         finalStarted != null &&
         finalEnds != null &&
@@ -205,22 +395,59 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final activeByStatus =
         status == 'active' ||
-        status == 'mining';
+        status == 'mining' ||
+        status == 'running' ||
+        status == 'started';
+
+    final explicitInactive =
+        data.containsKey('active') &&
+        data['active'] == false;
+
+    final activeFlag =
+        data['mining_active'];
 
     final active =
-        activeByTime || activeByStatus;
-
-    final effectiveRate =
-        rate > 0
-            ? rate
-            : MiningService.defaultMiningRate;
+        !explicitInactive &&
+        (
+          activeByTime ||
+          activeByStatus ||
+          activeFlag == true
+        );
 
     /*
-     * Server reward is authoritative.
+     * ----------------------------------------------------------
+     * FINAL CLAIM STATE
+     * ----------------------------------------------------------
      *
-     * If the active session response does not yet contain
-     * a reward, this is only a live display estimate.
+     * Claim is allowed when:
+     *
+     * - server explicitly says claimable, OR
+     * - server explicitly requires claim, OR
+     * - status says completed/expired/ready-to-claim, OR
+     * - the known session end time has passed.
+     *
+     * But never if the session is already claimed.
      */
+
+    final finalCanClaim =
+        !alreadyClaimed &&
+        !active &&
+        (
+          claimable ||
+          statusIsClaimable ||
+          sessionFinished
+        );
+
+    /*
+     * ----------------------------------------------------------
+     * LIVE DISPLAY REWARD
+     * ----------------------------------------------------------
+     *
+     * This is DISPLAY ONLY.
+     *
+     * Supabase calculates the real reward during claim.
+     */
+
     double liveReward = serverReward;
 
     if (liveReward <= 0 &&
@@ -232,9 +459,46 @@ class _HomeScreenState extends State<HomeScreen> {
       if (elapsedSeconds > 0) {
         liveReward =
             (elapsedSeconds / 3600.0) *
-                effectiveRate;
+                rate;
       }
     }
+
+    /*
+     * If the session is completed and server returned a reward,
+     * preserve it for the claim display.
+     */
+    if (finalCanClaim &&
+        liveReward <= 0 &&
+        rate > 0) {
+      liveReward =
+          (miningDuration.inSeconds / 3600.0) *
+              rate;
+    }
+
+    /*
+     * ----------------------------------------------------------
+     * IMPORTANT FALLBACK:
+     *
+     * If server explicitly says claim_required, we should not
+     * leave the user on START MINING.
+     *
+     * This directly handles the situation seen in your
+     * screenshot.
+     * ----------------------------------------------------------
+     */
+
+    final explicitClaimRequired =
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']);
+
+    final forceClaim =
+        explicitClaimRequired &&
+        !alreadyClaimed &&
+        !active;
+
+    final finalClaim =
+        finalCanClaim || forceClaim;
 
     if (!mounted) return;
 
@@ -243,11 +507,9 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _isMining = active;
 
-      _canClaim =
-          !active &&
-          (claimable || sessionFinished);
+      _canClaim = finalClaim;
 
-      _rate = effectiveRate;
+      _rate = rate;
 
       _startedAt = finalStarted;
       _endsAt = finalEnds;
@@ -255,15 +517,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _remaining = remaining;
 
       _sessionReward =
-          liveReward < 0 ? 0.0 : liveReward;
+          liveReward < 0
+              ? 0.0
+              : liveReward;
 
       _adsWatched =
           ads.clamp(0, maxAds).toInt();
 
-      /*
-       * Only keep claim-ad waiting state while the claim
-       * process is actually running.
-       */
       if (_isMining) {
         _claimAdWaiting = false;
       }
@@ -275,26 +535,77 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
+  // CLAIMABLE STATUS DETECTION
+  // ============================================================
+
+  bool _isClaimableStatus(
+    String? status,
+  ) {
+    if (status == null ||
+        status.trim().isEmpty) {
+      return false;
+    }
+
+    final value =
+        status.trim().toLowerCase();
+
+    return value == 'completed' ||
+        value == 'complete' ||
+        value == 'expired' ||
+        value == 'finished' ||
+        value == 'ready' ||
+        value == 'ready_to_claim' ||
+        value == 'claimable' ||
+        value == 'pending_claim' ||
+        value == 'awaiting_claim' ||
+        value == 'session_completed' ||
+        value == 'ended';
+  }
+
+  // ============================================================
   // APPLY START MINING RESPONSE
   // ============================================================
 
   void _applyMiningResult(
     Map<String, dynamic> data,
   ) {
+    /*
+     * Server may return claim_required even though startMining
+     * was rejected.
+     *
+     * Do NOT keep showing START MINING in that case.
+     */
+    if (_toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim'])) {
+      if (!mounted) return;
+
+      setState(() {
+        _isMining = false;
+        _canClaim = true;
+        _remaining = Duration.zero;
+      });
+
+      return;
+    }
+
     final started = _parseDate(
       data['started_at'] ??
           data['start_time'] ??
-          data['started'],
+          data['started'] ??
+          data['mining_started_at'],
     );
 
     final ends = _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
-          data['ended_at'],
+          data['ended_at'] ??
+          data['mining_ends_at'],
     );
 
-    if (started == null && ends == null) {
+    if (started == null &&
+        ends == null) {
       return;
     }
 
@@ -303,12 +614,14 @@ class _HomeScreenState extends State<HomeScreen> {
     DateTime? finalStarted = started;
     DateTime? finalEnds = ends;
 
-    if (finalStarted == null && finalEnds != null) {
+    if (finalStarted == null &&
+        finalEnds != null) {
       finalStarted =
           finalEnds.subtract(miningDuration);
     }
 
-    if (finalEnds == null && finalStarted != null) {
+    if (finalEnds == null &&
+        finalStarted != null) {
       finalEnds =
           finalStarted.add(miningDuration);
     }
@@ -342,7 +655,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final returnedReward =
         _toDouble(
-      data['reward'],
+      data['reward'] ??
+          data['session_reward'],
     );
 
     if (!mounted) return;
@@ -409,11 +723,6 @@ class _HomeScreenState extends State<HomeScreen> {
           remaining = miningDuration;
         }
 
-        /*
-         * Display-only live reward.
-         *
-         * Supabase remains authoritative for the actual claim.
-         */
         double displayReward =
             _sessionReward;
 
@@ -447,8 +756,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _timer?.cancel();
 
           /*
-           * Let Supabase confirm the session is really
-           * claimable before enabling the final claim flow.
+           * Ask Supabase to confirm the final state.
            */
           unawaited(_loadMining());
         }
@@ -488,6 +796,28 @@ class _HomeScreenState extends State<HomeScreen> {
           result['success'] == true;
 
       if (!success) {
+        /*
+         * If the server says claim is required, immediately
+         * expose CLAIM FAN instead of leaving the UI on START.
+         */
+        if (_toBool(result['claim_required']) ||
+            _toBool(result['requires_claim']) ||
+            _toBool(result['needs_claim'])) {
+          if (mounted) {
+            setState(() {
+              _isMining = false;
+              _canClaim = true;
+              _remaining = Duration.zero;
+            });
+          }
+
+          _message(
+            'Claim your completed mining session before starting a new one.',
+          );
+
+          return;
+        }
+
         throw Exception(
           result['message'] ??
               result['error'] ??
@@ -504,11 +834,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      if (result['claim_required'] == true) {
+      if (_toBool(result['claim_required']) ||
+          _toBool(result['requires_claim']) ||
+          _toBool(result['needs_claim'])) {
         _message(
           'Claim your completed mining session before starting a new one.',
         );
-      } else if (result['already_active'] == true) {
+      } else if (_toBool(result['already_active'])) {
         _message(
           'Mining is already active.',
         );
@@ -526,7 +858,33 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } catch (e) {
-      if (mounted) {
+      /*
+       * Some Supabase RPC errors arrive as an Exception string
+       * rather than a JSON response.
+       *
+       * Detect the claim-required server message so the UI
+       * cannot remain stuck on START MINING.
+       */
+      final errorText =
+          _error(e).toLowerCase();
+
+      final claimRequired =
+          errorText.contains('claim your completed') ||
+          errorText.contains('claim_required') ||
+          errorText.contains('claim required') ||
+          errorText.contains('completed mining session');
+
+      if (claimRequired && mounted) {
+        setState(() {
+          _isMining = false;
+          _canClaim = true;
+          _remaining = Duration.zero;
+        });
+
+        _message(
+          'Your completed mining session is ready to claim.',
+        );
+      } else if (mounted) {
         _message(_error(e));
       }
     } finally {
@@ -552,7 +910,7 @@ class _HomeScreenState extends State<HomeScreen> {
     /*
      * Extra client-side protection.
      *
-     * The database is still the final authority.
+     * Database remains the final authority.
      */
     final ends = _endsAt;
 
@@ -581,9 +939,6 @@ class _HomeScreenState extends State<HomeScreen> {
        * STEP 1
        *
        * Request/show the special claim rewarded ad.
-       *
-       * LevelPlayAdsService detects that the mining session
-       * is claimable and uses request_claim_ad().
        */
       final adCompleted =
           Completer<bool>();
@@ -603,14 +958,7 @@ class _HomeScreenState extends State<HomeScreen> {
             adCompleted.complete(true);
           }
         },
-        onAdClosed: () {
-          /*
-           * Closing the ad alone is NOT a reward.
-           *
-           * Only the verified rewarded callback can continue
-           * the claim.
-           */
-        },
+        onAdClosed: () {},
       );
 
       if (!shown) {
@@ -622,8 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 2
        *
-       * Wait for LevelPlayAdsService to confirm the
-       * server-side reward verification.
+       * Wait for server-side LevelPlay verification.
        */
       final adVerified =
           await adCompleted.future.timeout(
@@ -642,7 +989,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 3
        *
-       * Refresh the mining state.
+       * Refresh mining state.
        */
       await _loadMining();
 
@@ -662,8 +1009,6 @@ class _HomeScreenState extends State<HomeScreen> {
        * STEP 4
        *
        * Supabase calculates the actual FAN reward.
-       *
-       * Client does not calculate or create the reward.
        */
       final result =
           await _mining.claimMining();
@@ -683,10 +1028,7 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * STEP 5
        *
-       * IMPORTANT:
-       * Clear the session reward immediately so the old
-       * unclaimed mining amount cannot be displayed twice
-       * after the profile balance has been updated.
+       * Clear old session immediately.
        */
       if (mounted) {
         setState(() {
@@ -696,14 +1038,14 @@ class _HomeScreenState extends State<HomeScreen> {
           _remaining = Duration.zero;
           _startedAt = null;
           _endsAt = null;
+          _adsWatched = 0;
         });
       }
 
       /*
        * STEP 6
        *
-       * Load the authoritative FAN balance and current
-       * mining state from Supabase.
+       * Load authoritative balance/state.
        */
       await _loadProfile();
       await _loadMining();
@@ -753,8 +1095,8 @@ class _HomeScreenState extends State<HomeScreen> {
           await _ads.showRewardedAd(
         onRewarded: () {
           /*
-           * LevelPlayAdsService waits for S2S confirmation
-           * before this callback is called.
+           * LevelPlayAdsService only calls this after
+           * server-side reward verification.
            */
           unawaited(_loadMining());
         },
@@ -894,7 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (_) {
       /*
-       * KYC failure must not block HomeScreen.
+       * KYC must never block HomeScreen.
        */
     }
   }
@@ -910,7 +1252,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    await _loadKyc();
+    unawaited(_loadKyc());
   }
 
   // ============================================================
@@ -1042,13 +1384,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildBalanceCard() {
-    /*
-     * During mining we show the wallet balance plus the
-     * current unclaimed session reward as a display value.
-     *
-     * Once claimed, _sessionReward is cleared before the
-     * profile is reloaded, preventing double display.
-     */
     final displayedBalance =
         _fan +
         ((_isMining || _canClaim)
@@ -2058,6 +2393,34 @@ class _HomeScreenState extends State<HomeScreen> {
           value.toString(),
         ) ??
         0;
+  }
+
+  // ============================================================
+  // BOOL
+  // ============================================================
+
+  bool _toBool(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return false;
+    }
+
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    final text =
+        value.toString().trim().toLowerCase();
+
+    return text == 'true' ||
+        text == '1' ||
+        text == 'yes' ||
+        text == 'y';
   }
 
   // ============================================================
