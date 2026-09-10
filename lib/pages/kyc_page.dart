@@ -143,7 +143,8 @@ class _KycPageState extends State<KycPage> {
     });
 
     try {
-      final result = await _kycService.migrateFanToAfam();
+      final result =
+          await _kycService.migrateFanToAfam();
 
       if (!mounted) return;
 
@@ -367,7 +368,7 @@ class _KycPageState extends State<KycPage> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.20),
+            color: primaryColor.withValues(alpha: 0.20),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -379,7 +380,7 @@ class _KycPageState extends State<KycPage> {
             width: 70,
             height: 70,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -406,7 +407,7 @@ class _KycPageState extends State<KycPage> {
             subtitle,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.90),
+              color: Colors.white.withValues(alpha: 0.90),
               fontSize: 13,
               height: 1.4,
             ),
@@ -441,10 +442,10 @@ class _KycPageState extends State<KycPage> {
         vertical: 8,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(30),
         border: Border.all(
-          color: Colors.white.withOpacity(0.25),
+          color: Colors.white.withValues(alpha: 0.25),
         ),
       ),
       child: Text(
@@ -463,10 +464,10 @@ class _KycPageState extends State<KycPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.07),
+        color: Colors.red.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: Colors.red.withOpacity(0.15),
+          color: Colors.red.withValues(alpha: 0.15),
         ),
       ),
       child: Row(
@@ -573,8 +574,8 @@ class _KycPageState extends State<KycPage> {
               height: 44,
               decoration: BoxDecoration(
                 color: completed
-                    ? greenColor.withOpacity(0.10)
-                    : primaryColor.withOpacity(0.08),
+                    ? greenColor.withValues(alpha: 0.10)
+                    : primaryColor.withValues(alpha: 0.08),
                 borderRadius:
                     BorderRadius.circular(12),
               ),
@@ -664,7 +665,7 @@ class _KycPageState extends State<KycPage> {
           horizontal: 14,
         ),
         decoration: BoxDecoration(
-          color: greenColor.withOpacity(0.08),
+          color: greenColor.withValues(alpha: 0.08),
           borderRadius:
               BorderRadius.circular(13),
         ),
@@ -749,8 +750,8 @@ class _KycPageState extends State<KycPage> {
                 height: 50,
                 decoration: BoxDecoration(
                   color: verified
-                      ? greenColor.withOpacity(0.10)
-                      : primaryColor.withOpacity(0.08),
+                      ? greenColor.withValues(alpha: 0.10)
+                      : primaryColor.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -810,7 +811,8 @@ class _KycPageState extends State<KycPage> {
             )
           else
             _statusBox(
-              icon: Icons.lock_outline_rounded,
+              icon:
+                  Icons.lock_outline_rounded,
               title: 'KYC LOCKED',
               message:
                   'Complete both 30-day requirements first.',
@@ -831,11 +833,11 @@ class _KycPageState extends State<KycPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: color.withValues(alpha: 0.07),
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
-          color: color.withOpacity(0.12),
+          color: color.withValues(alpha: 0.12),
         ),
       ),
       child: Row(
@@ -910,7 +912,7 @@ class _KycPageState extends State<KycPage> {
                   height: 46,
                   decoration: BoxDecoration(
                     color:
-                        greenColor.withOpacity(0.10),
+                        greenColor.withValues(alpha: 0.10),
                     borderRadius:
                         BorderRadius.circular(12),
                   ),
@@ -971,7 +973,7 @@ class _KycPageState extends State<KycPage> {
                 height: 46,
                 decoration: BoxDecoration(
                   color:
-                      Colors.orange.withOpacity(0.10),
+                      Colors.orange.withValues(alpha: 0.10),
                   borderRadius:
                       BorderRadius.circular(12),
                 ),
@@ -1150,7 +1152,7 @@ class _KycPageState extends State<KycPage> {
                 height: 44,
                 decoration: BoxDecoration(
                   color:
-                      primaryColor.withOpacity(0.08),
+                      primaryColor.withValues(alpha: 0.08),
                   borderRadius:
                       BorderRadius.circular(12),
                 ),
@@ -1203,7 +1205,7 @@ class _KycPageState extends State<KycPage> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(0.025),
+                Colors.black.withValues(alpha: 0.025),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
