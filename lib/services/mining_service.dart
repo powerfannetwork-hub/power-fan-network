@@ -207,7 +207,7 @@ class MiningService {
   Future<Map<String, dynamic>> recordAndVerifyRewardedAd() async {
     final recorded = await recordRewardedAd();
 
-    // record_rewarded_ad returns "ad_id", not "id".
+    // Backend record_rewarded_ad() returns "ad_id".
     final adId = recorded['ad_id']?.toString();
 
     if (adId == null || adId.isEmpty) {
