@@ -102,7 +102,7 @@ class _ForceUpdateScreenState
                         BoxShadow(
                           color: const Color(
                             0xFF4217B8,
-                          ).withOpacity(0.25),
+                          ).withValues(alpha: 0.25),
                           blurRadius: 25,
                           spreadRadius: 2,
                         ),
@@ -114,9 +114,7 @@ class _ForceUpdateScreenState
                       size: 62,
                     ),
                   ),
-
                   const SizedBox(height: 25),
-
                   const Text(
                     'POWER FAN',
                     textAlign: TextAlign.center,
@@ -128,9 +126,7 @@ class _ForceUpdateScreenState
                       letterSpacing: 0.5,
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   const Text(
                     'UPDATE APP',
                     textAlign: TextAlign.center,
@@ -141,9 +137,7 @@ class _ForceUpdateScreenState
                           FontWeight.w900,
                     ),
                   ),
-
                   const SizedBox(height: 18),
-
                   const Text(
                     'A new version of POWER FAN is required to continue.',
                     textAlign: TextAlign.center,
@@ -153,9 +147,7 @@ class _ForceUpdateScreenState
                       height: 1.5,
                     ),
                   ),
-
                   const SizedBox(height: 22),
-
                   Container(
                     width: double.infinity,
                     padding:
@@ -163,7 +155,9 @@ class _ForceUpdateScreenState
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius:
-                          BorderRadius.circular(18),
+                          BorderRadius.circular(
+                        18,
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -180,13 +174,12 @@ class _ForceUpdateScreenState
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
                   SizedBox(
                     width: double.infinity,
                     height: 58,
-                    child: ElevatedButton.icon(
+                    child:
+                        ElevatedButton.icon(
                       onPressed:
                           _loading
                               ? null
@@ -218,34 +211,49 @@ class _ForceUpdateScreenState
                               FontWeight.w900,
                         ),
                       ),
-                      style:
-                          ElevatedButton.styleFrom(
+                      style: ButtonStyle(
                         backgroundColor:
-                            const Color(
-                          0xFF4217B8,
+                            WidgetStateProperty
+                                .resolveWith<
+                                    Color?>(
+                          (states) {
+                            if (states.contains(
+                              WidgetState.disabled,
+                            )) {
+                              return const Color(
+                                0xFF8D76CF,
+                              );
+                            }
+
+                            return const Color(
+                              0xFF4217B8,
+                            );
+                          },
                         ),
                         foregroundColor:
-                            Colors.white,
-                        disabledBackgroundColor:
-                            const Color(
-                          0xFF8D76CF,
+                            const WidgetStatePropertyAll<
+                                Color>(
+                          Colors.white,
                         ),
-                        disabledForegroundColor:
-                            Colors.white,
-                        elevation: 2,
+                        elevation:
+                            const WidgetStatePropertyAll<
+                                double>(
+                          2,
+                        ),
                         shape:
-                            RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            18,
+                            WidgetStatePropertyAll<
+                                RoundedRectangleBorder>(
+                          RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(
+                              18,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 18),
-
                   const Text(
                     'Please update to continue mining.',
                     textAlign: TextAlign.center,
@@ -275,7 +283,8 @@ class _ForceUpdateScreenState
             style: const TextStyle(
               color: Colors.black54,
               fontSize: 14,
-              fontWeight: FontWeight.w600,
+              fontWeight:
+                  FontWeight.w600,
             ),
           ),
         ),
@@ -284,7 +293,8 @@ class _ForceUpdateScreenState
           style: const TextStyle(
             color: Color(0xFF35148F),
             fontSize: 15,
-            fontWeight: FontWeight.w900,
+            fontWeight:
+                FontWeight.w900,
           ),
         ),
       ],
