@@ -34,11 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _busy = false;
   bool _isMining = false;
   bool _canClaim = false;
-
-  /*
-   * True only while the claim button is waiting for
-   * the rewarded ad to finish and be verified.
-   */
   bool _claimAdWaiting = false;
 
   double _fan = 0.0;
@@ -70,6 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  // ============================================================
+  // LOAD EVERYTHING
+  // ============================================================
+
   Future<void> _load() async {
     if (!mounted) return;
 
@@ -97,6 +96,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // PROFILE
+  // ============================================================
+
   Future<void> _loadProfile() async {
     final data = await _mining.getProfile();
 
@@ -108,6 +111,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _fan = _toDouble(data['fan_balance']);
     });
   }
+
+  // ============================================================
+  // MINING
+  // ============================================================
 
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
@@ -129,8 +136,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final claimable = data['claimable'] == true;
 
+    final status =
+        data['status']?.toString().toLowerCase();
+
     final rate = _toDouble(
-      data['mining_rate'] ??
+      data['total_rate'] ??
+          data['mining_rate'] ??
           data['rate'] ??
           serverRate,
     );
@@ -153,28 +164,29 @@ class _HomeScreenState extends State<HomeScreen> {
     DateTime? finalEnds = ends;
 
     if (finalStarted == null && finalEnds != null) {
-      finalStarted = finalEnds.subtract(miningDuration);
+      finalStarted =
+          finalEnds.subtract(miningDuration);
     }
 
     if (finalEnds == null && finalStarted != null) {
-      finalEnds = finalStarted.add(miningDuration);
+      finalEnds =
+          finalStarted.add(miningDuration);
     }
 
     final now = DateTime.now();
 
     Duration remaining = Duration.zero;
 
-    /*
-     * Supabase server timestamps are the source of truth.
-     */
     if (finalEnds != null) {
-      remaining = finalEnds.difference(now);
+      remaining =
+          finalEnds.difference(now);
 
       if (remaining.isNegative) {
         remaining = Duration.zero;
       }
     } else if (serverRemaining > 0) {
-      remaining = Duration(seconds: serverRemaining);
+      remaining =
+          Duration(seconds: serverRemaining);
     }
 
     if (remaining > miningDuration) {
@@ -191,6 +203,13 @@ class _HomeScreenState extends State<HomeScreen> {
         finalEnds != null &&
         !finalEnds.isAfter(now);
 
+    final activeByStatus =
+        status == 'active' ||
+        status == 'mining';
+
+    final active =
+        activeByTime || activeByStatus;
+
     final effectiveRate =
         rate > 0
             ? rate
@@ -199,13 +218,14 @@ class _HomeScreenState extends State<HomeScreen> {
     /*
      * Server reward is authoritative.
      *
-     * While the session is active, if the server has not yet
-     * returned a reward value, calculate a temporary live
-     * display from elapsed time.
+     * If the active session response does not yet contain
+     * a reward, this is only a live display estimate.
      */
     double liveReward = serverReward;
 
-    if (liveReward <= 0 && activeByTime) {
+    if (liveReward <= 0 &&
+        active &&
+        finalStarted != null) {
       final elapsedSeconds =
           now.difference(finalStarted).inSeconds;
 
@@ -221,10 +241,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer?.cancel();
 
     setState(() {
-      _isMining = activeByTime;
+      _isMining = active;
 
       _canClaim =
-          claimable || sessionFinished;
+          !active &&
+          (claimable || sessionFinished);
 
       _rate = effectiveRate;
 
@@ -233,17 +254,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _remaining = remaining;
 
-      _sessionReward = liveReward;
+      _sessionReward =
+          liveReward < 0 ? 0.0 : liveReward;
 
       _adsWatched =
           ads.clamp(0, maxAds).toInt();
 
       /*
-       * If Supabase says the session is active or claimable,
-       * the UI is no longer waiting for the previous claim-ad
-       * operation.
+       * Only keep claim-ad waiting state while the claim
+       * process is actually running.
        */
-      if (_isMining || _canClaim) {
+      if (_isMining) {
         _claimAdWaiting = false;
       }
     });
@@ -252,6 +273,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _startTimer();
     }
   }
+
+  // ============================================================
+  // APPLY START MINING RESPONSE
+  // ============================================================
 
   void _applyMiningResult(
     Map<String, dynamic> data,
@@ -288,7 +313,8 @@ class _HomeScreenState extends State<HomeScreen> {
           finalStarted.add(miningDuration);
     }
 
-    if (finalStarted == null || finalEnds == null) {
+    if (finalStarted == null ||
+        finalEnds == null) {
       return;
     }
 
@@ -309,7 +335,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final returnedRate =
         _toDouble(
-      data['mining_rate'] ??
+      data['total_rate'] ??
+          data['mining_rate'] ??
           data['rate'],
     );
 
@@ -318,17 +345,20 @@ class _HomeScreenState extends State<HomeScreen> {
       data['reward'],
     );
 
+    if (!mounted) return;
+
     setState(() {
       _startedAt = finalStarted;
       _endsAt = finalEnds;
       _remaining = remaining;
 
-      _rate = returnedRate > 0
-          ? returnedRate
-          : _rate;
+      if (returnedRate > 0) {
+        _rate = returnedRate;
+      }
 
       if (returnedReward > 0) {
-        _sessionReward = returnedReward;
+        _sessionReward =
+            returnedReward;
       } else if (active) {
         _sessionReward = 0.0;
       }
@@ -345,6 +375,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // COUNTDOWN
+  // ============================================================
+
   void _startTimer() {
     _timer?.cancel();
 
@@ -356,7 +390,8 @@ class _HomeScreenState extends State<HomeScreen> {
         final started = _startedAt;
         final ends = _endsAt;
 
-        if (started == null || ends == null) {
+        if (started == null ||
+            ends == null) {
           _timer?.cancel();
           return;
         }
@@ -375,17 +410,22 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         /*
-         * Live FAN display.
+         * Display-only live reward.
          *
-         * This is display-only.
-         * The actual claimed amount is calculated by Supabase.
+         * Supabase remains authoritative for the actual claim.
          */
-        if (remaining > Duration.zero) {
-          final fanPerSecond =
-              _rate / 3600.0;
+        double displayReward =
+            _sessionReward;
 
-          _sessionReward +=
-              fanPerSecond;
+        if (remaining > Duration.zero) {
+          final elapsedSeconds =
+              now.difference(started).inSeconds;
+
+          if (elapsedSeconds >= 0) {
+            displayReward =
+                (elapsedSeconds / 3600.0) *
+                    _rate;
+          }
         }
 
         final finished =
@@ -397,6 +437,9 @@ class _HomeScreenState extends State<HomeScreen> {
           if (finished) {
             _isMining = false;
             _canClaim = true;
+          } else {
+            _sessionReward =
+                displayReward;
           }
         });
 
@@ -404,11 +447,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _timer?.cancel();
 
           /*
-           * Refresh from Supabase immediately when the
-           * local countdown reaches zero.
-           *
-           * This lets the server confirm that the session
-           * is really claimable.
+           * Let Supabase confirm the session is really
+           * claimable before enabling the final claim flow.
            */
           unawaited(_loadMining());
         }
@@ -416,9 +456,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // START MINING
+  // ============================================================
+
   Future<void> _startMining() async {
-    if (_busy || _isMining || _canClaim) {
-      if (_canClaim && !_isMining && !_busy) {
+    if (_busy ||
+        _isMining ||
+        _canClaim) {
+      if (_canClaim &&
+          !_isMining &&
+          !_busy) {
         _message(
           'Please claim your completed mining session first.',
         );
@@ -447,20 +495,11 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      /*
-       * Apply the authoritative start_mining() response
-       * immediately.
-       */
       if (result.isNotEmpty) {
         _applyMiningResult(result);
       }
 
       await _loadProfile();
-
-      /*
-       * Reload from Supabase so the UI gets the authoritative
-       * mining state.
-       */
       await _loadMining();
 
       if (!mounted) return;
@@ -499,16 +538,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // CLAIM MINING
+  // ============================================================
+
   Future<void> _claimMining() async {
-    if (_busy || !_canClaim || _isMining) {
+    if (_busy ||
+        !_canClaim ||
+        _isMining) {
       return;
     }
 
     /*
-     * Extra safety check:
+     * Extra client-side protection.
      *
-     * The app must not claim a session before its real
-     * server-side end time.
+     * The database is still the final authority.
      */
     final ends = _endsAt;
 
@@ -534,11 +578,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       /*
-       * STEP 1:
-       * Show LevelPlay rewarded ad before the mining claim.
+       * STEP 1
        *
-       * The existing LevelPlay service is responsible for
-       * waiting for its server-side reward confirmation.
+       * Request/show the special claim rewarded ad.
+       *
+       * LevelPlayAdsService detects that the mining session
+       * is claimable and uses request_claim_ad().
        */
       final adCompleted =
           Completer<bool>();
@@ -560,8 +605,10 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         onAdClosed: () {
           /*
-           * Do not treat simply closing the ad as a successful
-           * reward. The reward callback must be received.
+           * Closing the ad alone is NOT a reward.
+           *
+           * Only the verified rewarded callback can continue
+           * the claim.
            */
         },
       );
@@ -573,14 +620,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       /*
-       * The LevelPlay service normally calls onRewarded only
-       * after its S2S verification succeeds.
+       * STEP 2
        *
-       * Give the service time to deliver that callback.
+       * Wait for LevelPlayAdsService to confirm the
+       * server-side reward verification.
        */
       final adVerified =
           await adCompleted.future.timeout(
-        const Duration(seconds: 25),
+        const Duration(seconds: 30),
         onTimeout: () => false,
       );
 
@@ -593,8 +640,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       /*
-       * STEP 2:
-       * Refresh mining state after the rewarded ad.
+       * STEP 3
+       *
+       * Refresh the mining state.
        */
       await _loadMining();
 
@@ -603,15 +651,19 @@ class _HomeScreenState extends State<HomeScreen> {
       /*
        * The session must still be claimable.
        */
-      if (_isMining || !_canClaim) {
+      if (_isMining ||
+          !_canClaim) {
         throw Exception(
           'Mining session is not ready to claim.',
         );
       }
 
       /*
-       * STEP 3:
-       * Claim only after the rewarded ad has been verified.
+       * STEP 4
+       *
+       * Supabase calculates the actual FAN reward.
+       *
+       * Client does not calculate or create the reward.
        */
       final result =
           await _mining.claimMining();
@@ -629,8 +681,29 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       /*
-       * STEP 4:
-       * Refresh the actual FAN balance from Supabase.
+       * STEP 5
+       *
+       * IMPORTANT:
+       * Clear the session reward immediately so the old
+       * unclaimed mining amount cannot be displayed twice
+       * after the profile balance has been updated.
+       */
+      if (mounted) {
+        setState(() {
+          _sessionReward = 0.0;
+          _canClaim = false;
+          _isMining = false;
+          _remaining = Duration.zero;
+          _startedAt = null;
+          _endsAt = null;
+        });
+      }
+
+      /*
+       * STEP 6
+       *
+       * Load the authoritative FAN balance and current
+       * mining state from Supabase.
        */
       await _loadProfile();
       await _loadMining();
@@ -654,8 +727,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // NORMAL MINING BOOST AD
+  // ============================================================
+
   Future<void> _watchAd() async {
-    if (_busy || !_isMining) {
+    if (_busy ||
+        !_isMining) {
       return;
     }
 
@@ -674,15 +752,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () {
+          /*
+           * LevelPlayAdsService waits for S2S confirmation
+           * before this callback is called.
+           */
           unawaited(_loadMining());
         },
-        onAdClosed: () {
-          if (!mounted) return;
-
-          setState(() {
-            _busy = false;
-          });
-        },
+        onAdClosed: () {},
       );
 
       if (!shown && mounted) {
@@ -702,6 +778,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
+
+  // ============================================================
+  // SOCIAL TASKS
+  // ============================================================
 
   Future<void> _loadTasks() async {
     try {
@@ -798,6 +878,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // KYC
+  // ============================================================
+
   Future<void> _loadKyc() async {
     try {
       final status =
@@ -810,7 +894,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (_) {
       /*
-       * KYC must not stop HomeScreen loading.
+       * KYC failure must not block HomeScreen.
        */
     }
   }
@@ -828,6 +912,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await _loadKyc();
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -872,6 +960,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // HEADER
+  // ============================================================
 
   Widget _buildHeader() {
     return Row(
@@ -945,10 +1037,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // BALANCE CARD
+  // ============================================================
+
   Widget _buildBalanceCard() {
+    /*
+     * During mining we show the wallet balance plus the
+     * current unclaimed session reward as a display value.
+     *
+     * Once claimed, _sessionReward is cleared before the
+     * profile is reloaded, preventing double display.
+     */
     final displayedBalance =
         _fan +
-        (_isMining || _canClaim
+        ((_isMining || _canClaim)
             ? _sessionReward
             : 0.0);
 
@@ -970,7 +1073,8 @@ class _HomeScreenState extends State<HomeScreen> {
               alpha: 0.18,
             ),
             blurRadius: 12,
-            offset: const Offset(0, 5),
+            offset:
+                const Offset(0, 5),
           ),
         ],
       ),
@@ -1005,7 +1109,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -1047,7 +1152,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ],
@@ -1089,6 +1195,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // MINING CARD
+  // ============================================================
+
   Widget _buildMiningCard() {
     final finished =
         _canClaim && !_isMining;
@@ -1099,15 +1209,20 @@ class _HomeScreenState extends State<HomeScreen> {
     String buttonText;
 
     if (_claimAdWaiting) {
-      buttonText = 'WATCHING AD...';
+      buttonText =
+          'WATCHING AD...';
     } else if (_busy && finished) {
-      buttonText = 'PROCESSING...';
+      buttonText =
+          'PROCESSING...';
     } else if (finished) {
-      buttonText = 'CLAIM FAN';
+      buttonText =
+          'CLAIM FAN';
     } else if (_isMining) {
-      buttonText = 'MINING';
+      buttonText =
+          'MINING';
     } else {
-      buttonText = 'START MINING';
+      buttonText =
+          'START MINING';
     }
 
     return _card(
@@ -1123,7 +1238,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : Icons.construction_rounded,
                 background:
                     const Color(0xFFF0EEFA),
-                iconColor: primaryPurple,
+                iconColor:
+                    primaryPurple,
                 size: 54,
               ),
               const SizedBox(width: 12),
@@ -1134,7 +1250,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     RichText(
                       text: TextSpan(
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           color: Colors.black,
                           fontSize: 15,
                           fontWeight:
@@ -1202,7 +1319,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: _miningInfo(
                   Icons.access_time_rounded,
                   'COUNTDOWN',
-                  _formatDuration(_remaining),
+                  _formatDuration(
+                    _remaining,
+                  ),
                 ),
               ),
             ],
@@ -1214,7 +1333,8 @@ class _HomeScreenState extends State<HomeScreen> {
             style: const TextStyle(
               color: deepPurple,
               fontSize: 10,
-              fontWeight: FontWeight.w700,
+              fontWeight:
+                  FontWeight.w700,
             ),
           ),
           const SizedBox(height: 10),
@@ -1274,11 +1394,13 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             const Text(
               'Please complete the rewarded ad. Your FAN will be claimed after the ad is verified.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: TextStyle(
                 color: deepPurple,
                 fontSize: 10,
-                fontWeight: FontWeight.w600,
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
           ],
@@ -1286,6 +1408,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // BOOST CARD
+  // ============================================================
 
   Widget _buildBoostCard() {
     final progress =
@@ -1346,7 +1472,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? _watchAd
                           : null,
                   icon: const Icon(
-                    Icons.ondemand_video_rounded,
+                    Icons
+                        .ondemand_video_rounded,
                     size: 17,
                   ),
                   label: const Text(
@@ -1397,7 +1524,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text(
                 'Ads watched: $_adsWatched / $maxAds',
-                style: const TextStyle(
+                style:
+                    const TextStyle(
                   color: deepPurple,
                   fontSize: 11,
                   fontWeight:
@@ -1407,7 +1535,8 @@ class _HomeScreenState extends State<HomeScreen> {
               const Spacer(),
               Text(
                 '+${(_adsWatched * 0.10).toStringAsFixed(1)} FAN/H',
-                style: const TextStyle(
+                style:
+                    const TextStyle(
                   color: deepPurple,
                   fontSize: 11,
                   fontWeight:
@@ -1452,6 +1581,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // SOCIAL CARD
+  // ============================================================
 
   Widget _buildSocialCard() {
     final task =
@@ -1585,6 +1718,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // KYC CARD
+  // ============================================================
+
   Widget _buildKycCard() {
     final verified =
         _kycStatus.isVerified;
@@ -1685,6 +1822,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // CARD
+  // ============================================================
+
   Widget _card({
     required Widget child,
   }) {
@@ -1712,6 +1853,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // CIRCLE ICON
+  // ============================================================
+
   Widget _circleIcon(
     IconData icon, {
     required Color background,
@@ -1733,6 +1878,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ============================================================
+  // MINING INFO
+  // ============================================================
 
   Widget _miningInfo(
     IconData icon,
@@ -1791,6 +1940,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // SOCIAL ICON
+  // ============================================================
+
   Widget _socialIcon(String text) {
     return Container(
       width: 26,
@@ -1817,6 +1970,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // FORMAT DURATION
+  // ============================================================
+
   String _formatDuration(
     Duration duration,
   ) {
@@ -1842,6 +1999,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$hours:$minutes:$seconds';
   }
 
+  // ============================================================
+  // FORMAT FAN
+  // ============================================================
+
   String _formatFan(
     double value,
   ) {
@@ -1852,6 +2013,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return value.toStringAsFixed(2);
   }
+
+  // ============================================================
+  // DOUBLE
+  // ============================================================
 
   double _toDouble(
     dynamic value,
@@ -1869,6 +2034,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ) ??
         0.0;
   }
+
+  // ============================================================
+  // INT
+  // ============================================================
 
   int _toInt(
     dynamic value,
@@ -1890,6 +2059,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ) ??
         0;
   }
+
+  // ============================================================
+  // DATE PARSER
+  // ============================================================
 
   DateTime? _parseDate(
     dynamic value,
@@ -1942,6 +2115,10 @@ class _HomeScreenState extends State<HomeScreen> {
     ).toLocal();
   }
 
+  // ============================================================
+  // ERROR
+  // ============================================================
+
   String _error(
     Object error,
   ) {
@@ -1956,6 +2133,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return text;
   }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void _message(
     String message,
