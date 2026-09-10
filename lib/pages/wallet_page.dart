@@ -68,7 +68,7 @@ class WalletPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
+                    color: Colors.black.withValues(alpha: 0.12),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
@@ -83,7 +83,7 @@ class WalletPage extends StatelessWidget {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
+                          color: Colors.white.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -105,9 +105,7 @@ class WalletPage extends StatelessWidget {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 24),
-
                   const Text(
                     'AFAM Balance',
                     style: TextStyle(
@@ -115,9 +113,7 @@ class WalletPage extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
-
                   const SizedBox(height: 6),
-
                   Text(
                     '${afamBalance.toStringAsFixed(4)} AFAM',
                     style: const TextStyle(
@@ -126,9 +122,7 @@ class WalletPage extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   const Text(
                     'Original AFAM coin balance',
                     style: TextStyle(
@@ -159,7 +153,7 @@ class WalletPage extends StatelessWidget {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.10),
+                        color: primaryColor.withValues(alpha: 0.10),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -168,9 +162,7 @@ class WalletPage extends StatelessWidget {
                         size: 27,
                       ),
                     ),
-
                     const SizedBox(width: 14),
-
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +213,7 @@ class WalletPage extends StatelessWidget {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: greenColor.withOpacity(0.10),
+                            color: greenColor.withValues(alpha: 0.10),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -242,14 +234,12 @@ class WalletPage extends StatelessWidget {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 16),
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.06),
+                        color: primaryColor.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Column(
@@ -275,9 +265,7 @@ class WalletPage extends StatelessWidget {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     SizedBox(
                       width: double.infinity,
                       height: 48,
@@ -330,9 +318,7 @@ class WalletPage extends StatelessWidget {
                         color: deepPurple,
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
@@ -340,7 +326,7 @@ class WalletPage extends StatelessWidget {
                         horizontal: 16,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.grey.withOpacity(0.06),
+                        color: Colors.grey.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Column(
@@ -399,9 +385,7 @@ class WalletPage extends StatelessWidget {
                         color: deepPurple,
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     const Text(
                       'Send and receive AFAM using username.',
                       style: TextStyle(
@@ -409,9 +393,7 @@ class WalletPage extends StatelessWidget {
                         color: Colors.black54,
                       ),
                     ),
-
                     const SizedBox(height: 18),
-
                     Row(
                       children: [
                         Expanded(
@@ -436,9 +418,7 @@ class WalletPage extends StatelessWidget {
                             ),
                           ),
                         ),
-
                         const SizedBox(width: 12),
-
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () {
