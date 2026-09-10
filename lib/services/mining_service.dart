@@ -71,13 +71,13 @@ class MiningService {
       return _emptyMining();
     }
 
-    try {
-      final result = await _client.rpc('get_active_mining');
+    // Do not swallow RPC/database errors here.
+    // A real database error must reach HomeScreen instead of
+    // being incorrectly displayed as an idle mining session.
 
-      return _mapFromRpcResult(result);
-    } catch (_) {
-      return _emptyMining();
-    }
+    final result = await _client.rpc('get_active_mining');
+
+    return _mapFromRpcResult(result);
   }
 
   Map<String, dynamic> _emptyMining() {
@@ -124,7 +124,9 @@ class MiningService {
     }
   }
 
-  Future<double> getMiningRateForUser(String targetUserId) async {
+  Future<double> getMiningRateForUser(
+    String targetUserId,
+  ) async {
     if (targetUserId.trim().isEmpty) {
       return defaultMiningRate;
     }
@@ -177,10 +179,11 @@ class MiningService {
   // REWARDED ADS
   //
   // SECURITY:
-  // Rewarded-ad rewards are now handled by the
+  // Rewarded-ad rewards are handled by the
   // LevelPlay Server-to-Server callback.
   //
   // The mobile client MUST NOT call:
+  //
   //   record_rewarded_ad
   //   verify_rewarded_ad
   //
@@ -289,23 +292,30 @@ class MiningService {
     final status =
         mining['status']?.toString().toLowerCase();
 
-    if (status == 'active' || status == 'mining') {
+    if (status == 'active' ||
+        status == 'mining') {
       return true;
     }
 
     final startedAt =
-        _parseDateTime(mining['started_at']);
+        _parseDateTime(
+      mining['started_at'],
+    );
 
     final endsAt =
-        _parseDateTime(mining['ends_at']);
+        _parseDateTime(
+      mining['ends_at'],
+    );
 
-    if (startedAt == null || endsAt == null) {
+    if (startedAt == null ||
+        endsAt == null) {
       return false;
     }
 
-    final now = DateTime.now().toUtc();
+    final now =
+        DateTime.now().toUtc();
 
-    return now.isAfter(startedAt) &&
+    return !now.isBefore(startedAt) &&
         now.isBefore(endsAt);
   }
 
@@ -321,13 +331,16 @@ class MiningService {
     }
 
     final endsAt =
-        _parseDateTime(mining['ends_at']);
+        _parseDateTime(
+      mining['ends_at'],
+    );
 
     if (endsAt == null) {
       return false;
     }
 
-    final now = DateTime.now().toUtc();
+    final now =
+        DateTime.now().toUtc();
 
     return !endsAt.isAfter(now) &&
         mining['claimed'] != true;
@@ -337,7 +350,9 @@ class MiningService {
     final mining = await getActiveMining();
 
     final endsAt =
-        _parseDateTime(mining['ends_at']);
+        _parseDateTime(
+      mining['ends_at'],
+    );
 
     if (endsAt == null) {
       return false;
@@ -373,13 +388,15 @@ class MiningService {
   // ============================================================
 
   Future<Duration> getRemainingTime() async {
-    final endsAt = await getMiningEndsAt();
+    final endsAt =
+        await getMiningEndsAt();
 
     if (endsAt == null) {
       return Duration.zero;
     }
 
-    final now = DateTime.now().toUtc();
+    final now =
+        DateTime.now().toUtc();
 
     if (!endsAt.isAfter(now)) {
       return Duration.zero;
@@ -393,21 +410,25 @@ class MiningService {
   // ============================================================
 
   Future<Duration> getElapsedTime() async {
-    final startedAt = await getMiningStartedAt();
+    final startedAt =
+        await getMiningStartedAt();
 
     if (startedAt == null) {
       return Duration.zero;
     }
 
-    final now = DateTime.now().toUtc();
+    final now =
+        DateTime.now().toUtc();
 
     if (now.isBefore(startedAt)) {
       return Duration.zero;
     }
 
-    final elapsed = now.difference(startedAt);
+    final elapsed =
+        now.difference(startedAt);
 
-    if (elapsed.inSeconds > miningDurationSeconds) {
+    if (elapsed.inSeconds >
+        miningDurationSeconds) {
       return const Duration(
         seconds: miningDurationSeconds,
       );
@@ -422,7 +443,8 @@ class MiningService {
   // ============================================================
 
   Future<double> getEstimatedEarned() async {
-    final mining = await getActiveMining();
+    final mining =
+        await getActiveMining();
 
     return _toDouble(
       mining['reward'],
@@ -434,7 +456,8 @@ class MiningService {
   // ============================================================
 
   Future<double> getCurrentReward() async {
-    final mining = await getActiveMining();
+    final mining =
+        await getActiveMining();
 
     return _toDouble(
       mining['reward'],
@@ -446,7 +469,8 @@ class MiningService {
   // ============================================================
 
   Future<String?> getMiningSessionId() async {
-    final mining = await getActiveMining();
+    final mining =
+        await getActiveMining();
 
     final id = mining['id'];
 
@@ -454,7 +478,8 @@ class MiningService {
       return null;
     }
 
-    final value = id.toString().trim();
+    final value =
+        id.toString().trim();
 
     if (value.isEmpty) {
       return null;
@@ -468,12 +493,15 @@ class MiningService {
   // ============================================================
 
   Future<String> getMiningStatus() async {
-    final mining = await getActiveMining();
+    final mining =
+        await getActiveMining();
 
-    final status = mining['status'];
+    final status =
+        mining['status'];
 
     if (status != null) {
-      final value = status.toString().trim();
+      final value =
+          status.toString().trim();
 
       if (value.isNotEmpty) {
         return value;
@@ -488,10 +516,13 @@ class MiningService {
     }
 
     final endsAt =
-        _parseDateTime(mining['ends_at']);
+        _parseDateTime(
+      mining['ends_at'],
+    );
 
     if (endsAt != null) {
-      final now = DateTime.now().toUtc();
+      final now =
+          DateTime.now().toUtc();
 
       if (endsAt.isAfter(now)) {
         return 'active';
@@ -563,7 +594,8 @@ class MiningService {
         return <String, dynamic>{};
       }
 
-      final first = result.first;
+      final first =
+          result.first;
 
       if (first is Map<String, dynamic>) {
         return Map<String, dynamic>.from(
@@ -662,13 +694,15 @@ class MiningService {
       return value.toUtc();
     }
 
-    final text = value.toString().trim();
+    final text =
+        value.toString().trim();
 
     if (text.isEmpty) {
       return null;
     }
 
-    final parsed = DateTime.tryParse(text);
+    final parsed =
+        DateTime.tryParse(text);
 
     return parsed?.toUtc();
   }
