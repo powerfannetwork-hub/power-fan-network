@@ -162,7 +162,7 @@ Deno.serve(
      * 1. LevelPlay private-key signature
      * 2. USER_ID UUID validation
      * 3. EVENT_ID validation
-     * 4. Optional APP_KEY validation
+     * 4. REQUIRED APP_KEY validation
      * 5. Supabase service_role RPC
      * 6. Database duplicate EVENT_ID protection
      * 7. Database active-session validation
@@ -201,6 +201,30 @@ Deno.serve(
     if (!privateKey) {
       console.error(
         "LEVELPLAY_S2S_PRIVATE_KEY is missing.",
+      );
+
+      return response(
+        "Server configuration error",
+        500,
+      );
+    }
+
+    /*
+     * --------------------------------------------------------
+     * REQUIRED LEVELPLAY APP KEY
+     * --------------------------------------------------------
+     *
+     * The server MUST have LEVELPLAY_APP_KEY configured.
+     *
+     * This is intentionally NOT optional.
+     *
+     * Without the expected app key, the callback endpoint
+     * must not process any reward.
+     */
+
+    if (!expectedAppKey) {
+      console.error(
+        "LEVELPLAY_APP_KEY is missing.",
       );
 
       return response(
@@ -421,6 +445,21 @@ Deno.serve(
       }
 
       /*
+       * APP_KEY is mandatory.
+       */
+
+      if (!appKey) {
+        console.error(
+          "LevelPlay app key is missing.",
+        );
+
+        return response(
+          "Missing app key",
+          403,
+        );
+      }
+
+      /*
        * --------------------------------------------------------
        * USER_ID validation
        * --------------------------------------------------------
@@ -515,40 +554,29 @@ Deno.serve(
 
       /*
        * --------------------------------------------------------
-       * OPTIONAL APP KEY
+       * REQUIRED APP KEY VALIDATION
        * --------------------------------------------------------
        *
-       * If LEVELPLAY_APP_KEY is configured on the server,
-       * LevelPlay MUST provide a matching appKey.
+       * The LevelPlay callback MUST provide appKey.
+       *
+       * It MUST exactly match the LEVELPLAY_APP_KEY
+       * stored securely in Supabase Edge Function secrets.
        */
 
-      if (expectedAppKey) {
-        if (!appKey) {
-          console.error(
-            "LevelPlay app key is missing.",
-          );
+      if (
+        !safeEqual(
+          appKey,
+          expectedAppKey,
+        )
+      ) {
+        console.error(
+          "LevelPlay app key mismatch.",
+        );
 
-          return response(
-            "Missing app key",
-            403,
-          );
-        }
-
-        if (
-          !safeEqual(
-            appKey,
-            expectedAppKey,
-          )
-        ) {
-          console.error(
-            "LevelPlay app key mismatch.",
-          );
-
-          return response(
-            "Invalid app key",
-            403,
-          );
-        }
+        return response(
+          "Invalid app key",
+          403,
+        );
       }
 
       /*
