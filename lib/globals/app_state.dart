@@ -17,7 +17,6 @@ class AppState extends ChangeNotifier {
 
   bool get loading => _loading;
   bool get actionLoading => _actionLoading;
-
   double get fanBalance => _fanBalance;
   double get afamBalance => _afamBalance;
   double get miningRate => _miningRate;
@@ -38,7 +37,6 @@ class AppState extends ChangeNotifier {
 
     _loading = true;
     notifyListeners();
-
     try {
       final profile =
           await MiningService.instance.getProfile();
@@ -61,9 +59,8 @@ class AppState extends ChangeNotifier {
           await MiningService.instance.getActiveMining();
 
       _miningActive =
-          mining['is_mining'] == true ||
-          mining['is_active'] == true;
-
+          mining['mining_active'] == true ||
+          mining['active'] == true;
       _miningEndsAt = _parseDateTime(
         mining['ends_at'] ??
             mining['end_time'] ??
@@ -75,7 +72,6 @@ class AppState extends ChangeNotifier {
           DateTime.now().isAfter(_miningEndsAt!)) {
         _miningActive = false;
       }
-
       _miningRate =
           await MiningService.instance.getUserMiningRate();
     } catch (_) {
@@ -95,7 +91,6 @@ class AppState extends ChangeNotifier {
 
     try {
       await MiningService.instance.startMining();
-
       await refresh();
     } finally {
       _actionLoading = false;
@@ -121,7 +116,6 @@ class AppState extends ChangeNotifier {
 
       _miningActive = false;
       _miningEndsAt = null;
-
       await refresh();
     } finally {
       _actionLoading = false;
@@ -135,15 +129,14 @@ class AppState extends ChangeNotifier {
           await MiningService.instance.getActiveMining();
 
       _miningActive =
-          mining['is_mining'] == true ||
-          mining['is_active'] == true;
+          mining['mining_active'] == true ||
+          mining['active'] == true;
 
       _miningEndsAt = _parseDateTime(
         mining['ends_at'] ??
             mining['end_time'] ??
             mining['expires_at'],
       );
-
       _miningRate =
           await MiningService.instance.getUserMiningRate();
 
@@ -169,7 +162,6 @@ class AppState extends ChangeNotifier {
       _afamBalance = _toDouble(
         profile['afam_balance'],
       );
-
       notifyListeners();
     } catch (_) {}
   }
@@ -214,7 +206,6 @@ class AppState extends ChangeNotifier {
     if (value is num) {
       return value.toDouble();
     }
-
     return double.tryParse(
           value.toString(),
         ) ??
