@@ -823,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Text(
                         displayedBalance
                             .toStringAsFixed(
-                          4,
+                          8,
                         ),
                         overflow:
                             TextOverflow
