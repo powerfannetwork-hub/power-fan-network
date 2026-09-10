@@ -20,14 +20,16 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color deepPurple = Color(0xFF241064);
   static const Color pageBackground = Color(0xFFF8F8FC);
 
+  static const Color readyGreen = Color(0xFF168A45);
+  static const Color readyGreenBackground = Color(0xFFEAF8F0);
+
   static const Duration miningDuration = Duration(hours: 24);
   static const int maxAds = 7;
 
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
   final KycService _kyc = KycService();
-  final LevelPlayAdsService _ads =
-      LevelPlayAdsService.instance;
+  final LevelPlayAdsService _ads = LevelPlayAdsService.instance;
 
   Timer? _timer;
 
@@ -85,12 +87,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = true;
     });
 
-    /*
-     * Home only waits for profile and mining.
-     *
-     * Social tasks and KYC load in the background so they
-     * cannot unnecessarily delay the HomeScreen.
-     */
     try {
       await Future.wait([
         _loadProfile(),
@@ -172,18 +168,18 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // ----------------------------------------------------------
-    // DATES
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
+    // DATE / TIME
+    // ------------------------------------------------------------
 
-    final started = _parseDate(
+    DateTime? started = _parseDate(
       data['started_at'] ??
           data['start_time'] ??
           data['started'] ??
           data['mining_started_at'],
     );
 
-    final ends = _parseDate(
+    DateTime? ends = _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
@@ -191,16 +187,16 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // STATUS
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     final status =
         data['status']?.toString().trim().toLowerCase();
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // CLAIM DETECTION
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     final claimable =
         _toBool(data['claimable']) ||
@@ -219,9 +215,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // RATE
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     var rate = _toDouble(
       data['total_rate'] ??
@@ -229,10 +225,6 @@ class _HomeScreenState extends State<HomeScreen> {
           data['rate'],
     );
 
-    /*
-     * Only make the additional RPC call if the mining response
-     * did not provide a valid rate.
-     */
     if (rate <= 0) {
       try {
         rate = await _mining.getUserMiningRate();
@@ -245,9 +237,9 @@ class _HomeScreenState extends State<HomeScreen> {
       rate = MiningService.defaultMiningRate;
     }
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // ADS
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     final ads = _toInt(
       data['ads_watched'] ??
@@ -256,18 +248,18 @@ class _HomeScreenState extends State<HomeScreen> {
           data['daily_ads_watched'],
     );
 
-    // ----------------------------------------------------------
-    // REMAINING
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
+    // SERVER REMAINING
+    // ------------------------------------------------------------
 
     final serverRemaining = _toInt(
       data['remaining_seconds'] ??
           data['seconds_remaining'],
     );
 
-    // ----------------------------------------------------------
-    // REWARD
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
+    // SERVER REWARD
+    // ------------------------------------------------------------
 
     final serverReward = _toDouble(
       data['reward'] ??
@@ -275,29 +267,49 @@ class _HomeScreenState extends State<HomeScreen> {
           data['earned_reward'],
     );
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // NORMALIZE DATES
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     DateTime? finalStarted = started;
     DateTime? finalEnds = ends;
 
-    if (finalStarted == null &&
-        finalEnds != null) {
+    if (finalStarted == null && finalEnds != null) {
       finalStarted =
           finalEnds.subtract(miningDuration);
     }
 
-    if (finalEnds == null &&
-        finalStarted != null) {
+    if (finalEnds == null && finalStarted != null) {
       finalEnds =
           finalStarted.add(miningDuration);
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * Some RPC responses may provide remaining_seconds without
+     * returning ends_at.
+     *
+     * In that situation we reconstruct the countdown endpoint
+     * from the server-provided remaining seconds.
+     *
+     * This allows the HomeScreen countdown to work correctly.
+     */
+    if (finalEnds == null && serverRemaining > 0) {
+      finalEnds =
+          DateTime.now().add(
+        Duration(seconds: serverRemaining),
+      );
+
+      if (finalStarted == null) {
+        finalStarted =
+            finalEnds.subtract(miningDuration);
+      }
+    }
+
     final now = DateTime.now();
 
-    Duration remaining =
-        Duration.zero;
+    Duration remaining = Duration.zero;
 
     if (finalEnds != null) {
       remaining =
@@ -315,9 +327,9 @@ class _HomeScreenState extends State<HomeScreen> {
       remaining = miningDuration;
     }
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // ACTIVE DETECTION
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     final activeByTime =
         finalStarted != null &&
@@ -348,11 +360,12 @@ class _HomeScreenState extends State<HomeScreen> {
           activeByTime ||
           activeByStatus ||
           activeFlag == true
-        );
+        ) &&
+        !sessionFinished;
 
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // FINAL CLAIM STATE
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     final finalCanClaim =
         !alreadyClaimed &&
@@ -363,27 +376,9 @@ class _HomeScreenState extends State<HomeScreen> {
           sessionFinished
         );
 
-    /*
-     * Explicit claim_required is especially important for the
-     * situation where Supabase has a completed session but the
-     * response does not contain a normal end timestamp.
-     */
-    final explicitClaimRequired =
-        _toBool(data['claim_required']) ||
-        _toBool(data['requires_claim']) ||
-        _toBool(data['needs_claim']);
-
-    final forceClaim =
-        explicitClaimRequired &&
-        !alreadyClaimed &&
-        !active;
-
-    final finalClaim =
-        finalCanClaim || forceClaim;
-
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
     // DISPLAY REWARD
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------
 
     double liveReward = serverReward;
 
@@ -400,13 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    /*
-     * If completed and the server didn't return a display
-     * reward, show the calculated 24-hour display estimate.
-     *
-     * Actual claim remains fully server-authoritative.
-     */
-    if (finalClaim &&
+    if (finalCanClaim &&
         liveReward <= 0 &&
         rate > 0) {
       liveReward =
@@ -414,12 +403,30 @@ class _HomeScreenState extends State<HomeScreen> {
               rate;
     }
 
+    // ------------------------------------------------------------
+    // EXPLICIT CLAIM FALLBACK
+    // ------------------------------------------------------------
+
+    final explicitClaimRequired =
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']);
+
+    final forceClaim =
+        explicitClaimRequired &&
+        !alreadyClaimed &&
+        !active;
+
+    final finalClaim =
+        finalCanClaim || forceClaim;
+
     if (!mounted) return;
 
     _timer?.cancel();
 
     setState(() {
       _isMining = active;
+
       _canClaim = finalClaim;
 
       _rate = rate;
@@ -482,10 +489,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _applyMiningResult(
     Map<String, dynamic> data,
   ) {
-    /*
-     * If the server explicitly says that a claim is required,
-     * expose CLAIM FAN immediately.
-     */
     if (_toBool(data['claim_required']) ||
         _toBool(data['requires_claim']) ||
         _toBool(data['needs_claim'])) {
@@ -500,14 +503,14 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final started = _parseDate(
+    DateTime? started = _parseDate(
       data['started_at'] ??
           data['start_time'] ??
           data['started'] ??
           data['mining_started_at'],
     );
 
-    final ends = _parseDate(
+    DateTime? ends = _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
@@ -515,35 +518,49 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
+    final serverRemaining = _toInt(
+      data['remaining_seconds'] ??
+          data['seconds_remaining'],
+    );
+
     if (started == null &&
+        ends != null) {
+      started =
+          ends.subtract(miningDuration);
+    }
+
+    if (ends == null &&
+        started != null) {
+      ends =
+          started.add(miningDuration);
+    }
+
+    /*
+     * If the start RPC returns remaining_seconds instead of
+     * ends_at, create the countdown endpoint from that value.
+     */
+    if (ends == null &&
+        serverRemaining > 0) {
+      ends =
+          DateTime.now().add(
+        Duration(seconds: serverRemaining),
+      );
+
+      if (started == null) {
+        started =
+            ends.subtract(miningDuration);
+      }
+    }
+
+    if (started == null ||
         ends == null) {
       return;
     }
 
     final now = DateTime.now();
 
-    DateTime? finalStarted = started;
-    DateTime? finalEnds = ends;
-
-    if (finalStarted == null &&
-        finalEnds != null) {
-      finalStarted =
-          finalEnds.subtract(miningDuration);
-    }
-
-    if (finalEnds == null &&
-        finalStarted != null) {
-      finalEnds =
-          finalStarted.add(miningDuration);
-    }
-
-    if (finalStarted == null ||
-        finalEnds == null) {
-      return;
-    }
-
     var remaining =
-        finalEnds.difference(now);
+        ends.difference(now);
 
     if (remaining.isNegative) {
       remaining = Duration.zero;
@@ -554,8 +571,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final active =
-        !finalStarted.isAfter(now) &&
-        finalEnds.isAfter(now);
+        !started.isAfter(now) &&
+        ends.isAfter(now);
 
     final returnedRate =
         _toDouble(
@@ -573,8 +590,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     setState(() {
-      _startedAt = finalStarted;
-      _endsAt = finalEnds;
+      _startedAt = started;
+      _endsAt = ends;
       _remaining = remaining;
 
       if (returnedRate > 0) {
@@ -607,72 +624,94 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startTimer() {
     _timer?.cancel();
 
+    /*
+     * Immediate calculation before waiting for the first second.
+     */
+    _updateCountdown();
+
     _timer = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
-        if (!mounted) return;
-
-        final started = _startedAt;
-        final ends = _endsAt;
-
-        if (started == null ||
-            ends == null) {
-          _timer?.cancel();
-          return;
-        }
-
-        final now = DateTime.now();
-
-        var remaining =
-            ends.difference(now);
-
-        if (remaining.isNegative) {
-          remaining = Duration.zero;
-        }
-
-        if (remaining > miningDuration) {
-          remaining = miningDuration;
-        }
-
-        double displayReward =
-            _sessionReward;
-
-        if (remaining > Duration.zero) {
-          final elapsedSeconds =
-              now.difference(started).inSeconds;
-
-          if (elapsedSeconds >= 0) {
-            displayReward =
-                (elapsedSeconds / 3600.0) *
-                    _rate;
-          }
-        }
-
-        final finished =
-            remaining == Duration.zero;
-
-        setState(() {
-          _remaining = remaining;
-
-          if (finished) {
-            _isMining = false;
-            _canClaim = true;
-          } else {
-            _sessionReward =
-                displayReward;
-          }
-        });
-
-        if (finished) {
-          _timer?.cancel();
-
-          /*
-           * Let Supabase confirm the completed/claimable state.
-           */
-          unawaited(_loadMining());
-        }
+        _updateCountdown();
       },
     );
+  }
+
+  void _updateCountdown() {
+    if (!mounted) return;
+
+    final started = _startedAt;
+    final ends = _endsAt;
+
+    if (started == null ||
+        ends == null) {
+      _timer?.cancel();
+      return;
+    }
+
+    final now = DateTime.now();
+
+    var remaining =
+        ends.difference(now);
+
+    if (remaining.isNegative) {
+      remaining = Duration.zero;
+    }
+
+    if (remaining > miningDuration) {
+      remaining = miningDuration;
+    }
+
+    final finished =
+        remaining == Duration.zero;
+
+    double displayReward =
+        _sessionReward;
+
+    if (!finished) {
+      final elapsedSeconds =
+          now.difference(started).inSeconds;
+
+      if (elapsedSeconds >= 0) {
+        displayReward =
+            (elapsedSeconds / 3600.0) *
+                _rate;
+      }
+    }
+
+    setState(() {
+      _remaining = remaining;
+
+      if (finished) {
+        /*
+         * 24 HOURS COMPLETE:
+         *
+         * Countdown becomes 00:00:00
+         * Mining stops
+         * READY TO CLAIM appears
+         */
+        _isMining = false;
+        _canClaim = true;
+        _sessionReward =
+            displayReward > 0
+                ? displayReward
+                : _sessionReward;
+      } else {
+        _isMining = true;
+        _canClaim = false;
+        _sessionReward =
+            displayReward;
+      }
+    });
+
+    if (finished) {
+      _timer?.cancel();
+
+      /*
+       * Confirm the completed session with Supabase.
+       */
+      unawaited(_loadMining());
+    }
   }
 
   // ============================================================
@@ -830,11 +869,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      /*
-       * STEP 1
-       *
-       * Request/show the special claim rewarded ad.
-       */
       final adCompleted =
           Completer<bool>();
 
@@ -862,11 +896,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      /*
-       * STEP 2
-       *
-       * Wait for server-side verification.
-       */
       final adVerified =
           await adCompleted.future.timeout(
         const Duration(seconds: 30),
@@ -881,11 +910,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      /*
-       * STEP 3
-       *
-       * Refresh the mining state.
-       */
       await _loadMining();
 
       if (!mounted) return;
@@ -897,11 +921,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      /*
-       * STEP 4
-       *
-       * Server calculates and applies the actual reward.
-       */
       final result =
           await _mining.claimMining();
 
@@ -917,11 +936,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      /*
-       * STEP 5
-       *
-       * Clear old session state immediately.
-       */
       if (mounted) {
         setState(() {
           _sessionReward = 0.0;
@@ -934,11 +948,6 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
 
-      /*
-       * STEP 6
-       *
-       * Reload authoritative state.
-       */
       await _loadProfile();
       await _loadMining();
 
@@ -962,7 +971,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // NORMAL BOOST AD
+  // NORMAL MINING BOOST AD
   // ============================================================
 
   Future<void> _watchAd() async {
@@ -1446,21 +1455,53 @@ class _HomeScreenState extends State<HomeScreen> {
           'START MINING';
     }
 
+    /*
+     * READY TO CLAIM uses green.
+     */
+    final Color statusColor =
+        finished
+            ? readyGreen
+            : _isMining
+                ? primaryPurple
+                : Colors.green.shade600;
+
+    final Color statusBackground =
+        finished
+            ? readyGreenBackground
+            : const Color(0xFFF0EEFA);
+
+    final IconData statusIcon =
+        finished
+            ? Icons.check_circle_rounded
+            : _isMining
+                ? Icons.bolt_rounded
+                : Icons.construction_rounded;
+
+    final String statusText =
+        finished
+            ? 'READY TO CLAIM'
+            : _isMining
+                ? 'MINING'
+                : 'READY';
+
+    final String statusDescription =
+        finished
+            ? 'Your 24-hour mining session is complete and ready to claim.'
+            : _isMining
+                ? 'Mining FAN. Keep your session active'
+                : 'Start mining to earn FAN';
+
     return _card(
       child: Column(
         children: [
           Row(
             children: [
               _circleIcon(
-                finished
-                    ? Icons.check_circle_rounded
-                    : _isMining
-                        ? Icons.bolt_rounded
-                        : Icons.construction_rounded,
+                statusIcon,
                 background:
-                    const Color(0xFFF0EEFA),
+                    statusBackground,
                 iconColor:
-                    primaryPurple,
+                    statusColor,
                 size: 54,
               ),
               const SizedBox(width: 12),
@@ -1483,19 +1524,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             text: 'STATUS: ',
                           ),
                           TextSpan(
-                            text: finished
-                                ? 'CLAIMABLE'
-                                : _isMining
-                                    ? 'MINING'
-                                    : 'READY',
+                            text: statusText,
                             style: TextStyle(
-                              color: finished
-                                  ? Colors.orange.shade700
-                                  : _isMining
-                                      ? primaryPurple
-                                      : Colors.green.shade600,
+                              color:
+                                  statusColor,
                               fontWeight:
-                                  FontWeight.w800,
+                                  FontWeight.w900,
                             ),
                           ),
                         ],
@@ -1503,11 +1537,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      finished
-                          ? 'Your 24-hour mining session is complete'
-                          : _isMining
-                              ? 'Mining FAN. Keep your session active'
-                              : 'Start mining to earn FAN',
+                      statusDescription,
                       style: TextStyle(
                         color:
                             Colors.grey.shade700,
@@ -1813,8 +1843,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ? _tasks.first
             : null;
 
+    /*
+     * Daily Social Task official reward = 10 FAN.
+     */
     final reward =
-        task?.rewardFan ?? 2.0;
+        task?.rewardFan ?? 10.0;
 
     final taskLabel =
         task == null
