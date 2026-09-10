@@ -2,3 +2,6 @@ project_id = "power-fan-network"
 
 [functions.api]
 verify_jwt = false
+
+[functions.levelplay-s2s]
+verify_jwt = false
