@@ -41,6 +41,18 @@ where last_mining_at is not null;
 
 
 -- ============================================================
+-- 1B. LEVELPLAY S2S EVENT TRACKING
+-- ============================================================
+
+alter table public.ad_rewards
+add column if not exists levelplay_event_id text;
+
+create unique index if not exists idx_ad_rewards_levelplay_event_id
+on public.ad_rewards(levelplay_event_id)
+where levelplay_event_id is not null;
+
+
+-- ============================================================
 -- 2. ACTIVE REFERRALS
 -- ============================================================
 
@@ -264,7 +276,6 @@ begin
     end if;
 
 
-    -- No mining history = no inactivity penalty.
     if v_last_mining is null then
 
         return jsonb_build_object(
@@ -285,7 +296,6 @@ begin
         ) / 3600.0;
 
 
-    -- First 72 hours are completely free.
     if v_elapsed_hours <= 72 then
 
         return jsonb_build_object(
@@ -300,7 +310,6 @@ begin
     end if;
 
 
-    -- 72h -> 96h = no penalty.
     v_due_periods :=
         floor(
             (v_elapsed_hours - 72) / 24
@@ -321,8 +330,6 @@ begin
     end if;
 
 
-    -- If penalties were already applied,
-    -- only calculate NEW penalty periods.
     if v_penalty_at is not null then
 
         v_due_periods :=
@@ -358,7 +365,6 @@ begin
         v_due_periods * 20.0;
 
 
-    -- Balance can NEVER become negative.
     v_new_balance :=
         greatest(
             coalesce(v_old_balance, 0) - v_penalty,
@@ -584,13 +590,9 @@ begin
     end if;
 
 
-    -- Lock the profile to prevent concurrent mining starts.
     perform 1
-
     from public.profiles
-
     where id = v_user_id
-
     for update;
 
 
@@ -599,7 +601,6 @@ begin
     end if;
 
 
-    -- Apply any pending inactivity penalty first.
     v_penalty_result :=
         public.apply_inactivity_penalty(
             v_user_id
@@ -623,28 +624,20 @@ begin
 
     if found then
 
-        -- Existing active session.
         if now() < v_existing.ends_at then
 
             return jsonb_build_object(
                 'success', true,
-
                 'already_active', true,
-
                 'claim_required', false,
-
                 'session_id',
                     v_existing.id,
-
                 'started_at',
                     v_existing.started_at,
-
                 'ends_at',
                     v_existing.ends_at,
-
                 'mining_rate',
                     public.get_user_mining_rate(),
-
                 'status',
                     'active'
             );
@@ -652,28 +645,19 @@ begin
         end if;
 
 
-        -- Existing expired but unclaimed session.
         return jsonb_build_object(
             'success', false,
-
             'already_active', false,
-
             'claim_required', true,
-
             'expired', true,
-
             'session_id',
                 v_existing.id,
-
             'started_at',
                 v_existing.started_at,
-
             'ends_at',
                 v_existing.ends_at,
-
             'status',
                 'claimable',
-
             'message',
                 'Claim your completed mining session before starting a new one'
         );
@@ -705,35 +689,21 @@ begin
 
 
     insert into public.mining_sessions (
-
         user_id,
-
         started_at,
-
         ends_at,
-
         mining_rate,
-
         claimed,
-
         reward_amount
-
     )
 
     values (
-
         v_user_id,
-
         v_started_at,
-
         v_ends_at,
-
         v_rate,
-
         false,
-
         0
-
     )
 
     returning id
@@ -744,31 +714,22 @@ begin
 
     set
         mining_active = true,
-
         mining_started_at =
             v_started_at,
-
         mining_ends_at =
             v_ends_at,
-
         mining_rate =
             v_rate,
-
         active_referrals =
             v_referrals,
-
         daily_ads_watched =
             0,
-
         ad_boost =
             0,
-
         last_mining_at =
             v_started_at,
-
         inactivity_penalty_at =
             null,
-
         updated_at =
             now()
 
@@ -776,46 +737,33 @@ begin
 
 
     return jsonb_build_object(
-
         'success',
             true,
-
         'already_active',
             false,
-
         'claim_required',
             false,
-
         'session_id',
             v_session_id,
-
         'started_at',
             v_started_at,
-
         'ends_at',
             v_ends_at,
-
         'mining_rate',
             v_rate,
-
         'active_referrals',
             v_referrals,
-
         'ads_watched',
             0,
-
         'ad_boost',
             0,
-
         'status',
             'active',
-
         'inactivity_penalty',
             coalesce(
                 v_penalty_result -> 'penalty',
                 '0'::jsonb
             )
-
     );
 
 end;
@@ -904,37 +852,26 @@ begin
     if not found then
 
         return jsonb_build_object(
-
             'success',
                 true,
-
             'active',
                 false,
-
             'mining_active',
                 false,
-
             'expired',
                 false,
-
             'claimable',
                 false,
-
             'reward',
                 0,
-
             'mining_rate',
                 0.20,
-
             'ads_watched',
                 0,
-
             'ad_boost',
                 0,
-
             'active_referrals',
                 0
-
         );
 
     end if;
@@ -946,45 +883,32 @@ begin
 
         set
             mining_active = false,
-
             mining_started_at = null,
-
             mining_ends_at = null,
-
             updated_at = now()
 
         where id = v_user_id;
 
 
         return jsonb_build_object(
-
             'success',
                 true,
-
             'active',
                 false,
-
             'mining_active',
                 false,
-
             'expired',
                 true,
-
             'claimable',
                 true,
-
             'session_id',
                 v_session.id,
-
             'started_at',
                 v_session.started_at,
-
             'ends_at',
                 v_session.ends_at,
-
             'message',
                 'Mining session completed and ready to claim'
-
         );
 
     end if;
@@ -1049,7 +973,6 @@ begin
         );
 
 
-    -- Base mining.
     v_reward :=
         (
             greatest(
@@ -1061,33 +984,23 @@ begin
         * 0.20;
 
 
-    -- Time-weighted ad rewards.
     v_reward :=
         v_reward
         +
         public.calculate_ad_bonus_reward(
-
             v_user_id,
-
             v_session.started_at,
-
             v_until_now
-
         );
 
 
-    -- Time-weighted referral rewards.
     v_reward :=
         v_reward
         +
         public.calculate_referral_bonus_reward(
-
             v_user_id,
-
             v_session.started_at,
-
             v_until_now
-
         );
 
 
@@ -1106,19 +1019,15 @@ begin
     set
         mining_rate =
             v_rate,
-
         active_referrals =
             v_referrals,
-
         daily_ads_watched =
             v_ads,
-
         ad_boost =
             round(
                 v_ads * 0.10,
                 4
             ),
-
         updated_at =
             now()
 
@@ -1126,61 +1035,45 @@ begin
 
 
     return jsonb_build_object(
-
         'success',
             true,
-
         'active',
             true,
-
         'mining_active',
             true,
-
         'expired',
             false,
-
         'claimable',
             false,
-
         'session_id',
             v_session.id,
-
         'started_at',
             v_session.started_at,
-
         'ends_at',
             v_session.ends_at,
-
         'elapsed_seconds',
             greatest(
                 v_elapsed,
                 0
             ),
-
         'remaining_seconds',
             greatest(
                 v_remaining,
                 0
             ),
-
         'reward',
             v_reward,
-
         'mining_rate',
             v_rate,
-
         'ads_watched',
             v_ads,
-
         'ad_boost',
             round(
                 v_ads * 0.10,
                 4
             ),
-
         'active_referrals',
             v_referrals
-
     );
 
 end;
@@ -1189,6 +1082,12 @@ $function$;
 
 -- ============================================================
 -- 11. RECORD REWARDED AD
+-- ============================================================
+--
+-- CLIENT-SIDE REWARD RECORDING IS KEPT HERE FOR COMPATIBILITY,
+-- BUT EXECUTE PERMISSION IS REMOVED BELOW.
+--
+-- LEVELPLAY S2S IS NOW THE AUTHORIZED REWARD SOURCE.
 -- ============================================================
 
 create or replace function public.record_rewarded_ad()
@@ -1226,9 +1125,7 @@ begin
     from public.mining_sessions
 
     where user_id = v_user_id
-
       and claimed = false
-
       and ends_at > now()
 
     order by started_at desc
@@ -1239,10 +1136,8 @@ begin
 
 
     if not found then
-
         raise exception
             'Start mining before watching a rewarded ad';
-
     end if;
 
 
@@ -1266,10 +1161,8 @@ begin
 
 
     if v_ads >= 7 then
-
         raise exception
             'Maximum of 7 rewarded ads reached';
-
     end if;
 
 
@@ -1278,31 +1171,19 @@ begin
 
 
     insert into public.ad_rewards (
-
         user_id,
-
         session_id,
-
         ad_number,
-
         watched_at,
-
         reward_amount
-
     )
 
     values (
-
         v_user_id,
-
         v_session.id,
-
         v_next_ad,
-
         now(),
-
         0.10
-
     )
 
     returning id
@@ -1329,19 +1210,15 @@ begin
     set
         mining_rate =
             v_rate,
-
         daily_ads_watched =
             v_next_ad,
-
         ad_boost =
             round(
                 v_next_ad * 0.10,
                 4
             ),
-
         active_referrals =
             v_referrals,
-
         updated_at =
             now()
 
@@ -1349,37 +1226,27 @@ begin
 
 
     return jsonb_build_object(
-
         'success',
             true,
-
         'ad_id',
             v_ad_id,
-
         'session_id',
             v_session.id,
-
         'ad_number',
             v_next_ad,
-
         'ads_watched',
             v_next_ad,
-
         'reward_rate',
             0.10,
-
         'ad_boost',
             round(
                 v_next_ad * 0.10,
                 4
             ),
-
         'mining_rate',
             v_rate,
-
         'message',
             'Rewarded ad recorded successfully'
-
     );
 
 end;
@@ -1452,10 +1319,8 @@ begin
 
 
     if not found then
-
         raise exception
             'Rewarded ad record not found';
-
     end if;
 
 
@@ -1471,10 +1336,8 @@ begin
 
 
     if not found then
-
         raise exception
             'Advertisement is not linked to a valid mining session';
-
     end if;
 
 
@@ -1498,19 +1361,14 @@ begin
 
 
     return jsonb_build_object(
-
         'success',
             true,
-
         'verified',
             true,
-
         'ad_id',
             v_ad.id,
-
         'ad_number',
             v_ad.ad_number,
-
         'reward_rate',
             greatest(
                 least(
@@ -1522,17 +1380,317 @@ begin
                 ),
                 0
             ),
-
         'watched_at',
             v_ad.watched_at,
-
         'session_id',
             v_session.id
-
     );
 
 end;
 $$;
+
+
+-- ============================================================
+-- 13B. LEVELPLAY S2S REWARDED AD
+-- ============================================================
+--
+-- THIS FUNCTION IS THE ONLY DATABASE FUNCTION AUTHORIZED
+-- TO CREATE A REWARDED-AD RECORD FROM LEVELPLAY S2S.
+--
+-- SECURITY:
+--   - Does NOT use auth.uid()
+--   - Caller must be the trusted backend/service_role
+--   - Reward is FIXED at 0.10 FAN/H
+--   - EVENT_ID is unique
+--   - Maximum 7 ads per session
+--   - Session must still be valid
+-- ============================================================
+
+create or replace function public.record_levelplay_reward(
+    p_user_id uuid,
+    p_event_id text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+    v_session public.mining_sessions%rowtype;
+
+    v_existing public.ad_rewards%rowtype;
+
+    v_ads integer;
+    v_next_ad integer;
+
+    v_ad_id uuid;
+
+    v_referrals integer;
+    v_rate numeric(12,4);
+
+    v_now timestamptz := now();
+begin
+
+    -- EVENT_ID is mandatory.
+    if p_event_id is null
+       or length(trim(p_event_id)) = 0 then
+
+        raise exception 'LevelPlay EVENT_ID is required';
+
+    end if;
+
+
+    -- EVENT_ID must be reasonably bounded.
+    if length(p_event_id) > 255 then
+
+        raise exception 'Invalid LevelPlay EVENT_ID';
+
+    end if;
+
+
+    -- ========================================================
+    -- DUPLICATE EVENT PROTECTION
+    -- ========================================================
+
+    select *
+    into v_existing
+
+    from public.ad_rewards
+
+    where levelplay_event_id = p_event_id
+
+    limit 1;
+
+
+    if found then
+
+        return jsonb_build_object(
+            'success',
+                true,
+
+            'duplicate',
+                true,
+
+            'ad_id',
+                v_existing.id,
+
+            'session_id',
+                v_existing.session_id,
+
+            'ad_number',
+                v_existing.ad_number,
+
+            'reward_rate',
+                0.10,
+
+            'levelplay_event_id',
+                v_existing.levelplay_event_id,
+
+            'message',
+                'LevelPlay event was already processed'
+        );
+
+    end if;
+
+
+    -- ========================================================
+    -- FIND AND LOCK CURRENT MINING SESSION
+    -- ========================================================
+
+    select *
+    into v_session
+
+    from public.mining_sessions
+
+    where user_id = p_user_id
+
+      and claimed = false
+
+      and started_at <= v_now
+
+      and ends_at > v_now
+
+    order by started_at desc
+
+    limit 1
+
+    for update;
+
+
+    if not found then
+
+        raise exception
+            'No active mining session found';
+
+    end if;
+
+
+    -- ========================================================
+    -- COUNT EXISTING REWARDED ADS
+    -- ========================================================
+
+    select count(*)::integer
+
+    into v_ads
+
+    from public.ad_rewards
+
+    where user_id = p_user_id
+      and session_id = v_session.id;
+
+
+    v_ads :=
+        greatest(
+            coalesce(v_ads, 0),
+            0
+        );
+
+
+    if v_ads >= 7 then
+
+        raise exception
+            'Maximum of 7 rewarded ads reached';
+
+    end if;
+
+
+    v_next_ad :=
+        v_ads + 1;
+
+
+    -- ========================================================
+    -- CREATE VERIFIED LEVELPLAY REWARD
+    -- ========================================================
+    --
+    -- Reward is NOT supplied by the client.
+    -- Reward is fixed here at 0.10 FAN/H.
+    -- ========================================================
+
+    insert into public.ad_rewards (
+
+        user_id,
+
+        session_id,
+
+        ad_number,
+
+        watched_at,
+
+        reward_amount,
+
+        levelplay_event_id
+
+    )
+
+    values (
+
+        p_user_id,
+
+        v_session.id,
+
+        v_next_ad,
+
+        v_now,
+
+        0.10,
+
+        p_event_id
+
+    )
+
+    returning id
+    into v_ad_id;
+
+
+    -- ========================================================
+    -- UPDATE CURRENT RATE
+    -- ========================================================
+
+    v_referrals :=
+        public.calculate_active_referrals(
+            p_user_id
+        );
+
+
+    v_rate :=
+        round(
+            0.20
+            + (v_next_ad * 0.10)
+            + (v_referrals * 0.02),
+            4
+        );
+
+
+    update public.profiles
+
+    set
+
+        mining_rate =
+            v_rate,
+
+        daily_ads_watched =
+            v_next_ad,
+
+        ad_boost =
+            round(
+                v_next_ad * 0.10,
+                4
+            ),
+
+        active_referrals =
+            v_referrals,
+
+        updated_at =
+            v_now
+
+    where id = p_user_id;
+
+
+    return jsonb_build_object(
+
+        'success',
+            true,
+
+        'duplicate',
+            false,
+
+        'verified',
+            true,
+
+        'ad_id',
+            v_ad_id,
+
+        'session_id',
+            v_session.id,
+
+        'ad_number',
+            v_next_ad,
+
+        'ads_watched',
+            v_next_ad,
+
+        'reward_rate',
+            0.10,
+
+        'ad_boost',
+            round(
+                v_next_ad * 0.10,
+                4
+            ),
+
+        'mining_rate',
+            v_rate,
+
+        'levelplay_event_id',
+            p_event_id,
+
+        'message',
+            'LevelPlay S2S reward recorded successfully'
+
+    );
+
+end;
+$function$;
 
 
 -- ============================================================
@@ -1574,12 +1732,6 @@ begin
     end if;
 
 
-    -- ========================================================
-    -- IMPORTANT:
-    -- Apply inactivity penalty BEFORE reading balance.
-    -- This prevents the old balance from overwriting the penalty.
-    -- ========================================================
-
     v_penalty_result :=
         public.apply_inactivity_penalty(
             v_user_id
@@ -1601,16 +1753,13 @@ begin
     end if;
 
 
-    -- Find completed unclaimed session.
     select *
     into v_session
 
     from public.mining_sessions
 
     where user_id = v_user_id
-
       and claimed = false
-
       and ends_at <= now()
 
     order by ends_at desc
@@ -1628,14 +1777,8 @@ begin
     end if;
 
 
-    -- ========================================================
-    -- BASE REWARD
-    -- 24 hours × 0.20 FAN/H = 4.80 FAN
-    -- ========================================================
-
     v_base_reward :=
         round(
-
             (
                 extract(
                     epoch from (
@@ -1643,88 +1786,47 @@ begin
                         - v_session.started_at
                     )
                 ) / 3600.0
-
             ) * 0.20,
-
             8
         );
 
-
-    -- ========================================================
-    -- AD REWARD
-    -- Time-weighted from watched_at until session end.
-    -- ========================================================
 
     v_ad_reward :=
         round(
-
             public.calculate_ad_bonus_reward(
-
                 v_user_id,
-
                 v_session.started_at,
-
                 v_session.ends_at
-
             ),
-
             8
         );
 
-
-    -- ========================================================
-    -- REFERRAL REWARD
-    -- Time-weighted while referral is actively mining.
-    -- ========================================================
 
     v_referral_reward :=
         round(
-
             public.calculate_referral_bonus_reward(
-
                 v_user_id,
-
                 v_session.started_at,
-
                 v_session.ends_at
-
             ),
-
             8
         );
 
 
-    -- ========================================================
-    -- TOTAL SESSION REWARD
-    -- ========================================================
-
     v_reward :=
         greatest(
-
             round(
-
                 v_base_reward
-
                 + v_ad_reward
-
                 + v_referral_reward,
-
                 8
-
             ),
-
             0
-
         );
 
 
-    -- ========================================================
-    -- ADD REWARD TO BALANCE AFTER PENALTY.
-    -- ========================================================
-
     v_new_balance :=
         round(
-
             greatest(
                 coalesce(
                     v_old_balance,
@@ -1732,11 +1834,8 @@ begin
                 ),
                 0
             )
-
             + v_reward,
-
             8
-
         );
 
 
@@ -1748,23 +1847,15 @@ begin
 
     v_final_rate :=
         round(
-
             0.20
             + (v_active_referrals * 0.02),
-
             4
-
         );
 
-
-    -- ========================================================
-    -- UPDATE PROFILE
-    -- ========================================================
 
     update public.profiles
 
     set
-
         fan_balance =
             v_new_balance,
 
@@ -1795,14 +1886,9 @@ begin
     where id = v_user_id;
 
 
-    -- ========================================================
-    -- MARK SESSION CLAIMED.
-    -- ========================================================
-
     update public.mining_sessions
 
     set
-
         claimed =
             true,
 
@@ -1813,7 +1899,6 @@ begin
             now()
 
     where id = v_session.id
-
       and claimed = false;
 
 
@@ -1930,9 +2015,7 @@ begin
     from public.mining_sessions
 
     where user_id = v_user_id
-
       and claimed = false
-
       and ends_at <= now()
 
     order by ends_at desc
@@ -1950,7 +2033,6 @@ begin
     update public.profiles
 
     set
-
         mining_active =
             false,
 
@@ -2050,6 +2132,48 @@ from public, anon, authenticated;
 
 
 -- ============================================================
+-- LEVELPLAY CLIENT REWARD RPCs LOCKED
+-- ============================================================
+--
+-- The Flutter client must NOT be able to create or verify
+-- rewarded-ad records directly.
+--
+-- LevelPlay S2S is now the trusted reward source.
+-- ============================================================
+
+revoke execute
+on function public.record_rewarded_ad()
+from public, anon, authenticated;
+
+
+revoke execute
+on function public.record_rewarded_ad(uuid)
+from public, anon, authenticated;
+
+
+revoke execute
+on function public.verify_rewarded_ad(uuid)
+from public, anon, authenticated;
+
+
+-- ============================================================
+-- LEVELPLAY S2S RPC
+-- ============================================================
+--
+-- Only trusted backend/service_role may execute this function.
+-- ============================================================
+
+revoke execute
+on function public.record_levelplay_reward(uuid, text)
+from public, anon, authenticated;
+
+
+grant execute
+on function public.record_levelplay_reward(uuid, text)
+to service_role;
+
+
+-- ============================================================
 -- 19. APPLICATION RPC GRANTS
 -- ============================================================
 
@@ -2075,21 +2199,6 @@ to authenticated;
 
 grant execute
 on function public.get_active_mining()
-to authenticated;
-
-
-grant execute
-on function public.record_rewarded_ad()
-to authenticated;
-
-
-grant execute
-on function public.record_rewarded_ad(uuid)
-to authenticated;
-
-
-grant execute
-on function public.verify_rewarded_ad(uuid)
 to authenticated;
 
 
@@ -2136,6 +2245,7 @@ select cron.schedule(
 --   +0.10 FAN/H
 --   MAX 7
 --   TIME-WEIGHTED
+--   LEVELPLAY S2S VERIFIED
 --
 -- REFERRALS:
 --   +0.02 FAN/H
@@ -2152,6 +2262,13 @@ select cron.schedule(
 --   PENALTY APPLIED FIRST
 --   THEN CURRENT BALANCE READ
 --   THEN REWARD ADDED
+--
+-- S2S SECURITY:
+--   EVENT_ID UNIQUE
+--   DUPLICATE EVENTS BLOCKED
+--   REWARD FIXED AT 0.10
+--   CLIENT REWARD RPCs LOCKED
+--   SERVICE_ROLE ONLY FOR S2S REWARD
 --
 -- SERVER TIME = SOURCE OF TRUTH
 --
