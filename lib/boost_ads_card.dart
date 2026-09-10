@@ -39,7 +39,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   @override
   void initState() {
     super.initState();
-
     _initialize();
   }
 
@@ -57,9 +56,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   Future<void> _initialize() async {
     try {
       await _ads.initialize();
-
       await _ads.loadRewardedAd();
-
       await _refresh();
     } catch (e) {
       debugPrint(
@@ -149,24 +146,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () async {
-          /*
-           * IMPORTANT:
-           *
-           * LevelPlay has confirmed that the user
-           * completed the rewarded ad.
-           *
-           * LevelPlayAdsService then calls:
-           *
-           *   record_rewarded_ad()
-           *   verify_rewarded_ad()
-           *
-           * on Supabase.
-           *
-           * We DO NOT add +0.10 FAN/H here.
-           *
-           * The server calculates the real mining rate.
-           */
-
           await _refresh();
 
           if (!mounted) return;
@@ -264,14 +243,14 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: primaryPurple
-                      .withOpacity(0.08),
+                  color: primaryPurple.withValues(
+                    alpha: 0.08,
+                  ),
                   borderRadius:
                       BorderRadius.circular(12),
                 ),
                 child: const Icon(
-                  Icons
-                      .play_circle_outline_rounded,
+                  Icons.play_circle_outline_rounded,
                   color: primaryPurple,
                   size: 28,
                 ),
@@ -309,8 +288,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: primaryPurple
-                      .withOpacity(0.08),
+                  color: primaryPurple.withValues(
+                    alpha: 0.08,
+                  ),
                   borderRadius:
                       BorderRadius.circular(10),
                 ),
@@ -384,7 +364,8 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
             style: TextStyle(
               color: Colors.grey.shade700,
               fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontWeight:
+                  FontWeight.w600,
             ),
           ),
 
@@ -396,21 +377,40 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
             child: ElevatedButton.icon(
               onPressed:
                   canWatch ? _watchAd : null,
-              style:
-                  ElevatedButton.styleFrom(
+              style: ButtonStyle(
                 backgroundColor:
-                    primaryPurple,
-                disabledBackgroundColor:
-                    Colors.grey.shade300,
+                    WidgetStateProperty.resolveWith<Color?>(
+                  (states) {
+                    if (states.contains(
+                      WidgetState.disabled,
+                    )) {
+                      return Colors.grey.shade300;
+                    }
+
+                    return primaryPurple;
+                  },
+                ),
                 foregroundColor:
-                    Colors.white,
-                disabledForegroundColor:
-                    Colors.grey.shade600,
-                elevation: 0,
+                    WidgetStateProperty.resolveWith<Color?>(
+                  (states) {
+                    if (states.contains(
+                      WidgetState.disabled,
+                    )) {
+                      return Colors.grey.shade600;
+                    }
+
+                    return Colors.white;
+                  },
+                ),
+                elevation:
+                    const WidgetStatePropertyAll<double>(0),
                 shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(12),
+                    WidgetStatePropertyAll<
+                        OutlinedBorder>(
+                  RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(12),
+                  ),
                 ),
               ),
               icon: _watching
@@ -424,8 +424,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                       ),
                     )
                   : const Icon(
-                      Icons
-                          .play_arrow_rounded,
+                      Icons.play_arrow_rounded,
                     ),
               label: Text(
                 _watching
