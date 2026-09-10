@@ -58,8 +58,40 @@ class ApiService {
     return MiningService.instance.claimMining();
   }
 
+  /*
+   * ============================================================
+   * REWARDED ADS
+   * ============================================================
+   *
+   * IMPORTANT:
+   *
+   * Rewarded-ad rewards are NOT created by ApiService.
+   *
+   * The correct flow is:
+   *
+   * Flutter LevelPlay
+   *        ↓
+   * LevelPlay S2S Callback
+   *        ↓
+   * Supabase levelplay-s2s Edge Function
+   *        ↓
+   * record_levelplay_reward()
+   *        ↓
+   * mining session
+   *
+   * Therefore this method MUST NOT call:
+   *
+   *   recordRewardedAd()
+   *   record_rewarded_ad
+   *   verify_rewarded_ad
+   *
+   * Keeping this compatibility method prevents older UI code
+   * from causing a compile error, but it does NOT create a
+   * reward.
+   */
+
   static Future<Map<String, dynamic>> watchAd() async {
-    return MiningService.instance.recordRewardedAd();
+    return MiningService.instance.getActiveMining();
   }
 
   static Future<Map<String, dynamic>> getActiveMining() async {
