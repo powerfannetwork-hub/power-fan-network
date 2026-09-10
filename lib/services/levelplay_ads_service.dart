@@ -36,6 +36,10 @@ class LevelPlayAdsService
   bool _rewardProcessing = false;
   bool _rewardGrantedForCurrentAd = false;
 
+  // Number of rewarded ads already recorded by Supabase
+  // before the current LevelPlay ad was shown.
+  int? _adsWatchedBeforeCurrentAd;
+
   VoidCallback? _onRewarded;
   VoidCallback? _onAdClosed;
 
@@ -210,6 +214,36 @@ class LevelPlayAdsService
         return false;
       }
 
+      /*
+       * IMPORTANT:
+       *
+       * Capture the current server-side ads_watched count
+       * BEFORE showing the ad.
+       *
+       * LevelPlay will later send the reward to the backend
+       * through S2S. We use this value to confirm that the
+       * server actually received and recorded the new reward.
+       */
+      try {
+        final mining =
+            await MiningService.instance.getActiveMining();
+
+        _adsWatchedBeforeCurrentAd =
+            _extractAdsWatched(mining);
+
+        debugPrint(
+          'LevelPlay: ads watched before current ad: '
+          '$_adsWatchedBeforeCurrentAd',
+        );
+      } catch (e) {
+        _adsWatchedBeforeCurrentAd = null;
+
+        debugPrint(
+          'LevelPlay: could not read current ads_watched '
+          'before showing ad: $e',
+        );
+      }
+
       await LevelPlay.setDynamicUserId(userId);
 
       _onRewarded = onRewarded;
@@ -226,6 +260,7 @@ class LevelPlayAdsService
     } catch (e) {
       _showing = false;
       _rewardProcessing = false;
+      _adsWatchedBeforeCurrentAd = null;
 
       debugPrint(
         'LevelPlay show rewarded error: $e',
@@ -263,6 +298,7 @@ class LevelPlayAdsService
 
     _rewardProcessing = false;
     _rewardGrantedForCurrentAd = false;
+    _adsWatchedBeforeCurrentAd = null;
   }
 
   // ============================================================
@@ -350,6 +386,7 @@ class LevelPlayAdsService
     _onAdClosed = null;
 
     _rewardGrantedForCurrentAd = false;
+    _adsWatchedBeforeCurrentAd = null;
 
     loadRewardedAd();
   }
@@ -382,33 +419,47 @@ class LevelPlayAdsService
       /*
        * IMPORTANT:
        *
-       * FAN is NOT added directly on the device.
+       * The phone does NOT create the FAN reward.
        *
-       * Supabase records the rewarded ad and
-       * calculates the mining boost.
+       * LevelPlay sends the reward to the Supabase
+       * LevelPlay S2S endpoint.
        *
-       * Base rate:
-       *   0.20 FAN/H
+       * Supabase validates the callback and calls the
+       * trusted record_levelplay_reward() RPC.
        *
-       * Ad boost:
-       *   +0.10 FAN/H
+       * The client only waits until ads_watched increases.
        *
-       * Referral boost:
-       *   +0.02 FAN/H per active referral
-       *
-       * Maximum:
-       *   7 rewarded ads per mining session.
+       * This prevents the mobile application from directly
+       * creating or verifying rewarded-ad rewards.
        */
 
-      await MiningService.instance
-          .recordAndVerifyRewardedAd();
+      final previousAdsWatched =
+          _adsWatchedBeforeCurrentAd;
+
+      if (previousAdsWatched == null) {
+        throw Exception(
+          'Cannot confirm S2S reward because the '
+          'previous ads_watched count is unavailable.',
+        );
+      }
+
+      final confirmed =
+          await _waitForS2SRewardConfirmation(
+        previousAdsWatched: previousAdsWatched,
+      );
+
+      if (!confirmed) {
+        throw Exception(
+          'LevelPlay S2S reward was not confirmed '
+          'by Supabase within the timeout.',
+        );
+      }
 
       /*
        * KYC DAILY BOOST
        *
        * Only record the boost day AFTER the
-       * server successfully records and verifies
-       * the rewarded ad.
+       * S2S reward has been confirmed by the server.
        *
        * The database prevents duplicate boost
        * records for the same day.
@@ -424,7 +475,7 @@ class LevelPlayAdsService
          * Do not undo the mining reward if the
          * KYC progress refresh fails.
          *
-         * The ad reward has already been verified
+         * The S2S reward has already been confirmed
          * by the mining backend.
          */
         debugPrint(
@@ -437,15 +488,95 @@ class LevelPlayAdsService
       _onRewarded?.call();
 
       debugPrint(
-        'LevelPlay: server reward processed successfully.',
+        'LevelPlay: S2S server reward confirmed successfully.',
       );
     } catch (e) {
       debugPrint(
-        'LevelPlay server reward processing failed: $e',
+        'LevelPlay S2S reward confirmation failed: $e',
       );
     } finally {
       _rewardProcessing = false;
     }
+  }
+
+  // ============================================================
+  // WAIT FOR S2S REWARD CONFIRMATION
+  // ============================================================
+
+  Future<bool> _waitForS2SRewardConfirmation({
+    required int previousAdsWatched,
+  }) async {
+    const Duration timeout =
+        Duration(seconds: 20);
+
+    const Duration pollInterval =
+        Duration(milliseconds: 500);
+
+    final stopwatch = Stopwatch()..start();
+
+    while (stopwatch.elapsed < timeout) {
+      try {
+        final mining =
+            await MiningService.instance.getActiveMining();
+
+        final currentAdsWatched =
+            _extractAdsWatched(mining);
+
+        debugPrint(
+          'LevelPlay S2S confirmation: '
+          'previous=$previousAdsWatched '
+          'current=$currentAdsWatched',
+        );
+
+        if (currentAdsWatched >
+            previousAdsWatched) {
+          return true;
+        }
+      } catch (e) {
+        /*
+         * A temporary network/read error should not
+         * immediately fail the reward confirmation.
+         *
+         * Continue polling until the timeout.
+         */
+        debugPrint(
+          'LevelPlay S2S confirmation poll failed: $e',
+        );
+      }
+
+      await Future<void>.delayed(
+        pollInterval,
+      );
+    }
+
+    return false;
+  }
+
+  // ============================================================
+  // EXTRACT ADS WATCHED
+  // ============================================================
+
+  int _extractAdsWatched(
+    Map<String, dynamic> mining,
+  ) {
+    final value = mining['ads_watched'];
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    if (value != null) {
+      return int.tryParse(
+            value.toString(),
+          ) ??
+          0;
+    }
+
+    return 0;
   }
 
   @override
@@ -478,6 +609,7 @@ class LevelPlayAdsService
 
     _rewardProcessing = false;
     _rewardGrantedForCurrentAd = false;
+    _adsWatchedBeforeCurrentAd = null;
 
     loadRewardedAd();
   }
