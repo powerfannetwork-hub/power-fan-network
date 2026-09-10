@@ -32,15 +32,11 @@ jobs:
         with:
           version: latest
 
-      - name: Link Supabase project
-        run: |
-          set -e
-          supabase link --project-ref "$SUPABASE_PROJECT_REF"
-
       - name: Deploy LevelPlay S2S
         run: |
           set -e
-          supabase functions deploy levelplay-s2s
+          supabase functions deploy levelplay-s2s \
+            --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Deployment completed
         run: |
