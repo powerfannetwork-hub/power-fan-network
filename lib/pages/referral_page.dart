@@ -226,10 +226,10 @@ class _ReferralPageState extends State<ReferralPage> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.07),
+        color: Colors.red.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.red.withOpacity(0.20),
+          color: Colors.red.withValues(alpha: 0.20),
         ),
       ),
       child: Row(
@@ -270,7 +270,7 @@ class _ReferralPageState extends State<ReferralPage> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.20),
+            color: primaryColor.withValues(alpha: 0.20),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -282,7 +282,7 @@ class _ReferralPageState extends State<ReferralPage> {
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -305,7 +305,7 @@ class _ReferralPageState extends State<ReferralPage> {
             'Invite new users and grow your FAN mining rate.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.90),
+              color: Colors.white.withValues(alpha: 0.90),
               fontSize: 13,
               height: 1.4,
             ),
@@ -336,10 +336,10 @@ class _ReferralPageState extends State<ReferralPage> {
               vertical: 14,
             ),
             decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.06),
+              color: primaryColor.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: primaryColor.withOpacity(0.15),
+                color: primaryColor.withValues(alpha: 0.15),
               ),
             ),
             child: Row(
@@ -455,7 +455,7 @@ class _ReferralPageState extends State<ReferralPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
+            color: Colors.black.withValues(alpha: 0.035),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -541,7 +541,7 @@ class _ReferralPageState extends State<ReferralPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: greenColor.withOpacity(0.07),
+              color: greenColor.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -582,7 +582,7 @@ class _ReferralPageState extends State<ReferralPage> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: primaryColor.withOpacity(0.08),
+            color: primaryColor.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
@@ -659,7 +659,7 @@ class _ReferralPageState extends State<ReferralPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.06),
+              color: primaryColor.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -816,7 +816,7 @@ class _ReferralPageState extends State<ReferralPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
