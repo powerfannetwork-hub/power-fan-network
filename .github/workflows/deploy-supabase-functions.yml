@@ -1,0 +1,47 @@
+name: Deploy LevelPlay S2S
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/levelplay-s2s/**"
+      - "supabase/config.toml"
+      - ".github/workflows/deploy-supabase-functions.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy LevelPlay S2S Edge Function
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: fihtqejqpycuvebufjhc
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase project
+        run: |
+          set -e
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy LevelPlay S2S
+        run: |
+          set -e
+          supabase functions deploy levelplay-s2s
+
+      - name: Deployment completed
+        run: |
+          echo "LevelPlay S2S Edge Function deployed successfully."
