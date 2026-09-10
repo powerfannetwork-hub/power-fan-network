@@ -175,49 +175,17 @@ class MiningService {
 
   // ============================================================
   // REWARDED ADS
+  //
+  // SECURITY:
+  // Rewarded-ad rewards are now handled by the
+  // LevelPlay Server-to-Server callback.
+  //
+  // The mobile client MUST NOT call:
+  //   record_rewarded_ad
+  //   verify_rewarded_ad
+  //
+  // Therefore no client-side reward RPC exists here.
   // ============================================================
-
-  Future<Map<String, dynamic>> recordRewardedAd() async {
-    userId;
-
-    final result = await _client.rpc('record_rewarded_ad');
-
-    return _mapFromRpcResult(result);
-  }
-
-  Future<Map<String, dynamic>> verifyRewardedAd(String adId) async {
-    userId;
-
-    final cleanAdId = adId.trim();
-
-    if (cleanAdId.isEmpty) {
-      throw Exception('Invalid ad ID.');
-    }
-
-    final result = await _client.rpc(
-      'verify_rewarded_ad',
-      params: <String, dynamic>{
-        'p_ad_id': cleanAdId,
-      },
-    );
-
-    return _mapFromRpcResult(result);
-  }
-
-  Future<Map<String, dynamic>> recordAndVerifyRewardedAd() async {
-    final recorded = await recordRewardedAd();
-
-    // Backend record_rewarded_ad() returns "ad_id".
-    final adId = recorded['ad_id']?.toString();
-
-    if (adId == null || adId.isEmpty) {
-      throw Exception(
-        'Rewarded ad was recorded without an ID.',
-      );
-    }
-
-    return verifyRewardedAd(adId);
-  }
 
   // ============================================================
   // ADS COUNT
