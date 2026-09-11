@@ -50,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _claimAdWaiting = false;
 
   double _fan = 0.0;
+
   double _rate =
       MiningService.defaultMiningRate;
 
@@ -57,6 +58,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   DateTime? _startedAt;
   DateTime? _endsAt;
+
+  /*
+   * IMPORTANT:
+   *
+   * This is ONLY a local display deadline.
+   *
+   * It is created from Supabase's remaining_seconds.
+   * The phone clock is NOT used to decide whether mining
+   * has actually finished.
+   */
+  DateTime? _displayDeadline;
 
   Duration _remaining =
       Duration.zero;
@@ -169,10 +181,11 @@ class _HomeScreenState extends State<HomeScreen> {
   //
   // SERVER IS AUTHORITATIVE.
   //
-  // active=true from Supabase means ACTIVE.
-  // claimable=true/status claimable means CLAIMABLE.
+  // remaining_seconds from Supabase is the preferred source
+  // for the countdown.
   //
-  // Local DateTime is used only for displaying the countdown.
+  // The phone clock is NOT used to decide ACTIVE/CLAIMABLE
+  // when the server gives us authoritative state.
   // ============================================================
 
   Future<void> _loadMining() async {
@@ -195,6 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _startedAt = null;
         _endsAt = null;
+        _displayDeadline = null;
 
         _adsWatched = 0;
 
@@ -294,9 +308,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // ==========================================================
     // SERVER REMAINING TIME
-    //
-    // If SQL has remaining_seconds, use it.
-    // Otherwise fall back to ends_at for display.
     // ==========================================================
 
     final serverRemaining =
@@ -339,57 +350,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // ==========================================================
-    // LOCAL DISPLAY COUNTDOWN
-    // ==========================================================
-
-    Duration remaining =
-        Duration.zero;
-
-    if (serverRemaining > 0) {
-      remaining =
-          Duration(
-        seconds: serverRemaining,
-      );
-    } else if (finalEnds != null) {
-      final now = DateTime.now();
-
-      remaining =
-          finalEnds.difference(now);
-
-      if (remaining.isNegative) {
-        remaining =
-            Duration.zero;
-      }
-    }
-
-    if (remaining > miningDuration) {
-      remaining =
-          miningDuration;
-    }
-
-    // ==========================================================
-    // TIMESTAMP FALLBACK
-    // ==========================================================
-
-    final now = DateTime.now();
-
-    final hasTimestamps =
-        finalStarted != null &&
-        finalEnds != null;
-
-    final activeByTime =
-        hasTimestamps &&
-        !finalStarted!.isAfter(now) &&
-        finalEnds!.isAfter(now);
-
-    final sessionFinished =
-        hasTimestamps &&
-        !finalEnds!.isAfter(now);
-
-    // ==========================================================
     // DETERMINE ACTIVE
     //
-    // SERVER ACTIVE HAS PRIORITY.
+    // SERVER STATE HAS PRIORITY.
     // ==========================================================
 
     bool active = false;
@@ -403,15 +366,82 @@ class _HomeScreenState extends State<HomeScreen> {
           !serverClaimable &&
           !statusIsClaimable) {
         active = true;
-      } else if (activeByTime &&
-          !serverClaimable &&
-          !statusIsClaimable) {
-        active = true;
+      }
+    }
+
+    // ==========================================================
+    // SERVER REMAINING -> DISPLAY DEADLINE
+    //
+    // This is the important fix.
+    //
+    // Example:
+    //
+    // Supabase says 86350 seconds remaining.
+    //
+    // We do:
+    //
+    // DateTime.now() + 86350 seconds
+    //
+    // We do NOT compare the phone's absolute date against
+    // Supabase's ends_at.
+    // ==========================================================
+
+    Duration remaining =
+        Duration.zero;
+
+    DateTime? displayDeadline;
+
+    if (active &&
+        serverRemaining > 0) {
+      final safeSeconds =
+          serverRemaining.clamp(
+        0,
+        miningDuration.inSeconds,
+      );
+
+      remaining =
+          Duration(
+        seconds: safeSeconds,
+      );
+
+      displayDeadline =
+          DateTime.now().add(
+        remaining,
+      );
+    } else if (active &&
+        finalEnds != null) {
+      /*
+       * Fallback only.
+       *
+       * Normally the SQL function should return
+       * remaining_seconds.
+       */
+      final localRemaining =
+          finalEnds.difference(
+        DateTime.now(),
+      );
+
+      if (!localRemaining.isNegative) {
+        remaining =
+            localRemaining > miningDuration
+                ? miningDuration
+                : localRemaining;
+
+        displayDeadline =
+            DateTime.now().add(
+          remaining,
+        );
       }
     }
 
     // ==========================================================
     // CLAIMABLE
+    //
+    // IMPORTANT:
+    //
+    // We do NOT use local phone time here.
+    //
+    // The server decides claimable.
     // ==========================================================
 
     final finalCanClaim =
@@ -419,29 +449,27 @@ class _HomeScreenState extends State<HomeScreen> {
         !active &&
         (
           serverClaimable ||
-          statusIsClaimable ||
-          sessionFinished
+          statusIsClaimable
         );
 
     // ==========================================================
     // REWARD
+    //
+    // If server gives reward, use it.
+    //
+    // Otherwise estimate from SERVER remaining_seconds,
+    // not from phone started_at.
     // ==========================================================
 
     double liveReward =
         serverReward;
 
-    /*
-     * Only display estimated live reward while mining.
-     *
-     * This does NOT write anything to Supabase.
-     */
     if (liveReward <= 0 &&
         active &&
-        finalStarted != null) {
+        serverRemaining >= 0) {
       final elapsedSeconds =
-          now
-              .difference(finalStarted)
-              .inSeconds;
+          miningDuration.inSeconds -
+              serverRemaining;
 
       if (elapsedSeconds > 0) {
         liveReward =
@@ -467,6 +495,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _endsAt =
           finalEnds;
+
+      _displayDeadline =
+          displayDeadline;
 
       _remaining =
           remaining;
@@ -583,6 +614,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _canClaim = true;
           _remaining =
               Duration.zero;
+          _displayDeadline = null;
         });
       }
 
@@ -595,9 +627,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (started == null &&
         ends == null) {
-      /*
-       * Do NOT fabricate a 24-hour session locally.
-       */
       return false;
     }
 
@@ -629,7 +658,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // ==========================================================
-    // REMAINING
+    // SERVER REMAINING
     // ==========================================================
 
     final serverRemaining =
@@ -638,35 +667,53 @@ class _HomeScreenState extends State<HomeScreen> {
           data['seconds_remaining'],
     );
 
-    Duration remaining;
+    Duration remaining =
+        Duration.zero;
+
+    DateTime? displayDeadline;
 
     if (serverRemaining > 0) {
+      final safeSeconds =
+          serverRemaining.clamp(
+        0,
+        miningDuration.inSeconds,
+      );
+
       remaining =
           Duration(
-        seconds: serverRemaining,
+        seconds: safeSeconds,
       );
-    } else {
-      final now = DateTime.now();
 
-      remaining =
-          finalEnds.difference(now);
+      displayDeadline =
+          DateTime.now().add(
+        remaining,
+      );
+    } else if (serverActive) {
+      /*
+       * If server says active but did not return
+       * remaining_seconds, use timestamp only as fallback.
+       */
+      final localRemaining =
+          finalEnds.difference(
+        DateTime.now(),
+      );
 
-      if (remaining.isNegative) {
+      if (!localRemaining.isNegative) {
         remaining =
-            Duration.zero;
+            localRemaining > miningDuration
+                ? miningDuration
+                : localRemaining;
+
+        displayDeadline =
+            DateTime.now().add(
+          remaining,
+        );
       }
     }
 
-    if (remaining > miningDuration) {
-      remaining =
-          miningDuration;
-    }
-
-    final now = DateTime.now();
-
-    final timestampActive =
-        !finalStarted.isAfter(now) &&
-        finalEnds.isAfter(now);
+    // ==========================================================
+    // SERVER ACTIVE
+    // ==========================================================
 
     final statusActive =
         status == 'active' ||
@@ -679,8 +726,7 @@ class _HomeScreenState extends State<HomeScreen> {
         !claimRequired &&
         (
           serverActive ||
-          statusActive ||
-          timestampActive
+          statusActive
         );
 
     final returnedRate =
@@ -717,6 +763,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _endsAt =
           finalEnds;
+
+      _displayDeadline =
+          displayDeadline;
 
       _remaining =
           remaining;
@@ -759,10 +808,12 @@ class _HomeScreenState extends State<HomeScreen> {
   //
   // IMPORTANT:
   //
-  // The timer is ONLY a display mechanism.
+  // The timer uses _displayDeadline.
   //
-  // When it reaches zero, we do NOT directly decide that the
-  // session is claimable. We ask Supabase again.
+  // _displayDeadline was created from server remaining_seconds.
+  //
+  // The timer does NOT decide that mining is completed.
+  // When it reaches zero, we call Supabase again.
   // ============================================================
 
   void _startTimer() {
@@ -778,10 +829,10 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        final ends =
-            _endsAt;
+        final deadline =
+            _displayDeadline;
 
-        if (ends == null) {
+        if (deadline == null) {
           _timer?.cancel();
 
           unawaited(
@@ -791,11 +842,10 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        final now =
-            DateTime.now();
-
         var remaining =
-            ends.difference(now);
+            deadline.difference(
+          DateTime.now(),
+        );
 
         if (remaining.isNegative) {
           remaining =
@@ -808,10 +858,11 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         // ========================================================
-        // TIMER REACHED ZERO
+        // COUNTDOWN REACHED ZERO
         //
-        // DO NOT blindly switch to READY TO CLAIM.
-        // Ask the server.
+        // NEVER directly set READY TO CLAIM.
+        //
+        // Ask Supabase first.
         // ========================================================
 
         if (remaining == Duration.zero) {
@@ -825,26 +876,24 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         // ========================================================
-        // DISPLAY REWARD ONLY
+        // DISPLAY REWARD
+        //
+        // Calculate using remaining countdown.
+        // This avoids depending on the phone's absolute
+        // mining start time.
         // ========================================================
 
         double displayReward =
             _sessionReward;
 
-        final started =
-            _startedAt;
+        final elapsedSeconds =
+            miningDuration.inSeconds -
+                remaining.inSeconds;
 
-        if (started != null) {
-          final elapsedSeconds =
-              now
-                  .difference(started)
-                  .inSeconds;
-
-          if (elapsedSeconds > 0) {
-            displayReward =
-                (elapsedSeconds / 3600.0) *
-                    _rate;
-          }
+        if (elapsedSeconds > 0) {
+          displayReward =
+              (elapsedSeconds / 3600.0) *
+                  _rate;
         }
 
         setState(() {
@@ -875,7 +924,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // START MINING BUTTON
+  // START MINING
   // ============================================================
 
   Future<void> _startMining() async {
@@ -928,6 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _canClaim = true;
             _remaining =
                 Duration.zero;
+            _displayDeadline = null;
           });
         }
 
@@ -960,9 +1010,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       /*
-       * If start_mining returned success but not enough session
-       * information, ask get_active_mining() for the authoritative
-       * session.
+       * If start_mining returned success but did not contain
+       * enough session information, load it from Supabase.
        */
       if (!applied) {
         await _loadMining();
@@ -1021,6 +1070,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _canClaim = true;
           _remaining =
               Duration.zero;
+          _displayDeadline = null;
         });
 
         _message(
@@ -1042,6 +1092,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // CLAIM MINING
+  //
+  // NO PHONE TIME CHECK.
+  //
+  // Supabase claim_mining() is authoritative.
   // ============================================================
 
   Future<void> _claimMining() async {
@@ -1050,20 +1104,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _isMining) {
       return;
     }
-
-    /*
-     * IMPORTANT:
-     *
-     * NO local DateTime check here.
-     *
-     * We let claim_mining() on Supabase decide.
-     *
-     * This means a wrong phone date cannot:
-     *
-     *   - make an active session claimable
-     *   - make a completed session unclaimable
-     *   - bypass the 24-hour rule
-     */
 
     setState(() {
       _busy = true;
@@ -1164,6 +1204,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _startedAt = null;
         _endsAt = null;
+        _displayDeadline = null;
 
         _adsWatched = 0;
       });
@@ -1172,9 +1213,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      /*
-       * Refresh mining from Supabase after claim.
-       */
       await _loadMining();
 
       if (!mounted) return;
@@ -1268,9 +1306,6 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         }
 
-        /*
-         * If the session has ended while waiting, stop.
-         */
         if (!_isMining) {
           break;
         }
