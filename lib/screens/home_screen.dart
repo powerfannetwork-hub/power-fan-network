@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../pages/kyc_page.dart';
 import '../services/kyc_service.dart';
@@ -68,8 +67,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _canClaim = false;
 
   bool _claimAdWaiting = false;
-
-  bool _alreadyClaimedToday = false;
 
   // ============================================================
   // FAN
@@ -153,8 +150,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      await _loadClaimedToday();
-
       await Future.wait([
         _loadProfile(),
         _loadMining(),
@@ -184,8 +179,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     try {
-      await _loadClaimedToday();
-
       await Future.wait([
         _loadProfile(),
         _loadMining(),
@@ -202,80 +195,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // LOCAL CLAIM STATE
-  // ============================================================
-
-  Future<void> _loadClaimedToday() async {
-    try {
-      final prefs =
-          await SharedPreferences.getInstance();
-
-      final savedDate =
-          prefs.getString('fan_last_claim_date');
-
-      final today =
-          _todayKey();
-
-      final claimed =
-          savedDate == today;
-
-      if (!mounted) return;
-
-      setState(() {
-        _alreadyClaimedToday = claimed;
-      });
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        _alreadyClaimedToday = false;
-      });
-    }
-  }
-
-  Future<void> _saveClaimedToday() async {
-    try {
-      final prefs =
-          await SharedPreferences.getInstance();
-
-      await prefs.setString(
-        'fan_last_claim_date',
-        _todayKey(),
-      );
-    } catch (_) {
-      // UI still updates even if local storage fails.
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _alreadyClaimedToday = true;
-    });
-  }
-
-  String _todayKey() {
-    final now = DateTime.now();
-
-    return '${now.year}-'
-        '${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
-  }
-
-  // ============================================================
   // PROFILE
   // ============================================================
 
   Future<void> _loadProfile() async {
-    final data =
-        await _mining.getProfile();
+    final data = await _mining.getProfile();
 
     if (!mounted || data == null) {
       return;
     }
 
     setState(() {
-      _fan =
-          _toDouble(
+      _fan = _toDouble(
         data['fan_balance'],
       );
     });
@@ -286,29 +217,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Future<void> _loadMining() async {
-    final data =
-        await _mining.getActiveMining();
+    final data = await _mining.getActiveMining();
 
     if (data.isEmpty) {
       if (!mounted) return;
 
       _timer?.cancel();
-
-      if (_alreadyClaimedToday) {
-        setState(() {
-          _isMining = false;
-          _canClaim = false;
-          _sessionReward = 0.0;
-          _remaining = Duration.zero;
-          _startedAt = null;
-          _endsAt = null;
-          _adsWatched = 0;
-          _rate =
-              MiningService.defaultMiningRate;
-        });
-
-        return;
-      }
 
       setState(() {
         _isMining = false;
@@ -318,23 +232,20 @@ class _HomeScreenState extends State<HomeScreen> {
         _startedAt = null;
         _endsAt = null;
         _adsWatched = 0;
-        _rate =
-            MiningService.defaultMiningRate;
+        _rate = MiningService.defaultMiningRate;
       });
 
       return;
     }
 
-    final started =
-        _parseDate(
+    final started = _parseDate(
       data['started_at'] ??
           data['start_time'] ??
           data['started'] ??
           data['mining_started_at'],
     );
 
-    final ends =
-        _parseDate(
+    final ends = _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
@@ -342,11 +253,10 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
-    final status =
-        data['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
+    final status = data['status']
+        ?.toString()
+        .trim()
+        .toLowerCase();
 
     final claimable =
         _toBool(data['claimable']) ||
@@ -357,16 +267,14 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['session_completed']) ||
         _toBool(data['completed']);
 
-    final statusIsClaimable =
-        _isClaimableStatus(status);
+    final statusIsClaimable = _isClaimableStatus(status);
 
     final alreadyClaimed =
         _toBool(data['claimed']) ||
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    var rate =
-        _toDouble(
+    var rate = _toDouble(
       data['total_rate'] ??
           data['mining_rate'] ??
           data['rate'],
@@ -374,88 +282,68 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (rate <= 0) {
       try {
-        rate =
-            await _mining
-                .getUserMiningRate();
+        rate = await _mining.getUserMiningRate();
       } catch (_) {
-        rate =
-            MiningService.defaultMiningRate;
+        rate = MiningService.defaultMiningRate;
       }
     }
 
     if (rate <= 0) {
-      rate =
-          MiningService.defaultMiningRate;
+      rate = MiningService.defaultMiningRate;
     }
 
-    final ads =
-        _toInt(
+    final ads = _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
           data['ads_count'] ??
           data['daily_ads_watched'],
     );
 
-    final serverRemaining =
-        _toInt(
+    final serverRemaining = _toInt(
       data['remaining_seconds'] ??
           data['seconds_remaining'],
     );
 
-    final serverReward =
-        _toDouble(
+    final serverReward = _toDouble(
       data['reward'] ??
           data['session_reward'] ??
           data['earned_reward'],
     );
 
-    DateTime? finalStarted =
-        started;
+    DateTime? finalStarted = started;
 
-    DateTime? finalEnds =
-        ends;
+    DateTime? finalEnds = ends;
 
-    if (finalStarted == null &&
-        finalEnds != null) {
-      finalStarted =
-          finalEnds.subtract(
+    if (finalStarted == null && finalEnds != null) {
+      finalStarted = finalEnds.subtract(
         miningDuration,
       );
     }
 
-    if (finalEnds == null &&
-        finalStarted != null) {
-      finalEnds =
-          finalStarted.add(
+    if (finalEnds == null && finalStarted != null) {
+      finalEnds = finalStarted.add(
         miningDuration,
       );
     }
 
-    final now =
-        DateTime.now();
+    final now = DateTime.now();
 
-    Duration remaining =
-        Duration.zero;
+    Duration remaining = Duration.zero;
 
     if (finalEnds != null) {
-      remaining =
-          finalEnds.difference(now);
+      remaining = finalEnds.difference(now);
 
       if (remaining.isNegative) {
-        remaining =
-            Duration.zero;
+        remaining = Duration.zero;
       }
     } else if (serverRemaining > 0) {
-      remaining =
-          Duration(
+      remaining = Duration(
         seconds: serverRemaining,
       );
     }
 
-    if (remaining >
-        miningDuration) {
-      remaining =
-          miningDuration;
+    if (remaining > miningDuration) {
+      remaining = miningDuration;
     }
 
     final activeByTime =
@@ -478,8 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
         data.containsKey('active') &&
         data['active'] == false;
 
-    final activeFlag =
-        data['mining_active'];
+    final activeFlag = data['mining_active'];
 
     final active =
         !explicitInactive &&
@@ -498,22 +385,17 @@ class _HomeScreenState extends State<HomeScreen> {
           sessionFinished
         );
 
-    double liveReward =
-        serverReward;
+    double liveReward = serverReward;
 
     if (liveReward <= 0 &&
         active &&
         finalStarted != null) {
       final elapsedSeconds =
-          now
-              .difference(finalStarted)
-              .inSeconds;
+          now.difference(finalStarted).inSeconds;
 
       if (elapsedSeconds > 0) {
         liveReward =
-            (elapsedSeconds /
-                    3600.0) *
-                rate;
+            (elapsedSeconds / 3600.0) * rate;
       }
     }
 
@@ -521,21 +403,13 @@ class _HomeScreenState extends State<HomeScreen> {
         liveReward <= 0 &&
         rate > 0) {
       liveReward =
-          (miningDuration.inSeconds /
-                  3600.0) *
-              rate;
+          (miningDuration.inSeconds / 3600.0) * rate;
     }
 
     final explicitClaimRequired =
-        _toBool(
-          data['claim_required'],
-        ) ||
-        _toBool(
-          data['requires_claim'],
-        ) ||
-        _toBool(
-          data['needs_claim'],
-        );
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']);
 
     final forceClaim =
         explicitClaimRequired &&
@@ -551,43 +425,30 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer?.cancel();
 
     setState(() {
-      _isMining =
-          active;
+      _isMining = active;
 
-      _canClaim =
-          finalClaim;
+      _canClaim = finalClaim;
 
-      _rate =
-          rate;
+      _rate = rate;
 
-      _startedAt =
-          finalStarted;
+      _startedAt = finalStarted;
 
-      _endsAt =
-          finalEnds;
+      _endsAt = finalEnds;
 
-      _remaining =
-          remaining;
+      _remaining = remaining;
 
       _sessionReward =
-          liveReward < 0
-              ? 0.0
-              : liveReward;
+          liveReward < 0 ? 0.0 : liveReward;
 
-      _adsWatched =
-          ads
-              .clamp(
-                0,
-                maxAds,
-              )
-              .toInt();
+      _adsWatched = ads
+          .clamp(
+            0,
+            maxAds,
+          )
+          .toInt();
 
       if (_isMining) {
-        _alreadyClaimedToday =
-            false;
-
-        _claimAdWaiting =
-            false;
+        _claimAdWaiting = false;
       }
     });
 
@@ -608,10 +469,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
 
-    final value =
-        status
-            .trim()
-            .toLowerCase();
+    final value = status.trim().toLowerCase();
 
     return value == 'completed' ||
         value == 'complete' ||
@@ -634,41 +492,30 @@ class _HomeScreenState extends State<HomeScreen> {
     Map<String, dynamic> data,
   ) {
     final claimRequired =
-        _toBool(
-          data['claim_required'],
-        ) ||
-        _toBool(
-          data['requires_claim'],
-        ) ||
-        _toBool(
-          data['needs_claim'],
-        );
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']);
 
     if (claimRequired) {
       if (!mounted) return;
 
       setState(() {
         _isMining = false;
-
         _canClaim = true;
-
-        _remaining =
-            Duration.zero;
+        _remaining = Duration.zero;
       });
 
       return;
     }
 
-    final started =
-        _parseDate(
+    final started = _parseDate(
       data['started_at'] ??
           data['start_time'] ??
           data['started'] ??
           data['mining_started_at'],
     );
 
-    final ends =
-        _parseDate(
+    final ends = _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
@@ -681,27 +528,22 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final now =
-        DateTime.now();
+    final now = DateTime.now();
 
-    DateTime? finalStarted =
-        started;
+    DateTime? finalStarted = started;
 
-    DateTime? finalEnds =
-        ends;
+    DateTime? finalEnds = ends;
 
     if (finalStarted == null &&
         finalEnds != null) {
-      finalStarted =
-          finalEnds.subtract(
+      finalStarted = finalEnds.subtract(
         miningDuration,
       );
     }
 
     if (finalEnds == null &&
         finalStarted != null) {
-      finalEnds =
-          finalStarted.add(
+      finalEnds = finalStarted.add(
         miningDuration,
       );
     }
@@ -711,26 +553,21 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    var remaining =
-        finalEnds.difference(now);
+    var remaining = finalEnds.difference(now);
 
     if (remaining.isNegative) {
-      remaining =
-          Duration.zero;
+      remaining = Duration.zero;
     }
 
-    if (remaining >
-        miningDuration) {
-      remaining =
-          miningDuration;
+    if (remaining > miningDuration) {
+      remaining = miningDuration;
     }
 
     final active =
         !finalStarted.isAfter(now) &&
         finalEnds.isAfter(now);
 
-    final returnedRate =
-        _toDouble(
+    final returnedRate = _toDouble(
       data['total_rate'] ??
           data['mining_rate'] ??
           data['rate'],
@@ -739,32 +576,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     setState(() {
-      _startedAt =
-          finalStarted;
+      _startedAt = finalStarted;
 
-      _endsAt =
-          finalEnds;
+      _endsAt = finalEnds;
 
-      _remaining =
-          remaining;
+      _remaining = remaining;
 
       if (returnedRate > 0) {
-        _rate =
-            returnedRate;
+        _rate = returnedRate;
       }
 
-      _isMining =
-          active;
+      _isMining = active;
 
       _canClaim =
           !active &&
-          remaining ==
-              Duration.zero;
-
-      if (active) {
-        _alreadyClaimedToday =
-            false;
-      }
+          remaining == Duration.zero;
     });
 
     if (_isMining) {
@@ -779,17 +605,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startTimer() {
     _timer?.cancel();
 
-    _timer =
-        Timer.periodic(
+    _timer = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
         if (!mounted) return;
 
-        final started =
-            _startedAt;
+        final started = _startedAt;
 
-        final ends =
-            _endsAt;
+        final ends = _endsAt;
 
         if (started == null ||
             ends == null) {
@@ -797,73 +620,51 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        final now =
-            DateTime.now();
+        final now = DateTime.now();
 
-        var remaining =
-            ends.difference(now);
+        var remaining = ends.difference(now);
 
         if (remaining.isNegative) {
-          remaining =
-              Duration.zero;
+          remaining = Duration.zero;
         }
 
-        if (remaining >
-            miningDuration) {
-          remaining =
-              miningDuration;
+        if (remaining > miningDuration) {
+          remaining = miningDuration;
         }
 
         final finished =
-            remaining ==
-                Duration.zero;
+            remaining == Duration.zero;
 
         if (finished) {
           _timer?.cancel();
 
           setState(() {
-            _remaining =
-                Duration.zero;
+            _remaining = Duration.zero;
 
-            _isMining =
-                false;
+            _isMining = false;
 
-            _canClaim =
-                true;
+            _canClaim = true;
 
-            _sessionReward =
-                (_rate *
-                    24.0);
+            _sessionReward = _rate * 24.0;
           });
-
-          unawaited(
-            _loadMining(),
-          );
 
           return;
         }
 
         final elapsedSeconds =
-            now
-                .difference(started)
-                .inSeconds;
+            now.difference(started).inSeconds;
 
-        double displayReward =
-            _sessionReward;
+        double displayReward = _sessionReward;
 
         if (elapsedSeconds >= 0) {
           displayReward =
-              (elapsedSeconds /
-                      3600.0) *
-                  _rate;
+              (elapsedSeconds / 3600.0) * _rate;
         }
 
         setState(() {
-          _remaining =
-              remaining;
+          _remaining = remaining;
 
-          _sessionReward =
-              displayReward;
+          _sessionReward = displayReward;
         });
       },
     );
@@ -876,15 +677,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _startMining() async {
     if (_busy ||
         _isMining ||
-        _canClaim ||
-        _alreadyClaimedToday) {
-      if (_alreadyClaimedToday &&
-          !_busy) {
-        _message(
-          'Come tomorrow to start a new mining session.',
-        );
-      }
-
+        _canClaim) {
       return;
     }
 
@@ -893,8 +686,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final result =
-          await _mining.startMining();
+      final result = await _mining.startMining();
 
       final success =
           result.isEmpty ||
@@ -919,8 +711,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               _canClaim = true;
 
-              _remaining =
-                  Duration.zero;
+              _remaining = Duration.zero;
             });
           }
 
@@ -939,9 +730,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (result.isNotEmpty) {
-        _applyMiningResult(
-          result,
-        );
+        _applyMiningResult(result);
       }
 
       await _loadProfile();
@@ -984,17 +773,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
           _canClaim = true;
 
-          _remaining =
-              Duration.zero;
+          _remaining = Duration.zero;
         });
 
         _message(
           'Your completed mining session is ready to claim.',
         );
       } else if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1016,16 +802,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final ends =
-        _endsAt;
+    final ends = _endsAt;
 
     if (ends != null &&
-        DateTime.now()
-            .isBefore(ends)) {
+        DateTime.now().isBefore(ends)) {
       final difference =
-          ends.difference(
-        DateTime.now(),
-      );
+          ends.difference(DateTime.now());
 
       if (mounted) {
         _message(
@@ -1052,8 +834,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final adCompleted =
           Completer<bool>();
 
-      var adCallbackReceived =
-          false;
+      var adCallbackReceived = false;
 
       final shown =
           await _ads.showRewardedAd(
@@ -1062,14 +843,10 @@ class _HomeScreenState extends State<HomeScreen> {
             return;
           }
 
-          adCallbackReceived =
-              true;
+          adCallbackReceived = true;
 
-          if (!adCompleted
-              .isCompleted) {
-            adCompleted.complete(
-              true,
-            );
+          if (!adCompleted.isCompleted) {
+            adCompleted.complete(true);
           }
         },
         onAdClosed: () {},
@@ -1082,11 +859,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final adVerified =
-          await adCompleted.future
-              .timeout(
-        const Duration(
-          seconds: 30,
-        ),
+          await adCompleted.future.timeout(
+        const Duration(seconds: 30),
         onTimeout: () => false,
       );
 
@@ -1124,10 +898,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      await _saveClaimedToday();
-
-      if (!mounted) return;
-
       _timer?.cancel();
 
       setState(() {
@@ -1137,8 +907,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         _isMining = false;
 
-        _remaining =
-            Duration.zero;
+        _remaining = Duration.zero;
 
         _startedAt = null;
 
@@ -1152,25 +921,19 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       setState(() {
-        _alreadyClaimedToday =
-            true;
-
         _isMining = false;
 
         _canClaim = false;
 
-        _remaining =
-            Duration.zero;
+        _remaining = Duration.zero;
       });
 
       _message(
-        'Mining reward claimed successfully. Come tomorrow for a new session.',
+        'Mining reward claimed successfully. You can start a new mining session.',
       );
     } catch (e) {
       if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1178,8 +941,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _busy = false;
 
-        _claimAdWaiting =
-            false;
+        _claimAdWaiting = false;
       });
     }
   }
@@ -1194,8 +956,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_adsWatched >=
-        maxAds) {
+    if (_adsWatched >= maxAds) {
       _message(
         'You have reached the 7 ads limit.',
       );
@@ -1214,25 +975,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final shown =
           await _ads.showRewardedAd(
-        onRewarded: () {
-          unawaited(
-            _loadMining(),
-          );
-        },
+        onRewarded: () {},
         onAdClosed: () {},
       );
 
-      if (!shown &&
-          mounted) {
-        _message(
-          'Rewarded ad is not ready. Please try again.',
-        );
+      if (!shown) {
+        if (mounted) {
+          _message(
+            'Rewarded ad is not ready. Please try again.',
+          );
+        }
+
+        return;
+      }
+
+      await _loadMining();
+
+      if (mounted) {
+        if (_adsWatched >= maxAds) {
+          _message(
+            'Maximum 7 ads reached for this mining session.',
+          );
+        } else {
+          _message(
+            'Ad completed. Your mining boost has been updated.',
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1250,8 +1022,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadTasks() async {
     try {
       final tasks =
-          await _social
-              .getDailyTasksForCard();
+          await _social.getDailyTasksForCard();
 
       if (!mounted) return;
 
@@ -1278,8 +1049,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final task =
-        _tasks.first;
+    final task = _tasks.first;
 
     if (task.claimed) {
       _message(
@@ -1317,9 +1087,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       final opened =
-          await _social.openTaskUrl(
-        task.url,
-      );
+          await _social.openTaskUrl(task.url);
 
       if (mounted) {
         if (opened) {
@@ -1336,9 +1104,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadTasks();
     } catch (e) {
       if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1373,16 +1139,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            const KycPage(),
+        builder: (_) => const KycPage(),
       ),
     );
 
     if (!mounted) return;
 
-    unawaited(
-      _loadKyc(),
-    );
+    unawaited(_loadKyc());
   }
 
   // ============================================================
@@ -1390,23 +1153,17 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          pageBackground,
+      backgroundColor: pageBackground,
       body: SafeArea(
         child: RefreshIndicator(
-          color:
-              primaryPurple,
+          color: primaryPurple,
           onRefresh: _load,
           child: _loading
               ? const Center(
-                  child:
-                      CircularProgressIndicator(
-                    color:
-                        primaryPurple,
+                  child: CircularProgressIndicator(
+                    color: primaryPurple,
                   ),
                 )
               : ListView(
@@ -1422,39 +1179,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _buildHeader(),
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     _buildBalanceCard(),
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     _buildMiningCard(),
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     _buildBoostCard(),
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     _buildSocialCard(),
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     _buildKycCard(),
 
-                    const SizedBox(
-                      height: 10,
-                    ),
+                    const SizedBox(height: 10),
                   ],
                 ),
         ),
@@ -1474,33 +1219,24 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 56,
           decoration:
               BoxDecoration(
-            color:
-                primaryPurple,
+            color: primaryPurple,
             borderRadius:
-                BorderRadius.circular(
-              15,
-            ),
+                BorderRadius.circular(15),
           ),
           alignment:
               Alignment.center,
-          child:
-              const Text(
+          child: const Text(
             'AFAM',
             style:
                 TextStyle(
-              color:
-                  Colors.white,
-              fontSize:
-                  17,
-              fontWeight:
-                  FontWeight.w900,
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ),
 
-        const SizedBox(
-          width: 12,
-        ),
+        const SizedBox(width: 12),
 
         Expanded(
           child: Column(
@@ -1511,67 +1247,49 @@ class _HomeScreenState extends State<HomeScreen> {
                     TextAlign.center,
                 style:
                     TextStyle(
-                  color:
-                      primaryPurple,
-                  fontSize:
-                      22,
-                  fontWeight:
-                      FontWeight.w900,
-                  letterSpacing:
-                      -0.5,
+                  color: primaryPurple,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
                 ),
               ),
 
-              const SizedBox(
-                height: 2,
-              ),
+              const SizedBox(height: 2),
 
               Text(
                 'Mine FAN. Earn More',
                 style:
                     TextStyle(
-                  color:
-                      Colors.indigo.shade900,
-                  fontSize:
-                      14,
-                  fontWeight:
-                      FontWeight.w500,
+                  color: Colors.indigo.shade900,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
         ),
 
-        const SizedBox(
-          width: 8,
-        ),
+        const SizedBox(width: 8),
 
         Stack(
-          clipBehavior:
-              Clip.none,
+          clipBehavior: Clip.none,
           children: [
             const Icon(
-              Icons
-                  .notifications_none_rounded,
-              color:
-                  deepPurple,
-              size:
-                  35,
+              Icons.notifications_none_rounded,
+              color: deepPurple,
+              size: 35,
             ),
 
             Positioned(
               right: 0,
               top: 0,
-              child:
-                  Container(
+              child: Container(
                 width: 9,
                 height: 9,
                 decoration:
                     const BoxDecoration(
-                  color:
-                      Colors.red,
-                  shape:
-                      BoxShape.circle,
+                  color: Colors.red,
+                  shape: BoxShape.circle,
                 ),
               ),
             ),
@@ -1589,8 +1307,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final displayedBalance =
         _fan +
         (
-          (_isMining ||
-                  _canClaim)
+          (_isMining || _canClaim)
               ? _sessionReward
               : 0.0
         );
@@ -1601,53 +1318,38 @@ class _HomeScreenState extends State<HomeScreen> {
           BoxDecoration(
         gradient:
             const LinearGradient(
-          begin:
-              Alignment.topLeft,
-          end:
-              Alignment.bottomRight,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
             Color(0xFF4320B4),
             Color(0xFF29107A),
           ],
         ),
         borderRadius:
-            BorderRadius.circular(
-          23,
-        ),
+            BorderRadius.circular(23),
         boxShadow: [
           BoxShadow(
-            color:
-                primaryPurple.withValues(
+            color: primaryPurple.withValues(
               alpha: 0.18,
             ),
-            blurRadius:
-                14,
+            blurRadius: 14,
             offset:
-                const Offset(
-              0,
-              6,
-            ),
+                const Offset(0, 6),
           ),
         ],
       ),
-      child:
-          Stack(
+      child: Stack(
         children: [
           Positioned(
             right: -8,
             bottom: -16,
-            child:
-                Opacity(
-              opacity:
-                  0.20,
+            child: Opacity(
+              opacity: 0.20,
               child:
                   const Icon(
-                Icons
-                    .engineering_rounded,
-                size:
-                    150,
-                color:
-                    Colors.white,
+                Icons.engineering_rounded,
+                size: 150,
+                color: Colors.white,
               ),
             ),
           ),
@@ -1669,18 +1371,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   'BALANCE',
                   style:
                       TextStyle(
-                    color:
-                        Colors.white,
-                    fontSize:
-                        15,
-                    fontWeight:
-                        FontWeight.w700,
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 7,
-                ),
+                const SizedBox(height: 7),
 
                 Row(
                   children: [
@@ -1689,17 +1386,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       height: 58,
                       decoration:
                           const BoxDecoration(
-                        shape:
-                            BoxShape.circle,
+                        shape: BoxShape.circle,
                         gradient:
                             LinearGradient(
                           colors: [
-                            Color(
-                              0xFFFFC928,
-                            ),
-                            Color(
-                              0xFFFFA800,
-                            ),
+                            Color(0xFFFFC928),
+                            Color(0xFFFFA800),
                           ],
                         ),
                       ),
@@ -1716,11 +1408,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           border:
                               Border.all(
                             color:
-                                Color(
+                                const Color(
                               0xFFE89100,
                             ),
-                            width:
-                                2,
+                            width: 2,
                           ),
                         ),
                         alignment:
@@ -1734,8 +1425,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Color(
                               0xFFE58A00,
                             ),
-                            fontSize:
-                                27,
+                            fontSize: 27,
                             fontWeight:
                                 FontWeight.w900,
                           ),
@@ -1743,47 +1433,35 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    const SizedBox(
-                      width: 11,
-                    ),
+                    const SizedBox(width: 11),
 
                     Flexible(
                       child:
                           Text(
                         displayedBalance
-                            .toStringAsFixed(
-                          8,
-                        ),
-                        maxLines:
-                            1,
+                            .toStringAsFixed(8),
+                        maxLines: 1,
                         overflow:
                             TextOverflow.ellipsis,
                         style:
                             const TextStyle(
-                          color:
-                              Colors.white,
-                          fontSize:
-                              31,
+                          color: Colors.white,
+                          fontSize: 31,
                           fontWeight:
                               FontWeight.w800,
-                          letterSpacing:
-                              -1,
+                          letterSpacing: -1,
                         ),
                       ),
                     ),
 
-                    const SizedBox(
-                      width: 7,
-                    ),
+                    const SizedBox(width: 7),
 
                     const Text(
                       'FAN',
                       style:
                           TextStyle(
-                        color:
-                            Colors.white,
-                        fontSize:
-                            17,
+                        color: Colors.white,
+                        fontSize: 17,
                         fontWeight:
                             FontWeight.w700,
                       ),
@@ -1791,18 +1469,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
 
-                const SizedBox(
-                  height: 7,
-                ),
+                const SizedBox(height: 7),
 
                 const Text(
                   '≈ \$0.00',
                   style:
                       TextStyle(
-                    color:
-                        Colors.white,
-                    fontSize:
-                        14,
+                    color: Colors.white,
+                    fontSize: 14,
                   ),
                 ),
               ],
@@ -1818,243 +1492,99 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildMiningCard() {
-    final isAlreadyClaimed =
-        _alreadyClaimedToday &&
-        !_isMining &&
-        !_canClaim;
-
     final isReadyToClaim =
         _canClaim &&
-        !_isMining &&
-        !isAlreadyClaimed;
+        !_isMining;
 
-    String statusText;
+    final buttonText = _claimAdWaiting
+        ? 'WATCHING AD...'
+        : _busy && isReadyToClaim
+            ? 'PROCESSING...'
+            : isReadyToClaim
+                ? 'READY TO CLAIM'
+                : _isMining
+                    ? _formatDuration(
+                        _remaining,
+                      )
+                    : 'START MINING';
 
-    if (isAlreadyClaimed) {
-      statusText =
-          'ALREADY CLAIMED';
-    } else if (isReadyToClaim) {
-      statusText =
-          'READY TO CLAIM';
-    } else if (_isMining) {
-      statusText =
-          'MINING';
-    } else {
-      statusText =
-          'READY';
-    }
+    final buttonIcon = _claimAdWaiting
+        ? Icons.ondemand_video_rounded
+        : _busy && isReadyToClaim
+            ? Icons.hourglass_top_rounded
+            : isReadyToClaim
+                ? Icons.card_giftcard_rounded
+                : _isMining
+                    ? Icons.timer_rounded
+                    : Icons.construction_rounded;
 
-    String description;
+    final description =
+        isReadyToClaim
+            ? 'Your mining session is complete and ready to claim after 24-hour'
+            : _isMining
+                ? 'Your 24-hour mining session is running.'
+                : 'Start mining to earn FAN';
 
-    if (isAlreadyClaimed) {
-      description =
-          'Come tomorrow to start a new 24-hour mining session.';
-    } else if (isReadyToClaim) {
-      description =
-          'Your 24-hour mining session is complete and ready to claim.';
-    } else if (_isMining) {
-      description =
-          'Your 24-hour mining session is running.';
-    } else {
-      description =
-          'Start mining to earn FAN';
-    }
-
-    Color statusColor;
-
-    if (isAlreadyClaimed) {
-      statusColor =
-          successGreen;
-    } else if (isReadyToClaim) {
-      statusColor =
-          successGreen;
-    } else if (_isMining) {
-      statusColor =
-          primaryPurple;
-    } else {
-      statusColor =
-          successGreen;
-    }
-
-    String buttonText;
-
-    IconData buttonIcon;
-
-    if (_claimAdWaiting) {
-      buttonText =
-          'WATCHING AD...';
-
-      buttonIcon =
-          Icons
-              .ondemand_video_rounded;
-    } else if (_busy &&
-        isReadyToClaim) {
-      buttonText =
-          'PROCESSING...';
-
-      buttonIcon =
-          Icons
-              .hourglass_top_rounded;
-    } else if (isAlreadyClaimed) {
-      buttonText =
-          'COME TOMORROW';
-
-      buttonIcon =
-          Icons
-              .wb_sunny_rounded;
-    } else if (isReadyToClaim) {
-      buttonText =
-          'CLAIM';
-
-      buttonIcon =
-          Icons
-              .card_giftcard_rounded;
-    } else if (_isMining) {
-      buttonText =
-          'MINING';
-
-      buttonIcon =
-          Icons
-              .bolt_rounded;
-    } else {
-      buttonText =
-          'START MINING';
-
-      buttonIcon =
-          Icons
-              .construction_rounded;
-    }
-
-    String countdownText;
-
-    if (isAlreadyClaimed) {
-      countdownText =
-          'TOMORROW';
-    } else {
-      countdownText =
-          _formatDuration(
-        _remaining,
-      );
-    }
+    final statusColor =
+        isReadyToClaim
+            ? successGreen
+            : primaryPurple;
 
     return _card(
-      child:
-          Column(
+      child: Column(
         children: [
           Row(
             children: [
               _circleIcon(
-                isAlreadyClaimed
-                    ? Icons
-                        .check_circle_rounded
-                    : isReadyToClaim
-                        ? Icons
-                            .check_circle_rounded
-                        : _isMining
-                            ? Icons
-                                .bolt_rounded
-                            : Icons
-                                .construction_rounded,
+                isReadyToClaim
+                    ? Icons.check_circle_rounded
+                    : _isMining
+                        ? Icons.bolt_rounded
+                        : Icons.construction_rounded,
                 background:
-                    isAlreadyClaimed ||
-                            isReadyToClaim
+                    isReadyToClaim
                         ? successLight
-                        : const Color(
-                            0xFFF0EEFA,
-                          ),
+                        : const Color(0xFFF0EEFA),
                 iconColor:
                     statusColor,
-                size:
-                    62,
+                size: 62,
               ),
 
-              const SizedBox(
-                width: 13,
-              ),
+              const SizedBox(width: 13),
 
               Expanded(
-                child:
-                    Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    RichText(
-                      text:
-                          TextSpan(
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.black,
-                          fontSize:
-                              18,
-                          fontWeight:
-                              FontWeight.w800,
-                        ),
-                        children: [
-                          const TextSpan(
-                            text:
-                                'STATUS: ',
-                          ),
-                          TextSpan(
-                            text:
-                                statusText,
-                            style:
-                                TextStyle(
-                              color:
-                                  statusColor,
-                              fontWeight:
-                                  FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(
-                      height: 5,
-                    ),
-
-                    Text(
-                      description,
-                      maxLines:
-                          2,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.grey.shade700,
-                        fontSize:
-                            13,
-                        height:
-                            1.35,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  description,
+                  maxLines: 3,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.grey.shade700,
+                    fontSize: 13,
+                    height: 1.35,
+                    fontWeight:
+                        isReadyToClaim
+                            ? FontWeight.w700
+                            : FontWeight.w400,
+                  ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(
-            height: 14,
-          ),
+          const SizedBox(height: 14),
 
-          const Divider(
-            height: 1,
-          ),
+          const Divider(height: 1),
 
-          const SizedBox(
-            height: 12,
-          ),
+          const SizedBox(height: 12),
 
           Row(
             children: [
               Expanded(
-                child:
-                    _miningInfo(
-                  Icons
-                      .speed_rounded,
+                child: _miningInfo(
+                  Icons.speed_rounded,
                   'MINING RATE',
                   '${_rate.toStringAsFixed(2)} FAN/H',
                 ),
@@ -2068,120 +1598,96 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
               Expanded(
-                child:
-                    _miningInfo(
-                  Icons
-                      .access_time_rounded,
-                  'COUNTDOWN',
-                  countdownText,
+                child: _miningInfo(
+                  Icons.bolt_rounded,
+                  'BOOST',
+                  '+${(_adsWatched * 0.10).toStringAsFixed(2)} FAN/H',
                 ),
               ),
             ],
           ),
 
-          const SizedBox(
-            height: 7,
-          ),
+          const SizedBox(height: 7),
 
           Text(
             'Per second: ${(_rate / 3600.0).toStringAsFixed(8)} FAN',
-            textAlign:
-                TextAlign.center,
+            textAlign: TextAlign.center,
             style:
                 const TextStyle(
-              color:
-                  deepPurple,
-              fontSize:
-                  12,
-              fontWeight:
-                  FontWeight.w700,
+              color: deepPurple,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
 
-          const SizedBox(
-            height: 13,
-          ),
+          const SizedBox(height: 13),
 
           SizedBox(
-            width:
-                double.infinity,
-            height:
-                55,
-            child:
-                ElevatedButton.icon(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton.icon(
               onPressed:
                   _busy
                       ? null
-                      : isAlreadyClaimed
-                          ? null
-                          : isReadyToClaim
-                              ? _claimMining
-                              : _isMining
-                                  ? null
-                                  : _startMining,
-              icon:
-                  Icon(
+                      : isReadyToClaim
+                          ? _claimMining
+                          : _isMining
+                              ? null
+                              : _startMining,
+              icon: Icon(
                 buttonIcon,
-                size:
-                    23,
+                size: 23,
               ),
-              label:
-                  Text(
+              label: Text(
                 buttonText,
+                maxLines: 1,
+                overflow:
+                    TextOverflow.ellipsis,
               ),
               style:
                   ElevatedButton.styleFrom(
                 backgroundColor:
-                    primaryPurple,
+                    isReadyToClaim
+                        ? successGreen
+                        : primaryPurple,
                 foregroundColor:
                     Colors.white,
                 disabledBackgroundColor:
-                    isAlreadyClaimed
-                        ? Colors.grey.shade300
+                    isReadyToClaim
+                        ? successGreen.withValues(
+                            alpha: 0.70,
+                          )
                         : primaryPurple.withValues(
-                            alpha:
-                                0.55,
+                            alpha: 0.70,
                           ),
                 disabledForegroundColor:
-                    isAlreadyClaimed
-                        ? Colors.grey.shade600
-                        : Colors.white,
-                elevation:
-                    0,
+                    Colors.white,
+                elevation: 0,
                 shape:
                     RoundedRectangleBorder(
                   borderRadius:
-                      BorderRadius.circular(
-                    15,
-                  ),
+                      BorderRadius.circular(15),
                 ),
                 textStyle:
                     const TextStyle(
-                  fontSize:
-                      16,
-                  fontWeight:
-                      FontWeight.w800,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
           ),
 
           if (_claimAdWaiting) ...[
-            const SizedBox(
-              height: 9,
-            ),
+            const SizedBox(height: 9),
+
             const Text(
               'Please complete the rewarded ad. Your FAN will be claimed after the ad is verified.',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
               style:
                   TextStyle(
-                color:
-                    deepPurple,
-                fontSize:
-                    11,
-                fontWeight:
-                    FontWeight.w600,
+                color: deepPurple,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -2196,46 +1702,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBoostCard() {
     final progress =
-        (_adsWatched /
-                maxAds)
-            .clamp(
-              0.0,
-              1.0,
-            )
+        (_adsWatched / maxAds)
+            .clamp(0.0, 1.0)
             .toDouble();
 
     final canWatch =
         _isMining &&
         !_busy &&
-        _adsWatched <
-            maxAds;
+        _adsWatched < maxAds;
 
     return _card(
-      child:
-          Column(
+      child: Column(
         children: [
           Row(
             children: [
               _circleIcon(
-                Icons
-                    .rocket_launch_rounded,
+                Icons.rocket_launch_rounded,
                 background:
-                    const Color(
-                  0xFFF0EEFA,
-                ),
+                    const Color(0xFFF0EEFA),
                 iconColor:
                     Colors.red.shade700,
-                size:
-                    56,
+                size: 56,
               ),
 
-              const SizedBox(
-                width: 12,
-              ),
+              const SizedBox(width: 12),
 
               Expanded(
-                child:
-                    Column(
+                child: Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: const [
@@ -2243,38 +1736,29 @@ class _HomeScreenState extends State<HomeScreen> {
                       'BOOST BY WATCHING ADS',
                       style:
                           TextStyle(
-                        fontSize:
-                            15,
+                        fontSize: 15,
                         fontWeight:
                             FontWeight.w800,
                       ),
                     ),
-                    SizedBox(
-                      height: 4,
-                    ),
+                    SizedBox(height: 4),
                     Text(
                       'Each ad adds +0.1 FAN/H',
                       style:
                           TextStyle(
-                        fontSize:
-                            12,
+                        fontSize: 12,
                         color:
-                            Color(
-                          0xFF55555F,
-                        ),
+                            Color(0xFF55555F),
                       ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(
-                width: 8,
-              ),
+              const SizedBox(width: 8),
 
               SizedBox(
-                height:
-                    48,
+                height: 48,
                 child:
                     ElevatedButton.icon(
                   onPressed:
@@ -2285,16 +1769,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Icon(
                     Icons
                         .ondemand_video_rounded,
-                    size:
-                        18,
+                    size: 18,
                   ),
                   label:
                       const Text(
                     'WATCH AD',
                     style:
                         TextStyle(
-                      fontSize:
-                          11,
+                      fontSize: 11,
                       fontWeight:
                           FontWeight.w800,
                     ),
@@ -2304,9 +1786,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     backgroundColor:
                         WidgetStateProperty
                             .resolveWith(
-                      (
-                        states,
-                      ) {
+                      (states) {
                         if (states
                             .contains(
                           WidgetState
@@ -2314,8 +1794,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         )) {
                           return primaryPurple
                               .withValues(
-                            alpha:
-                                0.45,
+                            alpha: 0.45,
                           );
                         }
 
@@ -2331,17 +1810,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.all(
-                          Radius.circular(
-                            12,
-                          ),
+                          Radius.circular(12),
                         ),
                       ),
                     ),
                     padding:
                         const WidgetStatePropertyAll(
                       EdgeInsets.symmetric(
-                        horizontal:
-                            12,
+                        horizontal: 12,
                       ),
                     ),
                   ),
@@ -2350,9 +1826,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          const SizedBox(
-            height: 13,
-          ),
+          const SizedBox(height: 13),
 
           Row(
             children: [
@@ -2360,10 +1834,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Ads watched: $_adsWatched / $maxAds',
                 style:
                     const TextStyle(
-                  color:
-                      deepPurple,
-                  fontSize:
-                      12,
+                  color: deepPurple,
+                  fontSize: 12,
                   fontWeight:
                       FontWeight.w600,
                 ),
@@ -2375,10 +1847,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 '+${(_adsWatched * 0.10).toStringAsFixed(1)} FAN/H',
                 style:
                     const TextStyle(
-                  color:
-                      deepPurple,
-                  fontSize:
-                      12,
+                  color: deepPurple,
+                  fontSize: 12,
                   fontWeight:
                       FontWeight.w800,
                 ),
@@ -2386,25 +1856,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          const SizedBox(
-            height: 8,
-          ),
+          const SizedBox(height: 8),
 
           ClipRRect(
             borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
+                BorderRadius.circular(20),
             child:
                 LinearProgressIndicator(
-              value:
-                  progress,
-              minHeight:
-                  8,
+              value: progress,
+              minHeight: 8,
               backgroundColor:
-                  const Color(
-                0xFFE7E2F8,
-              ),
+                  const Color(0xFFE7E2F8),
               valueColor:
                   const AlwaysStoppedAnimation<
                       Color>(
@@ -2413,15 +1875,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          const SizedBox(
-            height: 5,
-          ),
+          const SizedBox(height: 5),
 
           Align(
             alignment:
                 Alignment.centerRight,
-            child:
-                Text(
+            child: Text(
               _isMining
                   ? '7 ads maximum per session'
                   : 'Start mining before watching ads',
@@ -2429,8 +1888,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   TextStyle(
                 color:
                     Colors.grey.shade600,
-                fontSize:
-                    10,
+                fontSize: 10,
               ),
             ),
           ),
@@ -2450,8 +1908,7 @@ class _HomeScreenState extends State<HomeScreen> {
             : null;
 
     final reward =
-        task?.rewardFan ??
-            10.0;
+        task?.rewardFan ?? 10.0;
 
     final taskLabel =
         task == null
@@ -2465,19 +1922,14 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
         children: [
           _circleIcon(
-            Icons
-                .assignment_turned_in_rounded,
-            background:
-                successLight,
+            Icons.assignment_turned_in_rounded,
+            background: successLight,
             iconColor:
                 Colors.green.shade700,
-            size:
-                56,
+            size: 56,
           ),
 
-          const SizedBox(
-            width: 12,
-          ),
+          const SizedBox(width: 12),
 
           Expanded(
             child:
@@ -2489,57 +1941,43 @@ class _HomeScreenState extends State<HomeScreen> {
                   'DAILY TASK',
                   style:
                       TextStyle(
-                    fontSize:
-                        15,
+                    fontSize: 15,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 4,
-                ),
+                const SizedBox(height: 4),
 
                 Text(
                   taskLabel,
-                  maxLines:
-                      2,
+                  maxLines: 2,
                   overflow:
                       TextOverflow.ellipsis,
                   style:
                       const TextStyle(
-                    fontSize:
-                        12,
+                    fontSize: 12,
                     color:
-                        Color(
-                      0xFF55555F,
-                    ),
+                        Color(0xFF55555F),
                   ),
                 ),
 
-                const SizedBox(
-                  height: 4,
-                ),
+                const SizedBox(height: 4),
 
                 Text(
                   'Reward: ${_formatFan(reward)} FAN',
                   style:
                       const TextStyle(
-                    fontSize:
-                        11,
+                    fontSize: 11,
                     color:
-                        Color(
-                      0xFF55555F,
-                    ),
+                        Color(0xFF55555F),
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(
-            width: 7,
-          ),
+          const SizedBox(width: 7),
 
           Column(
             children: [
@@ -2547,37 +1985,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisSize:
                     MainAxisSize.min,
                 children: [
-                  _socialIcon(
-                    'X',
-                  ),
-                  const SizedBox(
-                    width: 4,
-                  ),
-                  _socialIcon(
-                    '➤',
-                  ),
-                  const SizedBox(
-                    width: 4,
-                  ),
-                  _socialIcon(
-                    '◎',
-                  ),
-                  const SizedBox(
-                    width: 4,
-                  ),
-                  _socialIcon(
-                    '▶',
-                  ),
+                  _socialIcon('X'),
+                  const SizedBox(width: 4),
+                  _socialIcon('➤'),
+                  const SizedBox(width: 4),
+                  _socialIcon('◎'),
+                  const SizedBox(width: 4),
+                  _socialIcon('▶'),
                 ],
               ),
 
-              const SizedBox(
-                height: 7,
-              ),
+              const SizedBox(height: 7),
 
               SizedBox(
-                height:
-                    40,
+                height: 40,
                 child:
                     OutlinedButton.icon(
                   onPressed:
@@ -2586,15 +2007,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           : _socialAction,
                   icon:
                       const Icon(
-                    Icons
-                        .card_giftcard_rounded,
-                    size:
-                        16,
+                    Icons.card_giftcard_rounded,
+                    size: 16,
                   ),
                   label:
                       Text(
-                    task?.canClaim ==
-                            true
+                    task?.canClaim == true
                         ? 'CLAIM ${_formatFan(reward)}'
                         : 'FOLLOW & EARN',
                   ),
@@ -2604,27 +2022,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         deepPurple,
                     side:
                         const BorderSide(
-                      color:
-                          primaryPurple,
+                      color: primaryPurple,
                     ),
                     shape:
                         RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius.circular(
-                        10,
-                      ),
+                          BorderRadius.circular(10),
                     ),
                     textStyle:
                         const TextStyle(
-                      fontSize:
-                          9,
+                      fontSize: 9,
                       fontWeight:
                           FontWeight.w800,
                     ),
                     padding:
                         const EdgeInsets.symmetric(
-                      horizontal:
-                          9,
+                      horizontal: 9,
                     ),
                   ),
                 ),
@@ -2649,21 +2062,15 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
         children: [
           _circleIcon(
-            Icons
-                .shield_rounded,
+            Icons.shield_rounded,
             background:
-                const Color(
-              0xFFF0EEFA,
-            ),
+                const Color(0xFFF0EEFA),
             iconColor:
                 primaryPurple,
-            size:
-                56,
+            size: 56,
           ),
 
-          const SizedBox(
-            width: 12,
-          ),
+          const SizedBox(width: 12),
 
           Expanded(
             child:
@@ -2677,42 +2084,33 @@ class _HomeScreenState extends State<HomeScreen> {
                       : 'KYC VERIFICATION',
                   style:
                       const TextStyle(
-                    fontSize:
-                        15,
+                    fontSize: 15,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 4,
-                ),
+                const SizedBox(height: 4),
 
                 Text(
                   verified
                       ? 'Your identity has been verified'
                       : 'Verify your identity to secure your account',
-                  maxLines:
-                      2,
+                  maxLines: 2,
                   overflow:
                       TextOverflow.ellipsis,
                   style:
                       const TextStyle(
-                    fontSize:
-                        11,
+                    fontSize: 11,
                     color:
-                        Color(
-                      0xFF55555F,
-                    ),
+                        Color(0xFF55555F),
                   ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(
-            width: 7,
-          ),
+          const SizedBox(width: 7),
 
           OutlinedButton(
             onPressed:
@@ -2725,22 +2123,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   deepPurple,
               side:
                   const BorderSide(
-                color:
-                    deepPurple,
+                color: deepPurple,
               ),
               shape:
                   RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(
-                  10,
-                ),
+                    BorderRadius.circular(10),
               ),
               padding:
                   const EdgeInsets.symmetric(
-                horizontal:
-                    11,
-                vertical:
-                    10,
+                horizontal: 11,
+                vertical: 10,
               ),
             ),
             child:
@@ -2754,20 +2147,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       : 'COMPLETE KYC',
                   style:
                       const TextStyle(
-                    fontSize:
-                        9,
+                    fontSize: 9,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(
-                  width: 3,
-                ),
+                const SizedBox(width: 3),
                 const Icon(
-                  Icons
-                      .chevron_right_rounded,
-                  size:
-                      18,
+                  Icons.chevron_right_rounded,
+                  size: 18,
                 ),
               ],
             ),
@@ -2785,39 +2173,27 @@ class _HomeScreenState extends State<HomeScreen> {
     required Widget child,
   }) {
     return Container(
-      width:
-          double.infinity,
+      width: double.infinity,
       padding:
-          const EdgeInsets.all(
-        16,
-      ),
+          const EdgeInsets.all(16),
       decoration:
           BoxDecoration(
-        color:
-            Colors.white,
+        color: Colors.white,
         borderRadius:
-            BorderRadius.circular(
-          21,
-        ),
+            BorderRadius.circular(21),
         boxShadow: [
           BoxShadow(
             color:
                 Colors.black.withValues(
-              alpha:
-                  0.045,
+              alpha: 0.045,
             ),
-            blurRadius:
-                11,
+            blurRadius: 11,
             offset:
-                const Offset(
-              0,
-              4,
-            ),
+                const Offset(0, 4),
           ),
         ],
       ),
-      child:
-          child,
+      child: child,
     );
   }
 
@@ -2832,26 +2208,19 @@ class _HomeScreenState extends State<HomeScreen> {
     double size = 56,
   }) {
     return Container(
-      width:
-          size,
-      height:
-          size,
+      width: size,
+      height: size,
       decoration:
           BoxDecoration(
-        color:
-            background,
-        shape:
-            BoxShape.circle,
+        color: background,
+        shape: BoxShape.circle,
       ),
-      alignment:
-          Alignment.center,
+      alignment: Alignment.center,
       child:
           Icon(
         icon,
-        color:
-            iconColor,
-        size:
-            size * 0.55,
+        color: iconColor,
+        size: size * 0.55,
       ),
     );
   }
@@ -2868,23 +2237,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding:
           const EdgeInsets.symmetric(
-        horizontal:
-            8,
+        horizontal: 8,
       ),
       child:
           Row(
         children: [
           Icon(
             icon,
-            color:
-                primaryPurple,
-            size:
-                31,
+            color: primaryPurple,
+            size: 31,
           ),
 
-          const SizedBox(
-            width: 8,
-          ),
+          const SizedBox(width: 8),
 
           Expanded(
             child:
@@ -2894,35 +2258,28 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text(
                   title,
-                  maxLines:
-                      1,
+                  maxLines: 1,
                   overflow:
                       TextOverflow.ellipsis,
                   style:
                       const TextStyle(
-                    fontSize:
-                        10,
+                    fontSize: 10,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 3,
-                ),
+                const SizedBox(height: 3),
 
                 Text(
                   value,
-                  maxLines:
-                      1,
+                  maxLines: 1,
                   overflow:
                       TextOverflow.ellipsis,
                   style:
                       const TextStyle(
-                    color:
-                        deepPurple,
-                    fontSize:
-                        14,
+                    color: deepPurple,
+                    fontSize: 14,
                     fontWeight:
                         FontWeight.w800,
                   ),
@@ -2943,18 +2300,13 @@ class _HomeScreenState extends State<HomeScreen> {
     String text,
   ) {
     return Container(
-      width:
-          30,
-      height:
-          30,
+      width: 30,
+      height: 30,
       decoration:
           BoxDecoration(
-        color:
-            Colors.white,
+        color: Colors.white,
         borderRadius:
-            BorderRadius.circular(
-          8,
-        ),
+            BorderRadius.circular(8),
         border:
             Border.all(
           color:
@@ -2968,12 +2320,10 @@ class _HomeScreenState extends State<HomeScreen> {
         text,
         style:
             const TextStyle(
-          fontSize:
-              13,
+          fontSize: 13,
           fontWeight:
               FontWeight.w900,
-          color:
-              Colors.black,
+          color: Colors.black,
         ),
       ),
     );
@@ -2987,35 +2337,23 @@ class _HomeScreenState extends State<HomeScreen> {
     Duration duration,
   ) {
     if (duration.isNegative) {
-      duration =
-          Duration.zero;
+      duration = Duration.zero;
     }
 
     final hours =
         duration.inHours
             .toString()
-            .padLeft(
-              2,
-              '0',
-            );
+            .padLeft(2, '0');
 
     final minutes =
-        (duration.inMinutes %
-                60)
+        (duration.inMinutes % 60)
             .toString()
-            .padLeft(
-              2,
-              '0',
-            );
+            .padLeft(2, '0');
 
     final seconds =
-        (duration.inSeconds %
-                60)
+        (duration.inSeconds % 60)
             .toString()
-            .padLeft(
-              2,
-              '0',
-            );
+            .padLeft(2, '0');
 
     return '$hours:$minutes:$seconds';
   }
@@ -3029,16 +2367,10 @@ class _HomeScreenState extends State<HomeScreen> {
   ) {
     if (value ==
         value.roundToDouble()) {
-      return value
-          .toStringAsFixed(
-        0,
-      );
+      return value.toStringAsFixed(0);
     }
 
-    return value
-        .toStringAsFixed(
-      2,
-    );
+    return value.toStringAsFixed(2);
   }
 
   // ============================================================
@@ -3143,18 +2475,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final parsed =
-        DateTime.tryParse(
-      text,
-    );
+        DateTime.tryParse(text);
 
     if (parsed != null) {
       return parsed.toLocal();
     }
 
     final numeric =
-        num.tryParse(
-      text,
-    );
+        num.tryParse(text);
 
     if (numeric == null) {
       return null;
@@ -3168,19 +2496,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return DateTime
           .fromMillisecondsSinceEpoch(
         timestamp,
-        isUtc:
-            true,
-      )
-          .toLocal();
+        isUtc: true,
+      ).toLocal();
     }
 
     return DateTime
         .fromMillisecondsSinceEpoch(
       timestamp * 1000,
-      isUtc:
-          true,
-    )
-        .toLocal();
+      isUtc: true,
+    ).toLocal();
   }
 
   // ============================================================
@@ -3196,9 +2520,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.startsWith(
       'Exception: ',
     )) {
-      return text.substring(
-        11,
-      );
+      return text.substring(11);
     }
 
     return text;
@@ -3216,16 +2538,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    )
+    ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content:
-              Text(
-            message,
-          ),
+          content: Text(message),
           behavior:
               SnackBarBehavior.floating,
         ),
