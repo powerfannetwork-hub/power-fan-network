@@ -129,6 +129,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ============================================================
+  // MINING STATE
+  //
+  // Supabase is authoritative.
+  //
+  // If the backend says active=true / status=active and there is
+  // a valid ends_at, the session is treated as ACTIVE.
+  //
+  // Timestamp is still checked, but we avoid incorrectly turning
+  // an active Supabase session into READY TO CLAIM because of a
+  // local device clock difference.
+  // ============================================================
+
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
 
@@ -168,6 +181,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final status = data['status']?.toString().trim().toLowerCase();
 
+    final serverActive = _toBool(data['active']);
+
     final claimable =
         _toBool(data['claimable']) ||
         _toBool(data['can_claim']) ||
@@ -176,6 +191,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['needs_claim']) ||
         _toBool(data['session_completed']) ||
         _toBool(data['completed']);
+
+    final statusIsActive =
+        status == 'active' ||
+        status == 'mining' ||
+        status == 'running' ||
+        status == 'started';
 
     final statusIsClaimable = _isClaimableStatus(status);
 
@@ -249,55 +270,50 @@ class _HomeScreenState extends State<HomeScreen> {
       remaining = miningDuration;
     }
 
-    final hasServerEnd = finalEnds != null;
+    final hasTimestamps =
+        finalStarted != null && finalEnds != null;
 
     final activeByTime =
-        finalStarted != null &&
-        finalEnds != null &&
-        !finalStarted.isAfter(now) &&
-        finalEnds.isAfter(now);
+        hasTimestamps &&
+        !finalStarted!.isAfter(now) &&
+        finalEnds!.isAfter(now);
 
     final sessionFinished =
-        finalEnds != null &&
-        !finalEnds.isAfter(now);
+        hasTimestamps &&
+        !finalEnds!.isAfter(now);
 
-    final activeByStatus =
-        status == 'active' ||
-        status == 'mining' ||
-        status == 'running' ||
-        status == 'started';
+    // ------------------------------------------------------------
+    // IMPORTANT FIX
+    //
+    // Prefer the server's ACTIVE state.
+    //
+    // This prevents a valid Supabase active session from being
+    // incorrectly displayed as READY TO CLAIM because the phone's
+    // local clock differs from the database clock.
+    // ------------------------------------------------------------
 
-    final explicitInactive =
-        data.containsKey('active') &&
-        data['active'] == false;
+    bool active = false;
 
-    bool active;
-
-    if (hasServerEnd) {
-      /*
-       * IMPORTANT:
-       *
-       * Once the server gives us ends_at,
-       * the timestamp is authoritative.
-       *
-       * mining_active == true must NOT
-       * override an expired ends_at.
-       */
-      active =
-          !explicitInactive &&
-          activeByTime;
-    } else {
-      /*
-       * If there is no end timestamp at all,
-       * only then can an explicit server active
-       * status be used.
-       */
-      active =
-          !explicitInactive &&
-          activeByStatus &&
+    if (!alreadyClaimed) {
+      if (serverActive && !claimable && !statusIsClaimable) {
+        active = true;
+      } else if (statusIsActive &&
           !claimable &&
-          !statusIsClaimable &&
-          !alreadyClaimed;
+          !statusIsClaimable) {
+        active = true;
+      } else if (activeByTime &&
+          !claimable &&
+          !statusIsClaimable) {
+        active = true;
+      }
+    }
+
+    // If the backend explicitly says claimable/completed,
+    // it must not be treated as active.
+    if (claimable ||
+        statusIsClaimable ||
+        alreadyClaimed) {
+      active = false;
     }
 
     final finalCanClaim =
@@ -321,18 +337,6 @@ class _HomeScreenState extends State<HomeScreen> {
         liveReward =
             (elapsedSeconds / 3600.0) * rate;
       }
-    }
-
-    /*
-     * Do not invent a reward from final rate
-     * when the server has not returned one.
-     *
-     * The backend remains authoritative.
-     */
-    if (finalCanClaim &&
-        liveReward <= 0 &&
-        serverReward > 0) {
-      liveReward = serverReward;
     }
 
     final explicitClaimRequired =
@@ -363,7 +367,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _sessionReward =
           liveReward < 0 ? 0.0 : liveReward;
 
-      _adsWatched = ads.clamp(0, maxAds).toInt();
+      _adsWatched =
+          ads.clamp(0, maxAds).toInt();
 
       if (active) {
         _claimAdWaiting = false;
@@ -395,6 +400,10 @@ class _HomeScreenState extends State<HomeScreen> {
         value == 'ended';
   }
 
+  // ============================================================
+  // APPLY START MINING RESULT
+  // ============================================================
+
   Future<bool> _applyMiningResult(
     Map<String, dynamic> data,
   ) async {
@@ -413,15 +422,44 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
+    final status =
+        data['status']?.toString().trim().toLowerCase();
+
+    final serverActive =
+        _toBool(data['active']);
+
+    final claimRequired =
+        _toBool(data['claim_required']) ||
+        _toBool(data['requires_claim']) ||
+        _toBool(data['needs_claim']);
+
     /*
-     * IMPORTANT:
+     * If start_mining() returns active=true/status=active
+     * but timestamps are missing, fetch the real session.
      *
-     * Never manufacture a local mining session here.
-     *
-     * If START MINING does not return timestamps,
-     * we ask Supabase for the newly-created session.
+     * We do NOT invent a local session.
      */
     if (started == null && ends == null) {
+      if (serverActive ||
+          status == 'active' ||
+          status == 'mining' ||
+          status == 'running' ||
+          status == 'started') {
+        return false;
+      }
+
+      if (claimRequired) {
+        if (mounted) {
+          setState(() {
+            _isMining = false;
+            _canClaim = true;
+            _remaining = Duration.zero;
+          });
+        }
+
+        return true;
+      }
+
       return false;
     }
 
@@ -429,20 +467,24 @@ class _HomeScreenState extends State<HomeScreen> {
     DateTime? finalEnds = ends;
 
     if (finalStarted == null && finalEnds != null) {
-      finalStarted = finalEnds.subtract(miningDuration);
+      finalStarted =
+          finalEnds.subtract(miningDuration);
     }
 
     if (finalEnds == null && finalStarted != null) {
-      finalEnds = finalStarted.add(miningDuration);
+      finalEnds =
+          finalStarted.add(miningDuration);
     }
 
-    if (finalStarted == null || finalEnds == null) {
+    if (finalStarted == null ||
+        finalEnds == null) {
       return false;
     }
 
     final now = DateTime.now();
 
-    var remaining = finalEnds.difference(now);
+    var remaining =
+        finalEnds.difference(now);
 
     if (remaining.isNegative) {
       remaining = Duration.zero;
@@ -452,9 +494,23 @@ class _HomeScreenState extends State<HomeScreen> {
       remaining = miningDuration;
     }
 
-    final active =
+    final timestampActive =
         !finalStarted.isAfter(now) &&
         finalEnds.isAfter(now);
+
+    final statusActive =
+        status == 'active' ||
+        status == 'mining' ||
+        status == 'running' ||
+        status == 'started';
+
+    final active =
+        !claimRequired &&
+        (
+          serverActive ||
+          statusActive ||
+          timestampActive
+        );
 
     final returnedRate = _toDouble(
       data['total_rate'] ??
@@ -486,10 +542,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _rate = returnedRate;
       }
 
-      _adsWatched = ads.clamp(0, maxAds).toInt();
+      _adsWatched =
+          ads.clamp(0, maxAds).toInt();
 
       _isMining = active;
-      _canClaim = false;
+      _canClaim =
+          claimRequired && !active;
 
       _sessionReward =
           reward > 0 ? reward : 0.0;
@@ -501,6 +559,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return true;
   }
+
+  // ============================================================
+  // COUNTDOWN TIMER
+  // ============================================================
 
   void _startTimer() {
     _timer?.cancel();
@@ -519,7 +581,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final now = DateTime.now();
 
-        var remaining = ends.difference(now);
+        var remaining =
+            ends.difference(now);
 
         if (remaining.isNegative) {
           remaining = Duration.zero;
@@ -538,17 +601,13 @@ class _HomeScreenState extends State<HomeScreen> {
             _canClaim = true;
           });
 
-          /*
-           * Refresh from Supabase once the countdown
-           * reaches zero so the claim state comes
-           * from the backend.
-           */
           unawaited(_loadMining());
 
           return;
         }
 
-        double displayReward = _sessionReward;
+        double displayReward =
+            _sessionReward;
 
         final started = _startedAt;
 
@@ -564,11 +623,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
         setState(() {
           _remaining = remaining;
-          _sessionReward = displayReward;
+          _sessionReward =
+              displayReward;
         });
       },
     );
   }
+
+  // ============================================================
+  // START MINING
+  // ============================================================
 
   Future<void> _startMining() async {
     if (_busy || _isMining || _canClaim) {
@@ -580,9 +644,11 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final result = await _mining.startMining();
+      final result =
+          await _mining.startMining();
 
-      final success = result['success'] == true ||
+      final success =
+          result['success'] == true ||
           result['success'] == null;
 
       if (!success) {
@@ -615,33 +681,21 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       /*
-       * FIRST:
-       * Try to use the timestamps returned directly
-       * by start_mining().
+       * First use the response returned by Supabase.
        */
       final applied =
           await _applyMiningResult(result);
 
+      /*
+       * If the RPC did not return enough data,
+       * fetch the authoritative session.
+       */
       if (!applied) {
-        /*
-         * SECOND:
-         *
-         * If start_mining() returned no timestamps,
-         * immediately fetch the actual session from
-         * Supabase.
-         *
-         * This replaces the old dangerous local
-         * 24-hour fallback.
-         */
         await _loadMining();
       }
 
       if (!mounted) return;
 
-      /*
-       * If the server still does not give us a valid
-       * active session, DO NOT fabricate one.
-       */
       if (!_isMining) {
         if (_canClaim) {
           _message(
@@ -664,7 +718,8 @@ class _HomeScreenState extends State<HomeScreen> {
         'Mining started successfully. Your 24-hour countdown has started.',
       );
     } catch (e) {
-      final errorText = _error(e).toLowerCase();
+      final errorText =
+          _error(e).toLowerCase();
 
       final claimRequired =
           errorText.contains('claim your completed') ||
@@ -693,6 +748,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
+
+  // ============================================================
+  // CLAIM MINING
+  // ============================================================
 
   Future<void> _claimMining() async {
     if (_busy || !_canClaim || _isMining) {
@@ -732,12 +791,17 @@ class _HomeScreenState extends State<HomeScreen> {
         await _ads.initialize();
       } catch (_) {}
 
-      final adCompleted = Completer<bool>();
+      final adCompleted =
+          Completer<bool>();
+
       var adCallbackReceived = false;
 
-      final shown = await _ads.showRewardedAd(
+      final shown =
+          await _ads.showRewardedAd(
         onRewarded: () {
-          if (adCallbackReceived) return;
+          if (adCallbackReceived) {
+            return;
+          }
 
           adCallbackReceived = true;
 
@@ -832,6 +896,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // WATCH BOOST AD
+  // ============================================================
+
   Future<void> _watchAd() async {
     if (_busy || !_isMining) {
       return;
@@ -853,7 +921,8 @@ class _HomeScreenState extends State<HomeScreen> {
         await _ads.initialize();
       } catch (_) {}
 
-      final shown = await _ads.showRewardedAd(
+      final shown =
+          await _ads.showRewardedAd(
         onRewarded: () {},
         onAdClosed: () {},
       );
@@ -867,20 +936,16 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      /*
-       * The server/S2S callback is authoritative.
-       *
-       * Poll for a short period instead of waiting
-       * only 500ms. This gives Supabase time to
-       * record the completed rewarded ad.
-       */
-      final oldCount = _adsWatched;
+      final oldCount =
+          _adsWatched;
 
       var updated = false;
 
       for (var i = 0; i < 10; i++) {
         await Future<void>.delayed(
-          const Duration(milliseconds: 700),
+          const Duration(
+            milliseconds: 700,
+          ),
         );
 
         if (!mounted) return;
@@ -916,6 +981,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
+
+  // ============================================================
+  // SOCIAL TASKS
+  // ============================================================
 
   Future<void> _loadTasks() async {
     try {
@@ -982,7 +1051,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       final opened =
-          await _social.openTaskUrl(task.url);
+          await _social.openTaskUrl(
+        task.url,
+      );
 
       if (mounted) {
         if (opened) {
@@ -1010,9 +1081,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // KYC
+  // ============================================================
+
   Future<void> _loadKyc() async {
     try {
-      final status = await _kyc.getProgress();
+      final status =
+          await _kyc.getProgress();
 
       if (!mounted) return;
 
@@ -1035,6 +1111,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     unawaited(_loadKyc());
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -1881,6 +1961,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ============================================================
+  // UI HELPERS
+  // ============================================================
+
   Widget _card({
     required Widget child,
   }) {
@@ -2008,13 +2092,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _formatDuration(Duration duration) {
+  String _formatDuration(
+    Duration duration,
+  ) {
     if (duration.isNegative) {
       duration = Duration.zero;
     }
 
     final hours =
-        duration.inHours.toString().padLeft(2, '0');
+        duration.inHours
+            .toString()
+            .padLeft(2, '0');
 
     final minutes =
         (duration.inMinutes % 60)
@@ -2095,7 +2183,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (text.isEmpty) return null;
 
-    final parsed = DateTime.tryParse(text);
+    final parsed =
+        DateTime.tryParse(text);
 
     if (parsed != null) {
       return parsed.toLocal();
@@ -2108,7 +2197,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return null;
     }
 
-    final timestamp = numeric.toInt();
+    final timestamp =
+        numeric.toInt();
 
     if (timestamp.abs() >=
         100000000000) {
@@ -2139,7 +2229,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _message(String message) {
-    if (!mounted || message.trim().isEmpty) {
+    if (!mounted ||
+        message.trim().isEmpty) {
       return;
     }
 
