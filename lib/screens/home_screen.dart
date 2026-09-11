@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../pages/kyc_page.dart';
 import '../services/kyc_service.dart';
@@ -16,70 +17,135 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // ============================================================
+  // COLORS
+  // ============================================================
+
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color pageBackground = Color(0xFFF8F8FC);
 
-  static const Color successGreen = Color(0xFF20884D);
+  static const Color successGreen = Color(0xFF238B57);
   static const Color successLight = Color(0xFFEAF8F0);
 
+  static const Color orange = Color(0xFFFF9800);
+
+  // ============================================================
+  // MINING RULES
+  // ============================================================
+
   static const Duration miningDuration = Duration(hours: 24);
+
   static const int maxAds = 7;
 
+  // ============================================================
+  // SERVICES
+  // ============================================================
+
   final MiningService _mining = MiningService.instance;
+
   final SocialTaskService _social = SocialTaskService();
+
   final KycService _kyc = KycService();
+
   final LevelPlayAdsService _ads =
       LevelPlayAdsService.instance;
 
+  // ============================================================
+  // TIMER
+  // ============================================================
+
   Timer? _timer;
 
+  // ============================================================
+  // SCREEN STATE
+  // ============================================================
+
   bool _loading = true;
+
   bool _busy = false;
+
   bool _isMining = false;
+
   bool _canClaim = false;
+
   bool _claimAdWaiting = false;
 
+  bool _alreadyClaimedToday = false;
+
+  // ============================================================
+  // FAN
+  // ============================================================
+
   double _fan = 0.0;
+
   double _rate = MiningService.defaultMiningRate;
+
   double _sessionReward = 0.0;
 
+  // ============================================================
+  // MINING TIME
+  // ============================================================
+
   DateTime? _startedAt;
+
   DateTime? _endsAt;
 
   Duration _remaining = Duration.zero;
 
+  // ============================================================
+  // ADS
+  // ============================================================
+
   int _adsWatched = 0;
+
+  // ============================================================
+  // SOCIAL
+  // ============================================================
 
   List<DailySocialTask> _tasks = [];
 
+  // ============================================================
+  // KYC
+  // ============================================================
+
   KycStatus _kycStatus = KycStatus.initial();
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
 
     unawaited(_loadInitial());
+
     unawaited(_initializeAds());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+
     super.dispose();
   }
 
   // ============================================================
-  // INITIAL LOAD
+  // ADS INITIALIZATION
   // ============================================================
 
   Future<void> _initializeAds() async {
     try {
       await _ads.initialize();
     } catch (_) {
-      // Ads must never block HomeScreen.
+      // Ads must never stop HomeScreen from opening.
     }
   }
+
+  // ============================================================
+  // INITIAL LOAD
+  // ============================================================
 
   Future<void> _loadInitial() async {
     if (!mounted) return;
@@ -89,6 +155,8 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      await _loadClaimedToday();
+
       await Future.wait([
         _loadProfile(),
         _loadMining(),
@@ -105,14 +173,22 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
 
+    // Secondary data must not delay the mining interface.
     unawaited(_loadTasks());
+
     unawaited(_loadKyc());
   }
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
 
   Future<void> _load() async {
     if (!mounted) return;
 
     try {
+      await _loadClaimedToday();
+
       await Future.wait([
         _loadProfile(),
         _loadMining(),
@@ -124,7 +200,78 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     unawaited(_loadTasks());
+
     unawaited(_loadKyc());
+  }
+
+  // ============================================================
+  // LOCAL CLAIM STATE
+  //
+  // This is only for the UI:
+  //
+  // Successful claim today:
+  //     ALREADY CLAIMED
+  //     COME TOMORROW
+  //
+  // At the next local calendar day it automatically clears.
+  //
+  // Supabase remains the authority for the actual FAN claim.
+  // ============================================================
+
+  Future<void> _loadClaimedToday() async {
+    try {
+      final prefs =
+          await SharedPreferences.getInstance();
+
+      final savedDate =
+          prefs.getString('fan_last_claim_date');
+
+      final today =
+          _todayKey();
+
+      final claimed =
+          savedDate == today;
+
+      if (!mounted) return;
+
+      setState(() {
+        _alreadyClaimedToday = claimed;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _alreadyClaimedToday = false;
+      });
+    }
+  }
+
+  Future<void> _saveClaimedToday() async {
+    try {
+      final prefs =
+          await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        'fan_last_claim_date',
+        _todayKey(),
+      );
+    } catch (_) {
+      // UI still updates even if local storage fails.
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _alreadyClaimedToday = true;
+    });
+  }
+
+  String _todayKey() {
+    final now = DateTime.now();
+
+    return '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
   }
 
   // ============================================================
@@ -132,55 +279,102 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Future<void> _loadProfile() async {
-    final data = await _mining.getProfile();
+    final data =
+        await _mining.getProfile();
 
     if (!mounted || data == null) {
       return;
     }
 
     setState(() {
-      _fan = _toDouble(data['fan_balance']);
+      _fan =
+          _toDouble(
+        data['fan_balance'],
+      );
     });
   }
 
   // ============================================================
-  // MINING
+  // MINING LOAD
   // ============================================================
 
   Future<void> _loadMining() async {
-    final data = await _mining.getActiveMining();
+    final data =
+        await _mining.getActiveMining();
+
+    // ----------------------------------------------------------
+    // NO ACTIVE / RETURNED SESSION
+    // ----------------------------------------------------------
 
     if (data.isEmpty) {
       if (!mounted) return;
 
       _timer?.cancel();
 
+      /*
+       * If the user has already successfully claimed today,
+       * show the correct "ALREADY CLAIMED / COME TOMORROW"
+       * state instead of showing START MINING immediately.
+       */
+      if (_alreadyClaimedToday) {
+        setState(() {
+          _isMining = false;
+
+          _canClaim = false;
+
+          _sessionReward = 0.0;
+
+          _remaining = Duration.zero;
+
+          _startedAt = null;
+
+          _endsAt = null;
+
+          _adsWatched = 0;
+
+          _rate =
+              MiningService.defaultMiningRate;
+        });
+
+        return;
+      }
+
       setState(() {
         _isMining = false;
+
         _canClaim = false;
+
         _sessionReward = 0.0;
+
         _remaining = Duration.zero;
+
         _startedAt = null;
+
         _endsAt = null;
+
         _adsWatched = 0;
-        _rate = MiningService.defaultMiningRate;
+
+        _rate =
+            MiningService.defaultMiningRate;
       });
 
       return;
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // DATES
-    // ----------------------------------------------------------
+    // ==========================================================
 
-    final started = _parseDate(
+    final started =
+        _parseDate(
       data['started_at'] ??
           data['start_time'] ??
           data['started'] ??
           data['mining_started_at'],
     );
 
-    final ends = _parseDate(
+    final ends =
+        _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
@@ -188,31 +382,19 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
-    DateTime? finalStarted = started;
-    DateTime? finalEnds = ends;
-
-    if (finalStarted == null && finalEnds != null) {
-      finalStarted =
-          finalEnds.subtract(miningDuration);
-    }
-
-    if (finalEnds == null && finalStarted != null) {
-      finalEnds =
-          finalStarted.add(miningDuration);
-    }
-
-    final now = DateTime.now();
-
-    // ----------------------------------------------------------
+    // ==========================================================
     // STATUS
-    // ----------------------------------------------------------
+    // ==========================================================
 
     final status =
-        data['status']?.toString().trim().toLowerCase();
+        data['status']
+            ?.toString()
+            .trim()
+            .toLowerCase();
 
-    // ----------------------------------------------------------
-    // CLAIM STATE
-    // ----------------------------------------------------------
+    // ==========================================================
+    // CLAIM FLAGS
+    // ==========================================================
 
     final claimable =
         _toBool(data['claimable']) ||
@@ -231,11 +413,12 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // RATE
-    // ----------------------------------------------------------
+    // ==========================================================
 
-    var rate = _toDouble(
+    var rate =
+        _toDouble(
       data['total_rate'] ??
           data['mining_rate'] ??
           data['rate'],
@@ -243,70 +426,113 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (rate <= 0) {
       try {
-        rate = await _mining.getUserMiningRate();
+        rate =
+            await _mining
+                .getUserMiningRate();
       } catch (_) {
-        rate = MiningService.defaultMiningRate;
+        rate =
+            MiningService.defaultMiningRate;
       }
     }
 
     if (rate <= 0) {
-      rate = MiningService.defaultMiningRate;
+      rate =
+          MiningService.defaultMiningRate;
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // ADS
-    // ----------------------------------------------------------
+    // ==========================================================
 
-    final ads = _toInt(
+    final ads =
+        _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
           data['ads_count'] ??
           data['daily_ads_watched'],
     );
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // SERVER REMAINING
-    // ----------------------------------------------------------
+    // ==========================================================
 
-    final serverRemaining = _toInt(
+    final serverRemaining =
+        _toInt(
       data['remaining_seconds'] ??
           data['seconds_remaining'],
     );
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // SERVER REWARD
-    // ----------------------------------------------------------
+    // ==========================================================
 
-    final serverReward = _toDouble(
+    final serverReward =
+        _toDouble(
       data['reward'] ??
           data['session_reward'] ??
           data['earned_reward'],
     );
 
-    // ----------------------------------------------------------
-    // REMAINING TIME
-    // ----------------------------------------------------------
+    // ==========================================================
+    // NORMALIZE DATES
+    // ==========================================================
 
-    Duration remaining = Duration.zero;
+    DateTime? finalStarted =
+        started;
+
+    DateTime? finalEnds =
+        ends;
+
+    if (finalStarted == null &&
+        finalEnds != null) {
+      finalStarted =
+          finalEnds.subtract(
+        miningDuration,
+      );
+    }
+
+    if (finalEnds == null &&
+        finalStarted != null) {
+      finalEnds =
+          finalStarted.add(
+        miningDuration,
+      );
+    }
+
+    // ==========================================================
+    // TIME
+    // ==========================================================
+
+    final now =
+        DateTime.now();
+
+    Duration remaining =
+        Duration.zero;
 
     if (finalEnds != null) {
-      remaining = finalEnds.difference(now);
+      remaining =
+          finalEnds.difference(now);
 
       if (remaining.isNegative) {
-        remaining = Duration.zero;
+        remaining =
+            Duration.zero;
       }
     } else if (serverRemaining > 0) {
       remaining =
-          Duration(seconds: serverRemaining);
+          Duration(
+        seconds: serverRemaining,
+      );
     }
 
-    if (remaining > miningDuration) {
-      remaining = miningDuration;
+    if (remaining >
+        miningDuration) {
+      remaining =
+          miningDuration;
     }
 
-    // ----------------------------------------------------------
-    // ACTIVE DETECTION
-    // ----------------------------------------------------------
+    // ==========================================================
+    // ACTIVE
+    // ==========================================================
 
     final activeByTime =
         finalStarted != null &&
@@ -329,30 +555,19 @@ class _HomeScreenState extends State<HomeScreen> {
         data['active'] == false;
 
     final activeFlag =
-        data['mining_active'] == true;
+        data['mining_active'];
 
-    /*
-     * IMPORTANT:
-     *
-     * If the 24-hour end time has passed, the session MUST NOT
-     * remain MINING even if the old mining_active database flag
-     * is still true.
-     */
     final active =
         !explicitInactive &&
-        !sessionFinished &&
         (
           activeByTime ||
           activeByStatus ||
-          (
-            activeFlag &&
-            finalEnds == null
-          )
+          activeFlag == true
         );
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // FINAL CLAIM STATE
-    // ----------------------------------------------------------
+    // ==========================================================
 
     final finalCanClaim =
         !alreadyClaimed &&
@@ -363,10 +578,52 @@ class _HomeScreenState extends State<HomeScreen> {
           sessionFinished
         );
 
+    // ==========================================================
+    // DISPLAY REWARD
+    // ==========================================================
+
+    double liveReward =
+        serverReward;
+
+    if (liveReward <= 0 &&
+        active &&
+        finalStarted != null) {
+      final elapsedSeconds =
+          now
+              .difference(finalStarted)
+              .inSeconds;
+
+      if (elapsedSeconds > 0) {
+        liveReward =
+            (elapsedSeconds /
+                    3600.0) *
+                rate;
+      }
+    }
+
+    if (finalCanClaim &&
+        liveReward <= 0 &&
+        rate > 0) {
+      liveReward =
+          (miningDuration.inSeconds /
+                  3600.0) *
+              rate;
+    }
+
+    // ==========================================================
+    // FORCE CLAIM REQUIRED
+    // ==========================================================
+
     final explicitClaimRequired =
-        _toBool(data['claim_required']) ||
-        _toBool(data['requires_claim']) ||
-        _toBool(data['needs_claim']);
+        _toBool(
+          data['claim_required'],
+        ) ||
+        _toBool(
+          data['requires_claim'],
+        ) ||
+        _toBool(
+          data['needs_claim'],
+        );
 
     final forceClaim =
         explicitClaimRequired &&
@@ -374,59 +631,57 @@ class _HomeScreenState extends State<HomeScreen> {
         !active;
 
     final finalClaim =
-        finalCanClaim || forceClaim;
-
-    // ----------------------------------------------------------
-    // DISPLAY REWARD
-    // ----------------------------------------------------------
-
-    double liveReward = serverReward;
-
-    if (liveReward <= 0 &&
-        active &&
-        finalStarted != null) {
-      final elapsedSeconds =
-          now.difference(finalStarted).inSeconds;
-
-      if (elapsedSeconds > 0) {
-        liveReward =
-            (elapsedSeconds / 3600.0) * rate;
-      }
-    }
-
-    if (finalClaim &&
-        liveReward <= 0 &&
-        rate > 0) {
-      liveReward =
-          (miningDuration.inSeconds / 3600.0) *
-              rate;
-    }
+        finalCanClaim ||
+        forceClaim;
 
     if (!mounted) return;
 
     _timer?.cancel();
 
     setState(() {
-      _isMining = active;
-      _canClaim = finalClaim;
+      _isMining =
+          active;
 
-      _rate = rate;
+      _canClaim =
+          finalClaim;
 
-      _startedAt = finalStarted;
-      _endsAt = finalEnds;
+      _rate =
+          rate;
 
-      _remaining = remaining;
+      _startedAt =
+          finalStarted;
+
+      _endsAt =
+          finalEnds;
+
+      _remaining =
+          remaining;
 
       _sessionReward =
-          liveReward < 0 ? 0.0 : liveReward;
+          liveReward < 0
+              ? 0.0
+              : liveReward;
 
       _adsWatched =
-          ads.clamp(0, maxAds).toInt();
+          ads
+              .clamp(
+                0,
+                maxAds,
+              )
+              .toInt();
 
       if (_isMining) {
-        _claimAdWaiting = false;
+        _alreadyClaimedToday =
+            false;
+
+        _claimAdWaiting =
+            false;
       }
     });
+
+    // ==========================================================
+    // START LIVE COUNTDOWN
+    // ==========================================================
 
     if (_isMining) {
       _startTimer();
@@ -437,14 +692,18 @@ class _HomeScreenState extends State<HomeScreen> {
   // CLAIMABLE STATUS
   // ============================================================
 
-  bool _isClaimableStatus(String? status) {
+  bool _isClaimableStatus(
+    String? status,
+  ) {
     if (status == null ||
         status.trim().isEmpty) {
       return false;
     }
 
     final value =
-        status.trim().toLowerCase();
+        status
+            .trim()
+            .toLowerCase();
 
     return value == 'completed' ||
         value == 'complete' ||
@@ -460,34 +719,48 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // APPLY START MINING RESPONSE
+  // APPLY START RESPONSE
   // ============================================================
 
   void _applyMiningResult(
     Map<String, dynamic> data,
   ) {
-    if (_toBool(data['claim_required']) ||
-        _toBool(data['requires_claim']) ||
-        _toBool(data['needs_claim'])) {
+    final claimRequired =
+        _toBool(
+          data['claim_required'],
+        ) ||
+        _toBool(
+          data['requires_claim'],
+        ) ||
+        _toBool(
+          data['needs_claim'],
+        );
+
+    if (claimRequired) {
       if (!mounted) return;
 
       setState(() {
         _isMining = false;
+
         _canClaim = true;
-        _remaining = Duration.zero;
+
+        _remaining =
+            Duration.zero;
       });
 
       return;
     }
 
-    final started = _parseDate(
+    final started =
+        _parseDate(
       data['started_at'] ??
           data['start_time'] ??
           data['started'] ??
           data['mining_started_at'],
     );
 
-    final ends = _parseDate(
+    final ends =
+        _parseDate(
       data['ends_at'] ??
           data['end_time'] ??
           data['expires_at'] ??
@@ -495,25 +768,34 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
-    if (started == null && ends == null) {
+    if (started == null &&
+        ends == null) {
       return;
     }
 
-    final now = DateTime.now();
+    final now =
+        DateTime.now();
 
-    DateTime? finalStarted = started;
-    DateTime? finalEnds = ends;
+    DateTime? finalStarted =
+        started;
+
+    DateTime? finalEnds =
+        ends;
 
     if (finalStarted == null &&
         finalEnds != null) {
       finalStarted =
-          finalEnds.subtract(miningDuration);
+          finalEnds.subtract(
+        miningDuration,
+      );
     }
 
     if (finalEnds == null &&
         finalStarted != null) {
       finalEnds =
-          finalStarted.add(miningDuration);
+          finalStarted.add(
+        miningDuration,
+      );
     }
 
     if (finalStarted == null ||
@@ -525,11 +807,14 @@ class _HomeScreenState extends State<HomeScreen> {
         finalEnds.difference(now);
 
     if (remaining.isNegative) {
-      remaining = Duration.zero;
+      remaining =
+          Duration.zero;
     }
 
-    if (remaining > miningDuration) {
-      remaining = miningDuration;
+    if (remaining >
+        miningDuration) {
+      remaining =
+          miningDuration;
     }
 
     final active =
@@ -543,35 +828,35 @@ class _HomeScreenState extends State<HomeScreen> {
           data['rate'],
     );
 
-    final returnedReward =
-        _toDouble(
-      data['reward'] ??
-          data['session_reward'],
-    );
-
     if (!mounted) return;
 
     setState(() {
-      _startedAt = finalStarted;
-      _endsAt = finalEnds;
-      _remaining = remaining;
+      _startedAt =
+          finalStarted;
+
+      _endsAt =
+          finalEnds;
+
+      _remaining =
+          remaining;
 
       if (returnedRate > 0) {
-        _rate = returnedRate;
+        _rate =
+            returnedRate;
       }
 
-      if (returnedReward > 0) {
-        _sessionReward =
-            returnedReward;
-      } else if (active) {
-        _sessionReward = 0.0;
-      }
-
-      _isMining = active;
+      _isMining =
+          active;
 
       _canClaim =
           !active &&
-          remaining == Duration.zero;
+          remaining ==
+              Duration.zero;
+
+      if (active) {
+        _alreadyClaimedToday =
+            false;
+      }
     });
 
     if (_isMining) {
@@ -586,13 +871,17 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startTimer() {
     _timer?.cancel();
 
-    _timer = Timer.periodic(
+    _timer =
+        Timer.periodic(
       const Duration(seconds: 1),
       (_) {
         if (!mounted) return;
 
-        final started = _startedAt;
-        final ends = _endsAt;
+        final started =
+            _startedAt;
+
+        final ends =
+            _endsAt;
 
         if (started == null ||
             ends == null) {
@@ -600,72 +889,75 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
 
-        final now = DateTime.now();
+        final now =
+            DateTime.now();
 
         var remaining =
             ends.difference(now);
 
         if (remaining.isNegative) {
-          remaining = Duration.zero;
+          remaining =
+              Duration.zero;
         }
 
-        if (remaining > miningDuration) {
-          remaining = miningDuration;
-        }
-
-        double displayReward =
-            _sessionReward;
-
-        if (remaining > Duration.zero) {
-          final elapsedSeconds =
-              now.difference(started).inSeconds;
-
-          if (elapsedSeconds >= 0) {
-            displayReward =
-                (elapsedSeconds / 3600.0) *
-                    _rate;
-          }
+        if (remaining >
+            miningDuration) {
+          remaining =
+              miningDuration;
         }
 
         final finished =
-            remaining == Duration.zero;
-
-        setState(() {
-          _remaining = remaining;
-
-          if (finished) {
-            /*
-             * 24 HOURS FINISHED.
-             *
-             * Immediately switch the UI from MINING to
-             * READY TO CLAIM.
-             */
-            _isMining = false;
-            _canClaim = true;
-
-            /*
-             * Keep the completed reward visible until claim.
-             */
-            if (_sessionReward <= 0) {
-              _sessionReward =
-                  (miningDuration.inSeconds /
-                          3600.0) *
-                      _rate;
-            }
-          } else {
-            _sessionReward =
-                displayReward;
-          }
-        });
+            remaining ==
+                Duration.zero;
 
         if (finished) {
           _timer?.cancel();
 
-          /*
-           * Ask Supabase to confirm the final state.
-           */
-          unawaited(_loadMining());
+          setState(() {
+            _remaining =
+                Duration.zero;
+
+            _isMining =
+                false;
+
+            _canClaim =
+                true;
+
+            _sessionReward =
+                (_rate *
+                    24.0);
+          });
+
+          // Ask server for the authoritative completed state.
+          unawaited(
+            _loadMining(),
+          );
+
+          return;
         }
+
+        final elapsedSeconds =
+            now
+                .difference(started)
+                .inSeconds;
+
+        double displayReward =
+            _sessionReward;
+
+        if (elapsedSeconds >= 0) {
+          displayReward =
+              (elapsedSeconds /
+                      3600.0) *
+                  _rate;
+        }
+
+        setState(() {
+          _remaining =
+              remaining;
+
+          _sessionReward =
+              displayReward;
+        });
       },
     );
   }
@@ -677,12 +969,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _startMining() async {
     if (_busy ||
         _isMining ||
-        _canClaim) {
-      if (_canClaim &&
-          !_isMining &&
+        _canClaim ||
+        _alreadyClaimedToday) {
+      if (_alreadyClaimedToday &&
           !_busy) {
         _message(
-          'Please claim your completed mining session first.',
+          'Come tomorrow to start a new mining session.',
         );
       }
 
@@ -702,14 +994,26 @@ class _HomeScreenState extends State<HomeScreen> {
           result['success'] == true;
 
       if (!success) {
-        if (_toBool(result['claim_required']) ||
-            _toBool(result['requires_claim']) ||
-            _toBool(result['needs_claim'])) {
+        final claimRequired =
+            _toBool(
+              result['claim_required'],
+            ) ||
+            _toBool(
+              result['requires_claim'],
+            ) ||
+            _toBool(
+              result['needs_claim'],
+            );
+
+        if (claimRequired) {
           if (mounted) {
             setState(() {
               _isMining = false;
+
               _canClaim = true;
-              _remaining = Duration.zero;
+
+              _remaining =
+                  Duration.zero;
             });
           }
 
@@ -728,35 +1032,24 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (result.isNotEmpty) {
-        _applyMiningResult(result);
+        _applyMiningResult(
+          result,
+        );
       }
 
       await _loadProfile();
+
       await _loadMining();
 
       if (!mounted) return;
 
-      if (_toBool(result['claim_required']) ||
-          _toBool(result['requires_claim']) ||
-          _toBool(result['needs_claim'])) {
-        _message(
-          'Your completed mining session is ready to claim.',
-        );
-      } else if (_toBool(result['already_active'])) {
-        _message(
-          'Mining is already active.',
-        );
-      } else if (_isMining) {
+      if (_isMining) {
         _message(
           'Mining started successfully.',
         );
       } else if (_canClaim) {
         _message(
           'Your mining session is ready to claim.',
-        );
-      } else {
-        _message(
-          'Mining started successfully.',
         );
       }
     } catch (e) {
@@ -765,30 +1058,36 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final claimRequired =
           errorText.contains(
-                'claim your completed',
-              ) ||
+            'claim your completed',
+          ) ||
           errorText.contains(
-                'claim_required',
-              ) ||
+            'claim_required',
+          ) ||
           errorText.contains(
-                'claim required',
-              ) ||
+            'claim required',
+          ) ||
           errorText.contains(
-                'completed mining session',
-              );
+            'completed mining session',
+          );
 
-      if (claimRequired && mounted) {
+      if (claimRequired &&
+          mounted) {
         setState(() {
           _isMining = false;
+
           _canClaim = true;
-          _remaining = Duration.zero;
+
+          _remaining =
+              Duration.zero;
         });
 
         _message(
           'Your completed mining session is ready to claim.',
         );
       } else if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -810,12 +1109,20 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final ends = _endsAt;
+    // ----------------------------------------------------------
+    // MAKE SURE 24 HOURS HAVE REALLY FINISHED
+    // ----------------------------------------------------------
+
+    final ends =
+        _endsAt;
 
     if (ends != null &&
-        DateTime.now().isBefore(ends)) {
+        DateTime.now()
+            .isBefore(ends)) {
       final difference =
-          ends.difference(DateTime.now());
+          ends.difference(
+        DateTime.now(),
+      );
 
       if (mounted) {
         _message(
@@ -824,19 +1131,37 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       await _loadMining();
+
       return;
     }
 
     setState(() {
       _busy = true;
+
       _claimAdWaiting = true;
     });
 
     try {
+      // --------------------------------------------------------
+      // INITIALIZE LEVELPLAY AGAIN
+      //
+      // This gives the ad service another chance to prepare
+      // the rewarded ad before the user tries to claim.
+      // --------------------------------------------------------
+
+      try {
+        await _ads.initialize();
+      } catch (_) {}
+
+      // --------------------------------------------------------
+      // CLAIM REWARDED AD
+      // --------------------------------------------------------
+
       final adCompleted =
           Completer<bool>();
 
-      var adCallbackReceived = false;
+      var adCallbackReceived =
+          false;
 
       final shown =
           await _ads.showRewardedAd(
@@ -845,10 +1170,14 @@ class _HomeScreenState extends State<HomeScreen> {
             return;
           }
 
-          adCallbackReceived = true;
+          adCallbackReceived =
+              true;
 
-          if (!adCompleted.isCompleted) {
-            adCompleted.complete(true);
+          if (!adCompleted
+              .isCompleted) {
+            adCompleted.complete(
+              true,
+            );
           }
         },
         onAdClosed: () {},
@@ -856,13 +1185,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!shown) {
         throw Exception(
-          'Rewarded ad is not ready. Please try again.',
+          'Rewarded ad is not ready. Please wait a moment and try again.',
         );
       }
 
+      // --------------------------------------------------------
+      // WAIT FOR SERVER VERIFICATION
+      // --------------------------------------------------------
+
       final adVerified =
-          await adCompleted.future.timeout(
-        const Duration(seconds: 30),
+          await adCompleted.future
+              .timeout(
+        const Duration(
+          seconds: 30,
+        ),
         onTimeout: () => false,
       );
 
@@ -874,6 +1210,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
+      // --------------------------------------------------------
+      // REFRESH SESSION
+      // --------------------------------------------------------
+
       await _loadMining();
 
       if (!mounted) return;
@@ -884,6 +1224,10 @@ class _HomeScreenState extends State<HomeScreen> {
           'Mining session is not ready to claim.',
         );
       }
+
+      // --------------------------------------------------------
+      // ACTUAL SERVER CLAIM
+      // --------------------------------------------------------
 
       final result =
           await _mining.claimMining();
@@ -900,36 +1244,78 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      if (mounted) {
-        setState(() {
-          _sessionReward = 0.0;
-          _canClaim = false;
-          _isMining = false;
-          _remaining = Duration.zero;
-          _startedAt = null;
-          _endsAt = null;
-          _adsWatched = 0;
-        });
-      }
+      // --------------------------------------------------------
+      // SUCCESS
+      // --------------------------------------------------------
+
+      await _saveClaimedToday();
+
+      if (!mounted) return;
+
+      _timer?.cancel();
+
+      setState(() {
+        _sessionReward = 0.0;
+
+        _canClaim = false;
+
+        _isMining = false;
+
+        _remaining =
+            Duration.zero;
+
+        _startedAt = null;
+
+        _endsAt = null;
+
+        _adsWatched = 0;
+      });
+
+      // --------------------------------------------------------
+      // AUTHORITATIVE BALANCE
+      // --------------------------------------------------------
 
       await _loadProfile();
-      await _loadMining();
 
-      if (mounted) {
-        _message(
-          'Mining reward claimed successfully. Come back tomorrow.',
-        );
-      }
+      if (!mounted) return;
+
+      /*
+       * DO NOT immediately turn this into START MINING.
+       *
+       * We want:
+       *
+       * ALREADY CLAIMED
+       * COME TOMORROW
+       */
+      setState(() {
+        _alreadyClaimedToday =
+            true;
+
+        _isMining = false;
+
+        _canClaim = false;
+
+        _remaining =
+            Duration.zero;
+      });
+
+      _message(
+        'Mining reward claimed successfully. Come tomorrow for a new session.',
+      );
     } catch (e) {
       if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
 
       setState(() {
         _busy = false;
-        _claimAdWaiting = false;
+
+        _claimAdWaiting =
+            false;
       });
     }
   }
@@ -944,10 +1330,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_adsWatched >= maxAds) {
+    if (_adsWatched >=
+        maxAds) {
       _message(
         'You have reached the 7 ads limit.',
       );
+
       return;
     }
 
@@ -956,22 +1344,35 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      try {
+        await _ads.initialize();
+      } catch (_) {}
+
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () {
-          unawaited(_loadMining());
+          /*
+           * LevelPlayAdsService calls this only after the
+           * server-side reward has been verified.
+           */
+          unawaited(
+            _loadMining(),
+          );
         },
         onAdClosed: () {},
       );
 
-      if (!shown && mounted) {
+      if (!shown &&
+          mounted) {
         _message(
           'Rewarded ad is not ready. Please try again.',
         );
       }
     } catch (e) {
       if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -989,7 +1390,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadTasks() async {
     try {
       final tasks =
-          await _social.getDailyTasksForCard();
+          await _social
+              .getDailyTasksForCard();
 
       if (!mounted) return;
 
@@ -1012,15 +1414,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _message(
         'No social task is available right now.',
       );
+
       return;
     }
 
-    final task = _tasks.first;
+    final task =
+        _tasks.first;
 
     if (task.claimed) {
       _message(
         'This social reward has already been claimed.',
       );
+
       return;
     }
 
@@ -1035,6 +1440,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         await _loadProfile();
+
         await _loadTasks();
 
         if (mounted) {
@@ -1070,7 +1476,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadTasks();
     } catch (e) {
       if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -1096,7 +1504,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _kycStatus = status;
       });
     } catch (_) {
-      // KYC never blocks Home.
+      // KYC must never block HomeScreen.
     }
   }
 
@@ -1105,13 +1513,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const KycPage(),
+        builder: (_) =>
+            const KycPage(),
       ),
     );
 
     if (!mounted) return;
 
-    unawaited(_loadKyc());
+    unawaited(
+      _loadKyc(),
+    );
   }
 
   // ============================================================
@@ -1119,17 +1530,23 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: pageBackground,
+      backgroundColor:
+          pageBackground,
       body: SafeArea(
         child: RefreshIndicator(
-          color: primaryPurple,
+          color:
+              primaryPurple,
           onRefresh: _load,
           child: _loading
               ? const Center(
-                  child: CircularProgressIndicator(
-                    color: primaryPurple,
+                  child:
+                      CircularProgressIndicator(
+                    color:
+                        primaryPurple,
                   ),
                 )
               : ListView(
@@ -1138,23 +1555,46 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding:
                       const EdgeInsets.fromLTRB(
                     16,
-                    8,
+                    10,
                     16,
-                    18,
+                    20,
                   ),
                   children: [
                     _buildHeader(),
-                    const SizedBox(height: 10),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
                     _buildBalanceCard(),
-                    const SizedBox(height: 11),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
                     _buildMiningCard(),
-                    const SizedBox(height: 11),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
                     _buildBoostCard(),
-                    const SizedBox(height: 11),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
                     _buildSocialCard(),
-                    const SizedBox(height: 11),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
                     _buildKycCard(),
-                    const SizedBox(height: 8),
+
+                    const SizedBox(
+                      height: 10,
+                    ),
                   ],
                 ),
         ),
@@ -1167,136 +1607,117 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildHeader() {
-    return SizedBox(
-      height: 60,
-      child: Row(
-        children: [
-          Container(
-            width: 43,
-            height: 43,
-            decoration: BoxDecoration(
-              color: primaryPurple,
-              borderRadius:
-                  BorderRadius.circular(11),
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'AFAM',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-              ),
+    return Row(
+      children: [
+        Container(
+          width: 76,
+          height: 56,
+          decoration:
+              BoxDecoration(
+            color:
+                primaryPurple,
+            borderRadius:
+                BorderRadius.circular(
+              15,
             ),
           ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
-              children: [
-                const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    'POWER FAN NETWORK',
-                    style: TextStyle(
-                      color: primaryPurple,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  'Mine FAN. Earn More',
-                  style: TextStyle(
-                    color: Colors.indigo.shade900,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+          alignment:
+              Alignment.center,
+          child:
+              const Text(
+            'AFAM',
+            style:
+                TextStyle(
+              color:
+                  Colors.white,
+              fontSize:
+                  17,
+              fontWeight:
+                  FontWeight.w900,
             ),
           ),
-          Stack(
-            clipBehavior: Clip.none,
+        ),
+
+        const SizedBox(
+          width: 12,
+        ),
+
+        Expanded(
+          child: Column(
             children: [
-              const Icon(
-                Icons.notifications_none_rounded,
-                color: deepPurple,
-                size: 30,
+              const Text(
+                'POWER FAN NETWORK',
+                textAlign:
+                    TextAlign.center,
+                style:
+                    TextStyle(
+                  color:
+                      primaryPurple,
+                  fontSize:
+                      22,
+                  fontWeight:
+                      FontWeight.w900,
+                  letterSpacing:
+                      -0.5,
+                ),
               ),
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration:
-                      const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
+
+              const SizedBox(
+                height: 2,
+              ),
+
+              Text(
+                'Mine FAN. Earn More',
+                style:
+                    TextStyle(
+                  color:
+                      Colors.indigo.shade900,
+                  fontSize:
+                      14,
+                  fontWeight:
+                      FontWeight.w500,
                 ),
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
 
-  // ============================================================
-  // FAN COIN
-  // ============================================================
+        const SizedBox(
+          width: 8,
+        ),
 
-  Widget _fanCoin({
-    double size = 42,
-  }) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFFC928),
-            Color(0xFFFF9F00),
+        Stack(
+          clipBehavior:
+              Clip.none,
+          children: [
+            const Icon(
+              Icons
+                  .notifications_none_rounded,
+              color:
+                  deepPurple,
+              size:
+                  35,
+            ),
+
+            Positioned(
+              right: 0,
+              top: 0,
+              child:
+                  Container(
+                width: 9,
+                height: 9,
+                decoration:
+                    const BoxDecoration(
+                  color:
+                      Colors.red,
+                  shape:
+                      BoxShape.circle,
+                ),
+              ),
+            ),
           ],
         ),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.orange.withValues(
-              alpha: 0.22,
-            ),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Container(
-        width: size * 0.68,
-        height: size * 0.68,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.orange.shade700,
-            width: 1.4,
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          'F',
-          style: TextStyle(
-            color: const Color(0xFFE97900),
-            fontSize: size * 0.42,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
+      ],
     );
   }
 
@@ -1307,107 +1728,233 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBalanceCard() {
     final displayedBalance =
         _fan +
-        ((_isMining || _canClaim)
-            ? _sessionReward
-            : 0.0);
+        (
+          (_isMining ||
+                  _canClaim)
+              ? _sessionReward
+              : 0.0
+        );
 
     return Container(
-      height: 142,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
+      height: 180,
+      decoration:
+          BoxDecoration(
+        gradient:
+            const LinearGradient(
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
           colors: [
             Color(0xFF4320B4),
             Color(0xFF29107A),
           ],
         ),
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(
+          23,
+        ),
         boxShadow: [
           BoxShadow(
-            color: primaryPurple.withValues(
-              alpha: 0.16,
+            color:
+                primaryPurple.withValues(
+              alpha: 0.18,
             ),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
+            blurRadius:
+                14,
+            offset:
+                const Offset(
+              0,
+              6,
+            ),
           ),
         ],
       ),
-      child: Stack(
+      child:
+          Stack(
         children: [
+          // ----------------------------------------------------
+          // BACKGROUND MINER ICON
+          // ----------------------------------------------------
+
           Positioned(
-            right: -12,
-            bottom: -20,
-            child: Opacity(
-              opacity: 0.16,
-              child: Icon(
+            right: -8,
+            bottom: -16,
+            child:
+                Opacity(
+              opacity:
+                  0.20,
+              child:
+                  const Icon(
                 Icons
                     .engineering_rounded,
-                size: 115,
-                color: Colors.white,
+                size:
+                    150,
+                color:
+                    Colors.white,
               ),
             ),
           ),
+
+          // ----------------------------------------------------
+          // CONTENT
+          // ----------------------------------------------------
+
           Padding(
             padding:
                 const EdgeInsets.fromLTRB(
+              20,
               17,
-              15,
-              17,
-              10,
+              20,
+              14,
             ),
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 const Text(
                   'BALANCE',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.white,
+                    fontSize:
+                        15,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 5),
+
+                const SizedBox(
+                  height: 7,
+                ),
+
                 Row(
                   children: [
-                    _fanCoin(size: 42),
-                    const SizedBox(width: 9),
-                    Flexible(
-                      child: Text(
-                        displayedBalance
-                            .toStringAsFixed(8),
-                        maxLines: 1,
-                        overflow:
-                            TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight:
-                              FontWeight.w800,
-                          letterSpacing: -0.5,
+                    // ------------------------------------------
+                    // MODERN FAN COIN
+                    // ------------------------------------------
+
+                    Container(
+                      width: 58,
+                      height: 58,
+                      decoration:
+                          const BoxDecoration(
+                        shape:
+                            BoxShape.circle,
+                        gradient:
+                            LinearGradient(
+                          colors: [
+                            Color(
+                              0xFFFFC928,
+                            ),
+                            Color(
+                              0xFFFFA800,
+                            ),
+                          ],
+                        ),
+                      ),
+                      alignment:
+                          Alignment.center,
+                      child:
+                          Container(
+                        width: 46,
+                        height: 46,
+                        decoration:
+                            BoxDecoration(
+                          shape:
+                              BoxShape.circle,
+                          border:
+                              Border.all(
+                            color:
+                                Color(
+                              0xFFE89100,
+                            ),
+                            width:
+                                2,
+                          ),
+                        ),
+                        alignment:
+                            Alignment.center,
+                        child:
+                            const Text(
+                          'F',
+                          style:
+                              TextStyle(
+                            color:
+                                Color(
+                              0xFFE58A00,
+                            ),
+                            fontSize:
+                                27,
+                            fontWeight:
+                                FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+
+                    const SizedBox(
+                      width: 11,
+                    ),
+
+                    Flexible(
+                      child:
+                          Text(
+                        displayedBalance
+                            .toStringAsFixed(
+                          8,
+                        ),
+                        maxLines:
+                            1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(
+                          color:
+                              Colors.white,
+                          fontSize:
+                              31,
+                          fontWeight:
+                              FontWeight.w800,
+                          letterSpacing:
+                              -1,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(
+                      width: 7,
+                    ),
+
                     const Text(
                       'FAN',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.white,
+                        fontSize:
+                            17,
                         fontWeight:
                             FontWeight.w700,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
+
+                const SizedBox(
+                  height: 7,
+                ),
+
                 const Text(
                   '≈ \$0.00',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.white,
+                    fontSize:
+                        14,
                   ),
                 ),
               ],
@@ -1423,104 +1970,235 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildMiningCard() {
-    final readyToClaim =
-        _canClaim && !_isMining;
+    // ----------------------------------------------------------
+    // STATE
+    // ----------------------------------------------------------
 
-    final fanPerSecond =
-        _rate / 3600.0;
+    final isAlreadyClaimed =
+        _alreadyClaimedToday &&
+        !_isMining &&
+        !_canClaim;
+
+    final isReadyToClaim =
+        _canClaim &&
+        !_isMining &&
+        !isAlreadyClaimed;
+
+    final isReady =
+        !_isMining &&
+        !_canClaim &&
+        !isAlreadyClaimed;
+
+    // ----------------------------------------------------------
+    // STATUS TEXT
+    // ----------------------------------------------------------
 
     String statusText;
-    String description;
-    Color statusColor;
-    IconData statusIcon;
-    Color statusBackground;
 
-    if (readyToClaim) {
-      statusText = 'READY TO CLAIM';
+    if (isAlreadyClaimed) {
+      statusText =
+          'ALREADY CLAIMED';
+    } else if (isReadyToClaim) {
+      statusText =
+          'READY TO CLAIM';
+    } else if (_isMining) {
+      statusText =
+          'MINING';
+    } else {
+      statusText =
+          'READY';
+    }
+
+    // ----------------------------------------------------------
+    // STATUS DESCRIPTION
+    // ----------------------------------------------------------
+
+    String description;
+
+    if (isAlreadyClaimed) {
+      description =
+          'Come tomorrow to start a new 24-hour mining session.';
+    } else if (isReadyToClaim) {
       description =
           'Your 24-hour mining session is complete and ready to claim.';
-      statusColor = successGreen;
-      statusIcon =
-          Icons.check_circle_rounded;
-      statusBackground = successLight;
     } else if (_isMining) {
-      statusText = 'MINING...';
       description =
-          'Your mining session is active. Keep mining FAN.';
-      statusColor = primaryPurple;
-      statusIcon = Icons.bolt_rounded;
-      statusBackground =
-          const Color(0xFFF0EEFA);
+          'Your 24-hour mining session is running.';
     } else {
-      statusText = 'READY';
       description =
-          'Start mining to earn FAN.';
-      statusColor = successGreen;
-      statusIcon =
-          Icons.construction_rounded;
-      statusBackground =
-          const Color(0xFFF0EEFA);
+          'Start mining to earn FAN';
     }
+
+    // ----------------------------------------------------------
+    // STATUS COLOR
+    // ----------------------------------------------------------
+
+    Color statusColor;
+
+    if (isAlreadyClaimed) {
+      statusColor =
+          successGreen;
+    } else if (isReadyToClaim) {
+      statusColor =
+          successGreen;
+    } else if (_isMining) {
+      statusColor =
+          primaryPurple;
+    } else {
+      statusColor =
+          successGreen;
+    }
+
+    // ----------------------------------------------------------
+    // BUTTON
+    // ----------------------------------------------------------
 
     String buttonText;
 
+    IconData buttonIcon;
+
     if (_claimAdWaiting) {
-      buttonText = 'WATCHING AD...';
-    } else if (_busy && readyToClaim) {
-      buttonText = 'PROCESSING...';
-    } else if (readyToClaim) {
-      /*
-       * User requested:
-       * after 24 hours the button must say CLAIM.
-       */
-      buttonText = 'CLAIM';
+      buttonText =
+          'WATCHING AD...';
+
+      buttonIcon =
+          Icons
+              .ondemand_video_rounded;
+    } else if (_busy &&
+        isReadyToClaim) {
+      buttonText =
+          'PROCESSING...';
+
+      buttonIcon =
+          Icons
+              .hourglass_top_rounded;
+    } else if (isAlreadyClaimed) {
+      buttonText =
+          'COME TOMORROW';
+
+      buttonIcon =
+          Icons
+              .wb_sunny_rounded;
+    } else if (isReadyToClaim) {
+      buttonText =
+          'CLAIM';
+
+      buttonIcon =
+          Icons
+              .card_giftcard_rounded;
     } else if (_isMining) {
-      buttonText = 'MINING';
+      buttonText =
+          'MINING';
+
+      buttonIcon =
+          Icons
+              .bolt_rounded;
     } else {
-      buttonText = 'START MINING';
+      buttonText =
+          'START MINING';
+
+      buttonIcon =
+          Icons
+              .construction_rounded;
     }
 
+    // ----------------------------------------------------------
+    // COUNTDOWN
+    // ----------------------------------------------------------
+
+    String countdownText;
+
+    if (isAlreadyClaimed) {
+      countdownText =
+          'TOMORROW';
+    } else {
+      countdownText =
+          _formatDuration(
+        _remaining,
+      );
+    }
+
+    // ----------------------------------------------------------
+    // CARD
+    // ----------------------------------------------------------
+
     return _card(
-      padding: const EdgeInsets.fromLTRB(
-        15,
-        14,
-        15,
-        15,
-      ),
-      child: Column(
+      child:
+          Column(
         children: [
+          // ====================================================
+          // STATUS ROW
+          // ====================================================
+
           Row(
             children: [
+              // ------------------------------------------------
+              // STATUS CIRCLE
+              // ------------------------------------------------
+
               _circleIcon(
-                statusIcon,
-                background: statusBackground,
-                iconColor: statusColor,
-                size: 52,
+                isAlreadyClaimed
+                    ? Icons
+                        .check_circle_rounded
+                    : isReadyToClaim
+                        ? Icons
+                            .check_circle_rounded
+                        : _isMining
+                            ? Icons
+                                .bolt_rounded
+                            : Icons
+                                .construction_rounded,
+                background:
+                    isAlreadyClaimed ||
+                            isReadyToClaim
+                        ? successLight
+                        : const Color(
+                            0xFFF0EEFA,
+                          ),
+                iconColor:
+                    statusColor,
+                size:
+                    62,
               ),
-              const SizedBox(width: 11),
+
+              const SizedBox(
+                width: 13,
+              ),
+
+              // ------------------------------------------------
+              // STATUS TEXT
+              // ------------------------------------------------
+
               Expanded(
-                child: Column(
+                child:
+                    Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
                     RichText(
-                      text: TextSpan(
+                      text:
+                          TextSpan(
                         style:
                             const TextStyle(
-                          color: Colors.black,
-                          fontSize: 15,
+                          color:
+                              Colors.black,
+                          fontSize:
+                              18,
                           fontWeight:
-                              FontWeight.w700,
+                              FontWeight.w800,
                         ),
                         children: [
                           const TextSpan(
-                            text: 'STATUS: ',
+                            text:
+                                'STATUS: ',
                           ),
                           TextSpan(
-                            text: statusText,
-                            style: TextStyle(
-                              color: statusColor,
-                              fontSize: 15,
+                            text:
+                                statusText,
+                            style:
+                                TextStyle(
+                              color:
+                                  statusColor,
                               fontWeight:
                                   FontWeight.w900,
                             ),
@@ -1528,17 +2206,25 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 4),
+
+                    const SizedBox(
+                      height: 5,
+                    ),
+
                     Text(
                       description,
-                      maxLines: 2,
+                      maxLines:
+                          2,
                       overflow:
                           TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         color:
                             Colors.grey.shade700,
-                        fontSize: 11,
-                        height: 1.25,
+                        fontSize:
+                            13,
+                        height:
+                            1.35,
                       ),
                     ),
                   ],
@@ -1546,75 +2232,110 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 11),
-          Divider(
-            height: 1,
-            color: Colors.grey.shade300,
+
+          const SizedBox(
+            height: 14,
           ),
-          const SizedBox(height: 10),
+
+          const Divider(
+            height: 1,
+          ),
+
+          const SizedBox(
+            height: 12,
+          ),
+
+          // ====================================================
+          // RATE + COUNTDOWN
+          // ====================================================
+
           Row(
             children: [
               Expanded(
-                child: _miningInfo(
-                  Icons.speed_rounded,
+                child:
+                    _miningInfo(
+                  Icons
+                      .speed_rounded,
                   'MINING RATE',
                   '${_rate.toStringAsFixed(2)} FAN/H',
                 ),
               ),
+
               Container(
                 width: 1,
-                height: 39,
-                color: Colors.grey.shade200,
+                height: 49,
+                color:
+                    Colors.grey.shade200,
               ),
+
               Expanded(
-                child: _miningInfo(
-                  Icons.access_time_rounded,
+                child:
+                    _miningInfo(
+                  Icons
+                      .access_time_rounded,
                   'COUNTDOWN',
-                  _formatDuration(
-                    _remaining,
-                  ),
+                  countdownText,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 5),
+
+          const SizedBox(
+            height: 7,
+          ),
+
+          // ====================================================
+          // PER SECOND
+          // ====================================================
+
           Text(
-            'Per second: ${fanPerSecond.toStringAsFixed(8)} FAN',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: deepPurple,
-              fontSize: 10,
+            'Per second: ${(_rate / 3600.0).toStringAsFixed(8)} FAN',
+            textAlign:
+                TextAlign.center,
+            style:
+                const TextStyle(
+              color:
+                  deepPurple,
+              fontSize:
+                  12,
               fontWeight:
                   FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(
+            height: 13,
+          ),
+
+          // ====================================================
+          // MAIN BUTTON
+          // ====================================================
+
           SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
+            width:
+                double.infinity,
+            height:
+                55,
+            child:
+                ElevatedButton.icon(
               onPressed:
                   _busy
                       ? null
-                      : readyToClaim
-                          ? _claimMining
-                          : _isMining
-                              ? null
-                              : _startMining,
-              icon: Icon(
-                _claimAdWaiting
-                    ? Icons
-                        .ondemand_video_rounded
-                    : readyToClaim
-                        ? Icons
-                            .card_giftcard_rounded
-                        : _isMining
-                            ? Icons.bolt_rounded
-                            : Icons
-                                .construction_rounded,
-                size: 19,
+                      : isAlreadyClaimed
+                          ? null
+                          : isReadyToClaim
+                              ? _claimMining
+                              : _isMining
+                                  ? null
+                                  : _startMining,
+              icon:
+                  Icon(
+                buttonIcon,
+                size:
+                    23,
               ),
-              label: Text(
+              label:
+                  Text(
                 buttonText,
               ),
               style:
@@ -1624,38 +2345,54 @@ class _HomeScreenState extends State<HomeScreen> {
                 foregroundColor:
                     Colors.white,
                 disabledBackgroundColor:
-                    primaryPurple.withValues(
-                  alpha: 0.55,
-                ),
+                    isAlreadyClaimed
+                        ? Colors.grey.shade300
+                        : primaryPurple.withValues(
+                            alpha:
+                                0.55,
+                          ),
                 disabledForegroundColor:
-                    Colors.white,
-                elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 12,
-                ),
+                    isAlreadyClaimed
+                        ? Colors.grey.shade600
+                        : Colors.white,
+                elevation:
+                    0,
                 shape:
                     RoundedRectangleBorder(
                   borderRadius:
-                      BorderRadius.circular(13),
+                      BorderRadius.circular(
+                    15,
+                  ),
                 ),
                 textStyle:
                     const TextStyle(
-                  fontSize: 13,
+                  fontSize:
+                      16,
                   fontWeight:
                       FontWeight.w800,
                 ),
               ),
             ),
           ),
+
+          // ====================================================
+          // CLAIM AD MESSAGE
+          // ====================================================
+
           if (_claimAdWaiting) ...[
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 9,
+            ),
             const Text(
-              'Complete the rewarded ad. Your FAN will be claimed after verification.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: deepPurple,
-                fontSize: 10,
+              'Please complete the rewarded ad. Your FAN will be claimed after the ad is verified.',
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                color:
+                    deepPurple,
+                fontSize:
+                    11,
                 fontWeight:
                     FontWeight.w600,
               ),
@@ -1672,92 +2409,126 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildBoostCard() {
     final progress =
-        (_adsWatched / maxAds)
-            .clamp(0.0, 1.0)
+        (_adsWatched /
+                maxAds)
+            .clamp(
+              0.0,
+              1.0,
+            )
             .toDouble();
 
     final canWatch =
         _isMining &&
         !_busy &&
-        _adsWatched < maxAds;
+        _adsWatched <
+            maxAds;
 
     return _card(
-      padding: const EdgeInsets.fromLTRB(
-        15,
-        14,
-        15,
-        13,
-      ),
-      child: Column(
+      child:
+          Column(
         children: [
           Row(
             children: [
               _circleIcon(
-                Icons.rocket_launch_rounded,
+                Icons
+                    .rocket_launch_rounded,
                 background:
-                    const Color(0xFFF0EEFA),
+                    const Color(
+                  0xFFF0EEFA,
+                ),
                 iconColor:
                     Colors.red.shade700,
-                size: 50,
+                size:
+                    56,
               ),
-              const SizedBox(width: 10),
+
+              const SizedBox(
+                width: 12,
+              ),
+
               Expanded(
-                child: Column(
+                child:
+                    Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: const [
                     Text(
                       'BOOST BY WATCHING ADS',
-                      style: TextStyle(
-                        fontSize: 13,
+                      style:
+                          TextStyle(
+                        fontSize:
+                            15,
                         fontWeight:
                             FontWeight.w800,
                       ),
                     ),
-                    SizedBox(height: 3),
+                    SizedBox(
+                      height: 4,
+                    ),
                     Text(
                       'Each ad adds +0.1 FAN/H',
-                      style: TextStyle(
-                        fontSize: 11,
+                      style:
+                          TextStyle(
+                        fontSize:
+                            12,
                         color:
-                            Color(0xFF55555F),
+                            Color(
+                          0xFF55555F,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 7),
+
+              const SizedBox(
+                width: 8,
+              ),
+
               SizedBox(
-                height: 42,
-                child: ElevatedButton.icon(
+                height:
+                    48,
+                child:
+                    ElevatedButton.icon(
                   onPressed:
                       canWatch
                           ? _watchAd
                           : null,
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons
                         .ondemand_video_rounded,
-                    size: 17,
+                    size:
+                        18,
                   ),
-                  label: const Text(
+                  label:
+                      const Text(
                     'WATCH AD',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style:
+                        TextStyle(
+                      fontSize:
+                          11,
                       fontWeight:
-                          FontWeight.w700,
+                          FontWeight.w800,
                     ),
                   ),
-                  style: ButtonStyle(
+                  style:
+                      ButtonStyle(
                     backgroundColor:
                         WidgetStateProperty
                             .resolveWith(
-                      (states) {
-                        if (states.contains(
-                          WidgetState.disabled,
+                      (
+                        states,
+                      ) {
+                        if (states
+                            .contains(
+                          WidgetState
+                              .disabled,
                         )) {
                           return primaryPurple
                               .withValues(
-                            alpha: 0.45,
+                            alpha:
+                                0.45,
                           );
                         }
 
@@ -1768,17 +2539,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         const WidgetStatePropertyAll(
                       Colors.white,
                     ),
-                    elevation:
-                        const WidgetStatePropertyAll(
-                      0,
-                    ),
                     shape:
                         const WidgetStatePropertyAll(
                       RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.all(
-                          Radius.circular(11),
+                          Radius.circular(
+                            12,
+                          ),
                         ),
+                      ),
+                    ),
+                    padding:
+                        const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(
+                        horizontal:
+                            12,
                       ),
                     ),
                   ),
@@ -1786,39 +2562,62 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(
+            height: 13,
+          ),
+
           Row(
             children: [
               Text(
                 'Ads watched: $_adsWatched / $maxAds',
-                style: const TextStyle(
-                  color: deepPurple,
-                  fontSize: 11,
+                style:
+                    const TextStyle(
+                  color:
+                      deepPurple,
+                  fontSize:
+                      12,
                   fontWeight:
                       FontWeight.w600,
                 ),
               ),
+
               const Spacer(),
+
               Text(
                 '+${(_adsWatched * 0.10).toStringAsFixed(1)} FAN/H',
-                style: const TextStyle(
-                  color: deepPurple,
-                  fontSize: 11,
+                style:
+                    const TextStyle(
+                  color:
+                      deepPurple,
+                  fontSize:
+                      12,
                   fontWeight:
-                      FontWeight.w700,
+                      FontWeight.w800,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 7),
+
+          const SizedBox(
+            height: 8,
+          ),
+
           ClipRRect(
             borderRadius:
-                BorderRadius.circular(20),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 7,
+                BorderRadius.circular(
+              20,
+            ),
+            child:
+                LinearProgressIndicator(
+              value:
+                  progress,
+              minHeight:
+                  8,
               backgroundColor:
-                  const Color(0xFFE7E2F8),
+                  const Color(
+                0xFFE7E2F8,
+              ),
               valueColor:
                   const AlwaysStoppedAnimation<
                       Color>(
@@ -1826,18 +2625,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 3),
+
+          const SizedBox(
+            height: 5,
+          ),
+
           Align(
             alignment:
                 Alignment.centerRight,
-            child: Text(
+            child:
+                Text(
               _isMining
                   ? '7 ads maximum per session'
                   : 'Start mining before watching ads',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 color:
                     Colors.grey.shade600,
-                fontSize: 9,
+                fontSize:
+                    10,
               ),
             ),
           ),
@@ -1856,11 +2662,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ? _tasks.first
             : null;
 
-    /*
-     * Official daily social reward = 10 FAN.
-     */
+    // Official rule = 10 FAN.
     final reward =
-        task?.rewardFan ?? 10.0;
+        task?.rewardFan ??
+            10.0;
 
     final taskLabel =
         task == null
@@ -1870,92 +2675,140 @@ class _HomeScreenState extends State<HomeScreen> {
                 : 'Complete today’s social task';
 
     return _card(
-      padding: const EdgeInsets.fromLTRB(
-        15,
-        13,
-        15,
-        13,
-      ),
-      child: Row(
+      child:
+          Row(
         children: [
           _circleIcon(
-            Icons.assignment_turned_in_rounded,
+            Icons
+                .assignment_turned_in_rounded,
             background:
-                const Color(0xFFEAF8F0),
+                successLight,
             iconColor:
                 Colors.green.shade700,
-            size: 50,
+            size:
+                56,
           ),
-          const SizedBox(width: 10),
+
+          const SizedBox(
+            width: 12,
+          ),
+
           Expanded(
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 const Text(
                   'DAILY TASK',
-                  style: TextStyle(
-                    fontSize: 13,
+                  style:
+                      TextStyle(
+                    fontSize:
+                        15,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 3),
+
+                const SizedBox(
+                  height: 4,
+                ),
+
                 Text(
                   taskLabel,
-                  maxLines: 2,
+                  maxLines:
+                      2,
                   overflow:
                       TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
+                  style:
+                      const TextStyle(
+                    fontSize:
+                        12,
                     color:
-                        Color(0xFF55555F),
+                        Color(
+                      0xFF55555F,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 3),
+
+                const SizedBox(
+                  height: 4,
+                ),
+
                 Text(
                   'Reward: ${_formatFan(reward)} FAN',
-                  style: const TextStyle(
-                    fontSize: 10,
+                  style:
+                      const TextStyle(
+                    fontSize:
+                        11,
                     color:
-                        Color(0xFF55555F),
+                        Color(
+                      0xFF55555F,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 6),
+
+          const SizedBox(
+            width: 7,
+          ),
+
           Column(
             children: [
               Row(
                 mainAxisSize:
                     MainAxisSize.min,
                 children: [
-                  _socialIcon('X'),
-                  const SizedBox(width: 3),
-                  _socialIcon('➤'),
-                  const SizedBox(width: 3),
-                  _socialIcon('◎'),
-                  const SizedBox(width: 3),
-                  _socialIcon('▶'),
+                  _socialIcon(
+                    'X',
+                  ),
+                  const SizedBox(
+                    width: 4,
+                  ),
+                  _socialIcon(
+                    '➤',
+                  ),
+                  const SizedBox(
+                    width: 4,
+                  ),
+                  _socialIcon(
+                    '◎',
+                  ),
+                  const SizedBox(
+                    width: 4,
+                  ),
+                  _socialIcon(
+                    '▶',
+                  ),
                 ],
               ),
-              const SizedBox(height: 6),
+
+              const SizedBox(
+                height: 7,
+              ),
+
               SizedBox(
-                height: 36,
+                height:
+                    40,
                 child:
                     OutlinedButton.icon(
                   onPressed:
                       _busy
                           ? null
                           : _socialAction,
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons
                         .card_giftcard_rounded,
-                    size: 15,
+                    size:
+                        16,
                   ),
-                  label: Text(
-                    task?.canClaim == true
+                  label:
+                      Text(
+                    task?.canClaim ==
+                            true
                         ? 'CLAIM ${_formatFan(reward)}'
                         : 'FOLLOW & EARN',
                   ),
@@ -1972,14 +2825,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         RoundedRectangleBorder(
                       borderRadius:
                           BorderRadius.circular(
-                        9,
+                        10,
                       ),
                     ),
                     textStyle:
                         const TextStyle(
-                      fontSize: 9,
+                      fontSize:
+                          9,
                       fontWeight:
-                          FontWeight.w700,
+                          FontWeight.w800,
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(
+                      horizontal:
+                          9,
                     ),
                   ),
                 ),
@@ -2000,25 +2859,29 @@ class _HomeScreenState extends State<HomeScreen> {
         _kycStatus.isVerified;
 
     return _card(
-      padding: const EdgeInsets.fromLTRB(
-        15,
-        13,
-        12,
-        13,
-      ),
-      child: Row(
+      child:
+          Row(
         children: [
           _circleIcon(
-            Icons.shield_rounded,
+            Icons
+                .shield_rounded,
             background:
-                const Color(0xFFF0EEFA),
+                const Color(
+              0xFFF0EEFA,
+            ),
             iconColor:
                 primaryPurple,
-            size: 50,
+            size:
+                56,
           ),
-          const SizedBox(width: 10),
+
+          const SizedBox(
+            width: 12,
+          ),
+
           Expanded(
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
@@ -2026,53 +2889,76 @@ class _HomeScreenState extends State<HomeScreen> {
                   verified
                       ? 'KYC VERIFIED'
                       : 'KYC VERIFICATION',
-                  style: const TextStyle(
-                    fontSize: 13,
+                  style:
+                      const TextStyle(
+                    fontSize:
+                        15,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 3),
+
+                const SizedBox(
+                  height: 4,
+                ),
+
                 Text(
                   verified
                       ? 'Your identity has been verified'
                       : 'Verify your identity to secure your account',
-                  maxLines: 2,
+                  maxLines:
+                      2,
                   overflow:
                       TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
+                  style:
+                      const TextStyle(
+                    fontSize:
+                        11,
                     color:
-                        Color(0xFF55555F),
+                        Color(
+                      0xFF55555F,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 7),
+
+          const SizedBox(
+            width: 7,
+          ),
+
           OutlinedButton(
             onPressed:
-                _busy ? null : _openKyc,
+                _busy
+                    ? null
+                    : _openKyc,
             style:
                 OutlinedButton.styleFrom(
               foregroundColor:
                   deepPurple,
               side:
                   const BorderSide(
-                color: deepPurple,
+                color:
+                    deepPurple,
               ),
               shape:
                   RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(9),
+                    BorderRadius.circular(
+                  10,
+                ),
               ),
               padding:
                   const EdgeInsets.symmetric(
-                horizontal: 9,
-                vertical: 9,
+                horizontal:
+                    11,
+                vertical:
+                    10,
               ),
             ),
-            child: Row(
+            child:
+                Row(
               mainAxisSize:
                   MainAxisSize.min,
               children: [
@@ -2082,16 +2968,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       : 'COMPLETE KYC',
                   style:
                       const TextStyle(
-                    fontSize: 8,
+                    fontSize:
+                        9,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(width: 2),
+                const SizedBox(
+                  width: 3,
+                ),
                 const Icon(
                   Icons
                       .chevron_right_rounded,
-                  size: 17,
+                  size:
+                      18,
                 ),
               ],
             ),
@@ -2102,32 +2992,46 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // CARD
+  // GENERAL CARD
   // ============================================================
 
   Widget _card({
     required Widget child,
-    EdgeInsetsGeometry padding =
-        const EdgeInsets.all(15),
   }) {
     return Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: Colors.white,
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.all(
+        16,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.white,
         borderRadius:
-            BorderRadius.circular(19),
+            BorderRadius.circular(
+          21,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
-              alpha: 0.035,
+            color:
+                Colors.black.withValues(
+              alpha:
+                  0.045,
             ),
-            blurRadius: 9,
-            offset: const Offset(0, 3),
+            blurRadius:
+                11,
+            offset:
+                const Offset(
+              0,
+              4,
+            ),
           ),
         ],
       ),
-      child: child,
+      child:
+          child,
     );
   }
 
@@ -2142,17 +3046,26 @@ class _HomeScreenState extends State<HomeScreen> {
     double size = 56,
   }) {
     return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: background,
-        shape: BoxShape.circle,
+      width:
+          size,
+      height:
+          size,
+      decoration:
+          BoxDecoration(
+        color:
+            background,
+        shape:
+            BoxShape.circle,
       ),
-      alignment: Alignment.center,
-      child: Icon(
+      alignment:
+          Alignment.center,
+      child:
+          Icon(
         icon,
-        color: iconColor,
-        size: size * 0.54,
+        color:
+            iconColor,
+        size:
+            size * 0.55,
       ),
     );
   }
@@ -2169,43 +3082,63 @@ class _HomeScreenState extends State<HomeScreen> {
     return Padding(
       padding:
           const EdgeInsets.symmetric(
-        horizontal: 6,
+        horizontal:
+            8,
       ),
-      child: Row(
+      child:
+          Row(
         children: [
           Icon(
             icon,
-            color: primaryPurple,
-            size: 27,
+            color:
+                primaryPurple,
+            size:
+                31,
           ),
-          const SizedBox(width: 6),
+
+          const SizedBox(
+            width: 8,
+          ),
+
           Expanded(
-            child: Column(
+            child:
+                Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  maxLines: 1,
+                  maxLines:
+                      1,
                   overflow:
                       TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 9,
+                  style:
+                      const TextStyle(
+                    fontSize:
+                        10,
                     fontWeight:
                         FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 2),
+
+                const SizedBox(
+                  height: 3,
+                ),
+
                 Text(
                   value,
-                  maxLines: 1,
+                  maxLines:
+                      1,
                   overflow:
                       TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: deepPurple,
-                    fontSize: 12,
+                  style:
+                      const TextStyle(
+                    color:
+                        deepPurple,
+                    fontSize:
+                        14,
                     fontWeight:
-                        FontWeight.w700,
+                        FontWeight.w800,
                   ),
                 ),
               ],
@@ -2220,25 +3153,41 @@ class _HomeScreenState extends State<HomeScreen> {
   // SOCIAL ICON
   // ============================================================
 
-  Widget _socialIcon(String text) {
+  Widget _socialIcon(
+    String text,
+  ) {
     return Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        color: Colors.white,
+      width:
+          30,
+      height:
+          30,
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.white,
         borderRadius:
-            BorderRadius.circular(7),
-        border: Border.all(
-          color: Colors.grey.shade200,
+            BorderRadius.circular(
+          8,
+        ),
+        border:
+            Border.all(
+          color:
+              Colors.grey.shade200,
         ),
       ),
-      alignment: Alignment.center,
-      child: Text(
+      alignment:
+          Alignment.center,
+      child:
+          Text(
         text,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          color: Colors.black,
+        style:
+            const TextStyle(
+          fontSize:
+              13,
+          fontWeight:
+              FontWeight.w900,
+          color:
+              Colors.black,
         ),
       ),
     );
@@ -2252,23 +3201,35 @@ class _HomeScreenState extends State<HomeScreen> {
     Duration duration,
   ) {
     if (duration.isNegative) {
-      duration = Duration.zero;
+      duration =
+          Duration.zero;
     }
 
     final hours =
         duration.inHours
             .toString()
-            .padLeft(2, '0');
+            .padLeft(
+              2,
+              '0',
+            );
 
     final minutes =
-        (duration.inMinutes % 60)
+        (duration.inMinutes %
+                60)
             .toString()
-            .padLeft(2, '0');
+            .padLeft(
+              2,
+              '0',
+            );
 
     final seconds =
-        (duration.inSeconds % 60)
+        (duration.inSeconds %
+                60)
             .toString()
-            .padLeft(2, '0');
+            .padLeft(
+              2,
+              '0',
+            );
 
     return '$hours:$minutes:$seconds';
   }
@@ -2282,10 +3243,16 @@ class _HomeScreenState extends State<HomeScreen> {
   ) {
     if (value ==
         value.roundToDouble()) {
-      return value.toStringAsFixed(0);
+      return value
+          .toStringAsFixed(
+        0,
+      );
     }
 
-    return value.toStringAsFixed(2);
+    return value
+        .toStringAsFixed(
+      2,
+    );
   }
 
   // ============================================================
@@ -2354,7 +3321,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final text =
-        value.toString().trim().toLowerCase();
+        value
+            .toString()
+            .trim()
+            .toLowerCase();
 
     return text == 'true' ||
         text == '1' ||
@@ -2363,7 +3333,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // DATE PARSER
+  // DATE
   // ============================================================
 
   DateTime? _parseDate(
@@ -2378,21 +3348,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final text =
-        value.toString().trim();
+        value
+            .toString()
+            .trim();
 
     if (text.isEmpty) {
       return null;
     }
 
     final parsed =
-        DateTime.tryParse(text);
+        DateTime.tryParse(
+      text,
+    );
 
     if (parsed != null) {
       return parsed.toLocal();
     }
 
     final numeric =
-        num.tryParse(text);
+        num.tryParse(
+      text,
+    );
 
     if (numeric == null) {
       return null;
@@ -2406,15 +3382,19 @@ class _HomeScreenState extends State<HomeScreen> {
       return DateTime
           .fromMillisecondsSinceEpoch(
         timestamp,
-        isUtc: true,
-      ).toLocal();
+        isUtc:
+            true,
+      )
+          .toLocal();
     }
 
     return DateTime
         .fromMillisecondsSinceEpoch(
       timestamp * 1000,
-      isUtc: true,
-    ).toLocal();
+      isUtc:
+          true,
+    )
+        .toLocal();
   }
 
   // ============================================================
@@ -2430,7 +3410,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.startsWith(
       'Exception: ',
     )) {
-      return text.substring(11);
+      return text.substring(
+        11,
+      );
     }
 
     return text;
@@ -2448,12 +3430,16 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    ScaffoldMessenger.of(context)
+    ScaffoldMessenger.of(
+      context,
+    )
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           content:
-              Text(message),
+              Text(
+            message,
+          ),
           behavior:
               SnackBarBehavior.floating,
         ),
