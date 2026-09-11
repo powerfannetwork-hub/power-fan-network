@@ -28,11 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const int maxAds = 7;
 
   final MiningService _mining = MiningService.instance;
-
   final SocialTaskService _social = SocialTaskService();
-
   final KycService _kyc = KycService();
-
   final LevelPlayAdsService _ads = LevelPlayAdsService.instance;
 
   Timer? _timer;
@@ -45,18 +42,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _claimAdWaiting = false;
 
   double _fan = 0.0;
-
   double _rate = MiningService.defaultMiningRate;
-
   double _sessionReward = 0.0;
 
-  /*
-   * This is only a local display deadline.
-   *
-   * It is created from Supabase remaining_seconds.
-   * It is NOT used to decide whether the server says
-   * mining is active or claimable.
-   */
   DateTime? _displayDeadline;
 
   Duration _remaining = Duration.zero;
@@ -81,19 +69,11 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // ============================================================
-  // ADS INITIALIZATION
-  // ============================================================
-
   Future<void> _initializeAds() async {
     try {
       await _ads.initialize();
     } catch (_) {}
   }
-
-  // ============================================================
-  // INITIAL LOAD
-  // ============================================================
 
   Future<void> _loadInitial() async {
     if (!mounted) return;
@@ -123,10 +103,6 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_loadKyc());
   }
 
-  // ============================================================
-  // REFRESH
-  // ============================================================
-
   Future<void> _load() async {
     if (!mounted) return;
 
@@ -145,14 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_loadKyc());
   }
 
-  // ============================================================
-  // PROFILE
-  // ============================================================
-
   Future<void> _loadProfile() async {
     final data = await _mining.getProfile();
 
-    if (!mounted || data == null) {
+    if (!mounted) {
       return;
     }
 
@@ -160,14 +132,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _fan = _toDouble(data['fan_balance']);
     });
   }
-
-  // ============================================================
-  // MINING LOAD
-  //
-  // SERVER IS AUTHORITATIVE.
-  //
-  // remaining_seconds from Supabase is preferred.
-  // ============================================================
 
   Future<void> _loadMining() async {
     final data = await _mining.getActiveMining();
@@ -216,10 +180,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    // ==========================================================
-    // RATE
-    // ==========================================================
-
     double rate = _toDouble(
       data['total_rate'] ??
           data['mining_rate'] ??
@@ -238,20 +198,12 @@ class _HomeScreenState extends State<HomeScreen> {
       rate = MiningService.defaultMiningRate;
     }
 
-    // ==========================================================
-    // ADS
-    // ==========================================================
-
     final ads = _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
           data['ads_count'] ??
           data['daily_ads_watched'],
     );
-
-    // ==========================================================
-    // SERVER REMAINING
-    // ==========================================================
 
     final serverRemaining = _toInt(
       data['remaining_seconds'] ??
@@ -263,10 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
           data['session_reward'] ??
           data['earned_reward'],
     );
-
-    // ==========================================================
-    // SERVER STATE
-    // ==========================================================
 
     bool active = false;
 
@@ -282,13 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // ==========================================================
-    // DISPLAY COUNTDOWN
-    //
-    // The countdown is based on server remaining_seconds.
-    // The phone's absolute clock is not used for mining state.
-    // ==========================================================
-
     Duration remaining = Duration.zero;
     DateTime? displayDeadline;
 
@@ -303,20 +244,10 @@ class _HomeScreenState extends State<HomeScreen> {
       displayDeadline = DateTime.now().add(remaining);
     }
 
-    // ==========================================================
-    // CLAIMABLE
-    //
-    // Server decides this.
-    // ==========================================================
-
     final finalCanClaim =
         !alreadyClaimed &&
         !active &&
         (serverClaimable || statusIsClaimable);
-
-    // ==========================================================
-    // REWARD
-    // ==========================================================
 
     double liveReward = serverReward;
 
@@ -339,9 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _rate = rate;
       _displayDeadline = displayDeadline;
       _remaining = remaining;
-
       _sessionReward = liveReward < 0 ? 0.0 : liveReward;
-
       _adsWatched = ads.clamp(0, maxAds).toInt();
 
       if (active) {
@@ -353,10 +282,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _startTimer();
     }
   }
-
-  // ============================================================
-  // CLAIMABLE STATUS
-  // ============================================================
 
   bool _isClaimableStatus(String? status) {
     if (status == null || status.trim().isEmpty) {
@@ -377,10 +302,6 @@ class _HomeScreenState extends State<HomeScreen> {
         value == 'session_completed' ||
         value == 'ended';
   }
-
-  // ============================================================
-  // APPLY START RESULT
-  // ============================================================
 
   Future<bool> _applyMiningResult(
     Map<String, dynamic> data,
@@ -404,10 +325,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    // ==========================================================
-    // SERVER SAYS CLAIM REQUIRED
-    // ==========================================================
-
     if (claimRequired && !serverActive && !alreadyClaimed) {
       if (mounted) {
         _timer?.cancel();
@@ -422,10 +339,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       return true;
     }
-
-    // ==========================================================
-    // SERVER REMAINING
-    // ==========================================================
 
     final serverRemaining = _toInt(
       data['remaining_seconds'] ??
@@ -445,10 +358,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       displayDeadline = DateTime.now().add(remaining);
     }
-
-    // ==========================================================
-    // SERVER ACTIVE
-    // ==========================================================
 
     final statusActive =
         status == 'active' ||
@@ -510,10 +419,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return true;
   }
 
-  // ============================================================
-  // COUNTDOWN TIMER
-  // ============================================================
-
   void _startTimer() {
     _timer?.cancel();
 
@@ -573,10 +478,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // REFRESH AFTER COUNTDOWN
-  // ============================================================
-
   Future<void> _refreshAfterTimer() async {
     if (!mounted) return;
 
@@ -588,10 +489,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
   }
-
-  // ============================================================
-  // START MINING
-  // ============================================================
 
   Future<void> _startMining() async {
     if (_busy || _isMining || _canClaim) {
@@ -707,10 +604,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ============================================================
-  // CLAIM MINING
-  // ============================================================
-
   Future<void> _claimMining() async {
     if (_busy || !_canClaim || _isMining) {
       return;
@@ -820,10 +713,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ============================================================
-  // WATCH MINING BOOST AD
-  // ============================================================
-
   Future<void> _watchAd() async {
     if (_busy || !_isMining) {
       return;
@@ -904,10 +793,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
   }
-
-  // ============================================================
-  // SOCIAL TASKS
-  // ============================================================
 
   Future<void> _loadTasks() async {
     try {
@@ -1000,10 +885,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ============================================================
-  // KYC
-  // ============================================================
-
   Future<void> _loadKyc() async {
     try {
       final status = await _kyc.getProgress();
@@ -1029,10 +910,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     unawaited(_loadKyc());
   }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -1076,10 +953,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // ============================================================
-  // HEADER
-  // ============================================================
 
   Widget _buildHeader() {
     return Row(
@@ -1153,10 +1026,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-
-  // ============================================================
-  // BALANCE
-  // ============================================================
 
   Widget _buildBalanceCard() {
     final displayedBalance =
@@ -1293,10 +1162,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // ============================================================
-  // MINING CARD
-  // ============================================================
 
   Widget _buildMiningCard() {
     final isReadyToClaim = _canClaim && !_isMining;
@@ -1453,10 +1318,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // BOOST CARD
-  // ============================================================
-
   Widget _buildBoostCard() {
     final progress =
         (_adsWatched / maxAds)
@@ -1610,10 +1471,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // SOCIAL CARD
-  // ============================================================
-
   Widget _buildSocialCard() {
     final task = _tasks.isNotEmpty ? _tasks.first : null;
 
@@ -1725,10 +1582,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // KYC CARD
-  // ============================================================
-
   Widget _buildKycCard() {
     final verified = _kycStatus.isVerified;
 
@@ -1812,10 +1665,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // CARD
-  // ============================================================
-
   Widget _card({
     required Widget child,
   }) {
@@ -1836,10 +1685,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: child,
     );
   }
-
-  // ============================================================
-  // CIRCLE ICON
-  // ============================================================
 
   Widget _circleIcon(
     IconData icon, {
@@ -1862,10 +1707,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // ============================================================
-  // MINING INFO
-  // ============================================================
 
   Widget _miningInfo(
     IconData icon,
@@ -1917,10 +1758,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // SOCIAL ICON
-  // ============================================================
-
   Widget _socialIcon(String text) {
     return Container(
       width: 30,
@@ -1944,10 +1781,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // FORMAT DURATION
-  // ============================================================
-
   String _formatDuration(Duration duration) {
     if (duration.isNegative) {
       duration = Duration.zero;
@@ -1968,10 +1801,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$hours:$minutes:$seconds';
   }
 
-  // ============================================================
-  // FORMAT FAN
-  // ============================================================
-
   String _formatFan(double value) {
     if (value == value.roundToDouble()) {
       return value.toStringAsFixed(0);
@@ -1979,10 +1808,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return value.toStringAsFixed(2);
   }
-
-  // ============================================================
-  // DOUBLE
-  // ============================================================
 
   double _toDouble(dynamic value) {
     if (value == null) {
@@ -1995,10 +1820,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return double.tryParse(value.toString()) ?? 0.0;
   }
-
-  // ============================================================
-  // INT
-  // ============================================================
 
   int _toInt(dynamic value) {
     if (value == null) {
@@ -2015,10 +1836,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return int.tryParse(value.toString()) ?? 0;
   }
-
-  // ============================================================
-  // BOOL
-  // ============================================================
 
   bool _toBool(dynamic value) {
     if (value == null) {
@@ -2041,10 +1858,6 @@ class _HomeScreenState extends State<HomeScreen> {
         text == 'y';
   }
 
-  // ============================================================
-  // ERROR
-  // ============================================================
-
   String _error(Object error) {
     final text = error.toString();
 
@@ -2054,10 +1867,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return text;
   }
-
-  // ============================================================
-  // MESSAGE
-  // ============================================================
 
   void _message(String message) {
     if (!mounted || message.trim().isEmpty) {
