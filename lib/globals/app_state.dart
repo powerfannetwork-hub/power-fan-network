@@ -48,31 +48,24 @@ class AppState extends ChangeNotifier {
       final profile =
           await MiningService.instance.getProfile();
 
-      if (profile != null) {
-        _user = profile;
+      _user = profile;
 
-        _fanBalance = _toDouble(
-          profile['fan_balance'],
-        );
+      _fanBalance = _toDouble(
+        profile['fan_balance'],
+      );
 
-        _afamBalance = _toDouble(
-          profile['afam_balance'],
-        );
-      }
+      _afamBalance = _toDouble(
+        profile['afam_balance'],
+      );
 
       final mining =
           await MiningService.instance.getActiveMining();
 
       /*
-       * IMPORTANT:
-       *
        * Supabase is authoritative.
        *
        * We do NOT compare miningEndsAt with
        * DateTime.now() here.
-       *
-       * This prevents an incorrect phone date/time
-       * from changing the mining state.
        */
       _miningActive =
           mining['mining_active'] == true ||
@@ -203,10 +196,6 @@ class AppState extends ChangeNotifier {
     try {
       final profile =
           await MiningService.instance.getProfile();
-
-      if (profile == null) {
-        return;
-      }
 
       _user = profile;
 
