@@ -7,6 +7,14 @@ class MiningService {
 
   static final MiningService _instance = MiningService._internal();
 
+  /// Backward-compatible singleton.
+  ///
+  /// Other files in the app use:
+  /// MiningService.instance
+  static MiningService get instance => _instance;
+
+  /// Also keep the old factory style:
+  /// MiningService()
   factory MiningService() {
     return _instance;
   }
@@ -18,7 +26,7 @@ class MiningService {
   static const double defaultMiningRate = 0.20;
 
   // ------------------------------------------------------------
-  // Helpers
+  // HELPERS
   // ------------------------------------------------------------
 
   dynamic _value(
@@ -57,6 +65,28 @@ class MiningService {
     return double.tryParse(value.toString()) ?? fallback;
   }
 
+  bool _toBool(dynamic value, [bool fallback = false]) {
+    if (value == null) return fallback;
+
+    if (value is bool) return value;
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    final text = value.toString().toLowerCase().trim();
+
+    if (text == 'true' || text == '1' || text == 'yes') {
+      return true;
+    }
+
+    if (text == 'false' || text == '0' || text == 'no') {
+      return false;
+    }
+
+    return fallback;
+  }
+
   Map<String, dynamic> _normalize(dynamic response) {
     if (response == null) {
       return <String, dynamic>{};
@@ -74,10 +104,101 @@ class MiningService {
   }
 
   // ------------------------------------------------------------
+  // PROFILE
+  // ------------------------------------------------------------
+
+  Future<Map<String, dynamic>?> getProfile() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return null;
+    }
+
+    try {
+      final row = await _client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (row == null) {
+        return null;
+      }
+
+      return Map<String, dynamic>.from(row);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // GET FAN BALANCE
+  // ------------------------------------------------------------
+
+  Future<double> getFanBalance() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      return 0;
+    }
+
+    try {
+      final row = await _client
+          .from('profiles')
+          .select('fan_balance')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (row == null) {
+        return 0;
+      }
+
+      return _toDouble(
+        row['fan_balance'],
+        0,
+      );
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // GET ADS WATCHED
+  //
+  // Keep this method because other parts of the old app use:
+  // MiningService.instance.getAdsWatched()
+  //
+  // We first use the active mining RPC because the server is the
+  // authority for the current session.
+  // ------------------------------------------------------------
+
+  Future<int> getAdsWatched() async {
+    try {
+      final data = await getActiveMining();
+
+      return _toInt(
+        _value(
+          data,
+          [
+            'ads_watched',
+            'ad_count',
+            'ads_count',
+            'daily_ads_watched',
+          ],
+          0,
+        ),
+        0,
+      );
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // ------------------------------------------------------------
   // START MINING
   //
   // Server decides everything.
-  // No phone DateTime is used.
+  // Flutter does not decide whether a session has expired.
   // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> startMining() async {
@@ -89,6 +210,7 @@ class MiningService {
           'success': false,
           'active': false,
           'claimable': false,
+          'remaining_seconds': 0,
           'error': 'You must be signed in.',
         };
       }
@@ -105,6 +227,7 @@ class MiningService {
         'success': false,
         'active': false,
         'claimable': false,
+        'remaining_seconds': 0,
         'error': e.message,
       };
     } catch (e) {
@@ -112,6 +235,7 @@ class MiningService {
         'success': false,
         'active': false,
         'claimable': false,
+        'remaining_seconds': 0,
         'error': e.toString(),
       };
     }
@@ -133,6 +257,7 @@ class MiningService {
           'active': false,
           'claimable': false,
           'remaining_seconds': 0,
+          'ads_watched': 0,
           'error': 'You must be signed in.',
         };
       }
@@ -150,6 +275,7 @@ class MiningService {
         'active': false,
         'claimable': false,
         'remaining_seconds': 0,
+        'ads_watched': 0,
         'error': e.message,
       };
     } catch (e) {
@@ -158,6 +284,7 @@ class MiningService {
         'active': false,
         'claimable': false,
         'remaining_seconds': 0,
+        'ads_watched': 0,
         'error': e.toString(),
       };
     }
@@ -170,16 +297,19 @@ class MiningService {
   Map<String, dynamic> _prepareMiningResult(
     Map<String, dynamic> data,
   ) {
+    final status = data['status']?.toString().toLowerCase();
+
     final active =
-        data['active'] == true ||
-        data['status'] == 'active';
+        _toBool(data['active']) ||
+        status == 'active';
 
     final claimable =
-        data['claimable'] == true ||
-        data['claim_required'] == true ||
-        data['status'] == 'ready_to_claim' ||
-        data['status'] == 'claimable' ||
-        data['status'] == 'expired';
+        _toBool(data['claimable']) ||
+        _toBool(data['claim_required']) ||
+        status == 'ready_to_claim' ||
+        status == 'claimable' ||
+        status == 'expired' ||
+        status == 'ended';
 
     final remainingSeconds = _toInt(
       _value(
@@ -191,79 +321,123 @@ class MiningService {
         ],
         0,
       ),
+      0,
     );
 
-    final result = <String, dynamic>{
+    final rate = _toDouble(
+      _value(
+        data,
+        [
+          'rate',
+          'mining_rate',
+          'total_rate',
+        ],
+        defaultMiningRate,
+      ),
+      defaultMiningRate,
+    );
+
+    final totalRate = _toDouble(
+      _value(
+        data,
+        [
+          'total_rate',
+          'mining_rate',
+          'rate',
+        ],
+        defaultMiningRate,
+      ),
+      defaultMiningRate,
+    );
+
+    final reward = _toDouble(
+      _value(
+        data,
+        [
+          'reward',
+          'session_reward',
+          'reward_amount',
+        ],
+        0,
+      ),
+      0,
+    );
+
+    final adsWatched = _toInt(
+      _value(
+        data,
+        [
+          'ads_watched',
+          'ad_count',
+          'ads_count',
+          'daily_ads_watched',
+        ],
+        0,
+      ),
+      0,
+    );
+
+    return {
       ...data,
 
+      'success': data['success'] ?? true,
+
       'active': active,
+
       'claimable': claimable,
 
-      // SERVER-AUTHORITATIVE VALUE.
       'remaining_seconds':
           remainingSeconds < 0 ? 0 : remainingSeconds,
 
-      'rate': _toDouble(
-        _value(
-          data,
-          [
-            'rate',
-            'mining_rate',
-            'total_rate',
-          ],
-          defaultMiningRate,
-        ),
-        defaultMiningRate,
-      ),
+      'rate': rate,
 
-      'total_rate': _toDouble(
-        _value(
-          data,
-          [
-            'total_rate',
-            'mining_rate',
-            'rate',
-          ],
-          defaultMiningRate,
-        ),
-        defaultMiningRate,
-      ),
+      'mining_rate': rate,
 
-      'reward': _toDouble(
-        _value(
-          data,
-          [
-            'reward',
-            'session_reward',
-            'reward_amount',
-          ],
-          0,
-        ),
-      ),
+      'total_rate': totalRate,
 
-      'ads_watched': _toInt(
-        _value(
-          data,
-          [
-            'ads_watched',
-            'ad_count',
-            'ads_count',
-            'daily_ads_watched',
-          ],
-          0,
-        ),
-      ),
+      'reward': reward,
+
+      'session_reward': reward,
+
+      'ads_watched': adsWatched,
+
+      'ad_count': adsWatched,
     };
+  }
 
-    return result;
+  // ------------------------------------------------------------
+  // CURRENT MINING RATE
+  // ------------------------------------------------------------
+
+  Future<double> getUserMiningRate() async {
+    try {
+      final user = _client.auth.currentUser;
+
+      if (user == null) {
+        return defaultMiningRate;
+      }
+
+      final response = await _client.rpc(
+        'get_user_mining_rate',
+        params: {
+          'p_user_id': user.id,
+        },
+      );
+
+      return _toDouble(
+        response,
+        defaultMiningRate,
+      );
+    } catch (_) {
+      return defaultMiningRate;
+    }
   }
 
   // ------------------------------------------------------------
   // CLAIM MINING
   //
-  // IMPORTANT:
-  // The backend claim_mining() must verify the real server time.
-  // Flutter must NOT decide that 24 hours has finished.
+  // Backend decides whether the 24 hours are actually complete.
+  // No local DateTime check here.
   // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> claimMining() async {
@@ -301,70 +475,20 @@ class MiningService {
   }
 
   // ------------------------------------------------------------
-  // PROFILE BALANCE
-  // ------------------------------------------------------------
-
-  Future<double> getFanBalance() async {
-    final user = _client.auth.currentUser;
-
-    if (user == null) {
-      return 0;
-    }
-
-    try {
-      final row = await _client
-          .from('profiles')
-          .select('fan_balance')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (row == null) {
-        return 0;
-      }
-
-      return _toDouble(
-        row['fan_balance'],
-        0,
-      );
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  // ------------------------------------------------------------
-  // CURRENT MINING RATE
-  // ------------------------------------------------------------
-
-  Future<double> getUserMiningRate() async {
-    try {
-      final user = _client.auth.currentUser;
-
-      if (user == null) {
-        return defaultMiningRate;
-      }
-
-      final response = await _client.rpc(
-        'get_user_mining_rate',
-        params: {
-          'p_user_id': user.id,
-        },
-      );
-
-      return _toDouble(
-        response,
-        defaultMiningRate,
-      );
-    } catch (_) {
-      return defaultMiningRate;
-    }
-  }
-
-  // ------------------------------------------------------------
   // REQUEST CLAIM AD
   // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> requestClaimAd() async {
     try {
+      final user = _client.auth.currentUser;
+
+      if (user == null) {
+        return {
+          'success': false,
+          'error': 'You must be signed in.',
+        };
+      }
+
       final response = await _client.rpc(
         'request_claim_ad',
       );
@@ -389,6 +513,15 @@ class MiningService {
 
   Future<Map<String, dynamic>> getClaimAdStatus() async {
     try {
+      final user = _client.auth.currentUser;
+
+      if (user == null) {
+        return {
+          'success': false,
+          'error': 'You must be signed in.',
+        };
+      }
+
       final response = await _client.rpc(
         'get_claim_ad_status',
       );
