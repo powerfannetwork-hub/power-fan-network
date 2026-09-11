@@ -28,8 +28,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color successGreen = Color(0xFF238B57);
   static const Color successLight = Color(0xFFEAF8F0);
 
-  static const Color orange = Color(0xFFFF9800);
-
   // ============================================================
   // MINING RULES
   // ============================================================
@@ -173,7 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
 
-    // Secondary data must not delay the mining interface.
     unawaited(_loadTasks());
 
     unawaited(_loadKyc());
@@ -206,16 +203,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // LOCAL CLAIM STATE
-  //
-  // This is only for the UI:
-  //
-  // Successful claim today:
-  //     ALREADY CLAIMED
-  //     COME TOMORROW
-  //
-  // At the next local calendar day it automatically clears.
-  //
-  // Supabase remains the authority for the actual FAN claim.
   // ============================================================
 
   Future<void> _loadClaimedToday() async {
@@ -302,36 +289,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final data =
         await _mining.getActiveMining();
 
-    // ----------------------------------------------------------
-    // NO ACTIVE / RETURNED SESSION
-    // ----------------------------------------------------------
-
     if (data.isEmpty) {
       if (!mounted) return;
 
       _timer?.cancel();
 
-      /*
-       * If the user has already successfully claimed today,
-       * show the correct "ALREADY CLAIMED / COME TOMORROW"
-       * state instead of showing START MINING immediately.
-       */
       if (_alreadyClaimedToday) {
         setState(() {
           _isMining = false;
-
           _canClaim = false;
-
           _sessionReward = 0.0;
-
           _remaining = Duration.zero;
-
           _startedAt = null;
-
           _endsAt = null;
-
           _adsWatched = 0;
-
           _rate =
               MiningService.defaultMiningRate;
         });
@@ -341,29 +312,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _isMining = false;
-
         _canClaim = false;
-
         _sessionReward = 0.0;
-
         _remaining = Duration.zero;
-
         _startedAt = null;
-
         _endsAt = null;
-
         _adsWatched = 0;
-
         _rate =
             MiningService.defaultMiningRate;
       });
 
       return;
     }
-
-    // ==========================================================
-    // DATES
-    // ==========================================================
 
     final started =
         _parseDate(
@@ -382,19 +342,11 @@ class _HomeScreenState extends State<HomeScreen> {
           data['mining_ends_at'],
     );
 
-    // ==========================================================
-    // STATUS
-    // ==========================================================
-
     final status =
         data['status']
             ?.toString()
             .trim()
             .toLowerCase();
-
-    // ==========================================================
-    // CLAIM FLAGS
-    // ==========================================================
 
     final claimable =
         _toBool(data['claimable']) ||
@@ -412,10 +364,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['claimed']) ||
         _toBool(data['is_claimed']) ||
         status == 'claimed';
-
-    // ==========================================================
-    // RATE
-    // ==========================================================
 
     var rate =
         _toDouble(
@@ -440,10 +388,6 @@ class _HomeScreenState extends State<HomeScreen> {
           MiningService.defaultMiningRate;
     }
 
-    // ==========================================================
-    // ADS
-    // ==========================================================
-
     final ads =
         _toInt(
       data['ads_watched'] ??
@@ -452,19 +396,11 @@ class _HomeScreenState extends State<HomeScreen> {
           data['daily_ads_watched'],
     );
 
-    // ==========================================================
-    // SERVER REMAINING
-    // ==========================================================
-
     final serverRemaining =
         _toInt(
       data['remaining_seconds'] ??
           data['seconds_remaining'],
     );
-
-    // ==========================================================
-    // SERVER REWARD
-    // ==========================================================
 
     final serverReward =
         _toDouble(
@@ -472,10 +408,6 @@ class _HomeScreenState extends State<HomeScreen> {
           data['session_reward'] ??
           data['earned_reward'],
     );
-
-    // ==========================================================
-    // NORMALIZE DATES
-    // ==========================================================
 
     DateTime? finalStarted =
         started;
@@ -498,10 +430,6 @@ class _HomeScreenState extends State<HomeScreen> {
         miningDuration,
       );
     }
-
-    // ==========================================================
-    // TIME
-    // ==========================================================
 
     final now =
         DateTime.now();
@@ -529,10 +457,6 @@ class _HomeScreenState extends State<HomeScreen> {
       remaining =
           miningDuration;
     }
-
-    // ==========================================================
-    // ACTIVE
-    // ==========================================================
 
     final activeByTime =
         finalStarted != null &&
@@ -565,10 +489,6 @@ class _HomeScreenState extends State<HomeScreen> {
           activeFlag == true
         );
 
-    // ==========================================================
-    // FINAL CLAIM STATE
-    // ==========================================================
-
     final finalCanClaim =
         !alreadyClaimed &&
         !active &&
@@ -577,10 +497,6 @@ class _HomeScreenState extends State<HomeScreen> {
           statusIsClaimable ||
           sessionFinished
         );
-
-    // ==========================================================
-    // DISPLAY REWARD
-    // ==========================================================
 
     double liveReward =
         serverReward;
@@ -609,10 +525,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   3600.0) *
               rate;
     }
-
-    // ==========================================================
-    // FORCE CLAIM REQUIRED
-    // ==========================================================
 
     final explicitClaimRequired =
         _toBool(
@@ -678,10 +590,6 @@ class _HomeScreenState extends State<HomeScreen> {
             false;
       }
     });
-
-    // ==========================================================
-    // START LIVE COUNTDOWN
-    // ==========================================================
 
     if (_isMining) {
       _startTimer();
@@ -928,7 +836,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     24.0);
           });
 
-          // Ask server for the authoritative completed state.
           unawaited(
             _loadMining(),
           );
@@ -1109,10 +1016,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // ----------------------------------------------------------
-    // MAKE SURE 24 HOURS HAVE REALLY FINISHED
-    // ----------------------------------------------------------
-
     final ends =
         _endsAt;
 
@@ -1142,20 +1045,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // --------------------------------------------------------
-      // INITIALIZE LEVELPLAY AGAIN
-      //
-      // This gives the ad service another chance to prepare
-      // the rewarded ad before the user tries to claim.
-      // --------------------------------------------------------
-
       try {
         await _ads.initialize();
       } catch (_) {}
-
-      // --------------------------------------------------------
-      // CLAIM REWARDED AD
-      // --------------------------------------------------------
 
       final adCompleted =
           Completer<bool>();
@@ -1189,10 +1081,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      // --------------------------------------------------------
-      // WAIT FOR SERVER VERIFICATION
-      // --------------------------------------------------------
-
       final adVerified =
           await adCompleted.future
               .timeout(
@@ -1210,10 +1098,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // --------------------------------------------------------
-      // REFRESH SESSION
-      // --------------------------------------------------------
-
       await _loadMining();
 
       if (!mounted) return;
@@ -1224,10 +1108,6 @@ class _HomeScreenState extends State<HomeScreen> {
           'Mining session is not ready to claim.',
         );
       }
-
-      // --------------------------------------------------------
-      // ACTUAL SERVER CLAIM
-      // --------------------------------------------------------
 
       final result =
           await _mining.claimMining();
@@ -1243,10 +1123,6 @@ class _HomeScreenState extends State<HomeScreen> {
               'Unable to claim mining reward.',
         );
       }
-
-      // --------------------------------------------------------
-      // SUCCESS
-      // --------------------------------------------------------
 
       await _saveClaimedToday();
 
@@ -1271,22 +1147,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _adsWatched = 0;
       });
 
-      // --------------------------------------------------------
-      // AUTHORITATIVE BALANCE
-      // --------------------------------------------------------
-
       await _loadProfile();
 
       if (!mounted) return;
 
-      /*
-       * DO NOT immediately turn this into START MINING.
-       *
-       * We want:
-       *
-       * ALREADY CLAIMED
-       * COME TOMORROW
-       */
       setState(() {
         _alreadyClaimedToday =
             true;
@@ -1351,10 +1215,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () {
-          /*
-           * LevelPlayAdsService calls this only after the
-           * server-side reward has been verified.
-           */
           unawaited(
             _loadMining(),
           );
@@ -1773,10 +1633,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child:
           Stack(
         children: [
-          // ----------------------------------------------------
-          // BACKGROUND MINER ICON
-          // ----------------------------------------------------
-
           Positioned(
             right: -8,
             bottom: -16,
@@ -1795,10 +1651,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // ----------------------------------------------------
-          // CONTENT
-          // ----------------------------------------------------
 
           Padding(
             padding:
@@ -1832,10 +1684,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 Row(
                   children: [
-                    // ------------------------------------------
-                    // MODERN FAN COIN
-                    // ------------------------------------------
-
                     Container(
                       width: 58,
                       height: 58,
@@ -1970,10 +1818,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildMiningCard() {
-    // ----------------------------------------------------------
-    // STATE
-    // ----------------------------------------------------------
-
     final isAlreadyClaimed =
         _alreadyClaimedToday &&
         !_isMining &&
@@ -1983,15 +1827,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _canClaim &&
         !_isMining &&
         !isAlreadyClaimed;
-
-    final isReady =
-        !_isMining &&
-        !_canClaim &&
-        !isAlreadyClaimed;
-
-    // ----------------------------------------------------------
-    // STATUS TEXT
-    // ----------------------------------------------------------
 
     String statusText;
 
@@ -2009,10 +1844,6 @@ class _HomeScreenState extends State<HomeScreen> {
           'READY';
     }
 
-    // ----------------------------------------------------------
-    // STATUS DESCRIPTION
-    // ----------------------------------------------------------
-
     String description;
 
     if (isAlreadyClaimed) {
@@ -2029,10 +1860,6 @@ class _HomeScreenState extends State<HomeScreen> {
           'Start mining to earn FAN';
     }
 
-    // ----------------------------------------------------------
-    // STATUS COLOR
-    // ----------------------------------------------------------
-
     Color statusColor;
 
     if (isAlreadyClaimed) {
@@ -2048,10 +1875,6 @@ class _HomeScreenState extends State<HomeScreen> {
       statusColor =
           successGreen;
     }
-
-    // ----------------------------------------------------------
-    // BUTTON
-    // ----------------------------------------------------------
 
     String buttonText;
 
@@ -2102,10 +1925,6 @@ class _HomeScreenState extends State<HomeScreen> {
               .construction_rounded;
     }
 
-    // ----------------------------------------------------------
-    // COUNTDOWN
-    // ----------------------------------------------------------
-
     String countdownText;
 
     if (isAlreadyClaimed) {
@@ -2118,24 +1937,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // ----------------------------------------------------------
-    // CARD
-    // ----------------------------------------------------------
-
     return _card(
       child:
           Column(
         children: [
-          // ====================================================
-          // STATUS ROW
-          // ====================================================
-
           Row(
             children: [
-              // ------------------------------------------------
-              // STATUS CIRCLE
-              // ------------------------------------------------
-
               _circleIcon(
                 isAlreadyClaimed
                     ? Icons
@@ -2164,10 +1971,6 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(
                 width: 13,
               ),
-
-              // ------------------------------------------------
-              // STATUS TEXT
-              // ------------------------------------------------
 
               Expanded(
                 child:
@@ -2245,10 +2048,6 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 12,
           ),
 
-          // ====================================================
-          // RATE + COUNTDOWN
-          // ====================================================
-
           Row(
             children: [
               Expanded(
@@ -2284,10 +2083,6 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 7,
           ),
 
-          // ====================================================
-          // PER SECOND
-          // ====================================================
-
           Text(
             'Per second: ${(_rate / 3600.0).toStringAsFixed(8)} FAN',
             textAlign:
@@ -2306,10 +2101,6 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(
             height: 13,
           ),
-
-          // ====================================================
-          // MAIN BUTTON
-          // ====================================================
 
           SizedBox(
             width:
@@ -2374,10 +2165,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // ====================================================
-          // CLAIM AD MESSAGE
-          // ====================================================
 
           if (_claimAdWaiting) ...[
             const SizedBox(
@@ -2662,7 +2449,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ? _tasks.first
             : null;
 
-    // Official rule = 10 FAN.
     final reward =
         task?.rewardFan ??
             10.0;
