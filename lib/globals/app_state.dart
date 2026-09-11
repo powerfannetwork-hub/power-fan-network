@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../services/mining_service.dart';
 import '../services/supabase_service.dart';
 
@@ -17,6 +18,7 @@ class AppState extends ChangeNotifier {
 
   bool get loading => _loading;
   bool get actionLoading => _actionLoading;
+
   double get fanBalance => _fanBalance;
   double get afamBalance => _afamBalance;
   double get miningRate => _miningRate;
@@ -25,6 +27,10 @@ class AppState extends ChangeNotifier {
   DateTime? get miningEndsAt => _miningEndsAt;
 
   Map<String, dynamic>? get user => _user;
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
 
   Future<void> refresh() async {
     final currentUser =
@@ -37,60 +43,82 @@ class AppState extends ChangeNotifier {
 
     _loading = true;
     notifyListeners();
+
     try {
       final profile =
           await MiningService.instance.getProfile();
 
-      if (profile == null) {
-        return;
+      if (profile != null) {
+        _user = profile;
+
+        _fanBalance = _toDouble(
+          profile['fan_balance'],
+        );
+
+        _afamBalance = _toDouble(
+          profile['afam_balance'],
+        );
       }
-
-      _user = profile;
-
-      _fanBalance = _toDouble(
-        profile['fan_balance'],
-      );
-
-      _afamBalance = _toDouble(
-        profile['afam_balance'],
-      );
 
       final mining =
           await MiningService.instance.getActiveMining();
 
+      /*
+       * IMPORTANT:
+       *
+       * Supabase is authoritative.
+       *
+       * We do NOT compare miningEndsAt with
+       * DateTime.now() here.
+       *
+       * This prevents an incorrect phone date/time
+       * from changing the mining state.
+       */
       _miningActive =
           mining['mining_active'] == true ||
           mining['active'] == true;
+
       _miningEndsAt = _parseDateTime(
         mining['ends_at'] ??
             mining['end_time'] ??
             mining['expires_at'],
       );
 
-      if (_miningActive &&
-          _miningEndsAt != null &&
-          DateTime.now().isAfter(_miningEndsAt!)) {
-        _miningActive = false;
-      }
-      _miningRate =
-          await MiningService.instance.getUserMiningRate();
+      try {
+        final rate =
+            await MiningService.instance
+                .getUserMiningRate();
+
+        if (rate > 0) {
+          _miningRate = rate;
+        }
+      } catch (_) {}
     } catch (_) {
-      // Kada connection ya samu matsala,
-      // a bar state na baya ba tare da crash ba.
+      /*
+       * Kada connection ya samu matsala,
+       * a bar state na baya ba tare da crash ba.
+       */
     } finally {
       _loading = false;
       notifyListeners();
     }
   }
 
+  // ============================================================
+  // START MINING
+  // ============================================================
+
   Future<void> startMining() async {
-    if (_actionLoading) return;
+    if (_actionLoading) {
+      return;
+    }
 
     _actionLoading = true;
     notifyListeners();
 
     try {
       await MiningService.instance.startMining();
+
       await refresh();
     } finally {
       _actionLoading = false;
@@ -98,8 +126,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ============================================================
+  // CLAIM MINING
+  // ============================================================
+
   Future<void> claimMining() async {
-    if (_actionLoading) return;
+    if (_actionLoading) {
+      return;
+    }
 
     _actionLoading = true;
     notifyListeners();
@@ -108,7 +142,8 @@ class AppState extends ChangeNotifier {
       final result =
           await MiningService.instance.claimMining();
 
-      final earned = _extractEarned(result);
+      final earned =
+          _extractEarned(result);
 
       if (earned > 0) {
         _fanBalance += earned;
@@ -116,6 +151,7 @@ class AppState extends ChangeNotifier {
 
       _miningActive = false;
       _miningEndsAt = null;
+
       await refresh();
     } finally {
       _actionLoading = false;
@@ -123,11 +159,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ============================================================
+  // REFRESH MINING
+  // ============================================================
+
   Future<void> refreshMining() async {
     try {
       final mining =
           await MiningService.instance.getActiveMining();
 
+      /*
+       * Server state only.
+       *
+       * No DateTime.now() comparison here.
+       */
       _miningActive =
           mining['mining_active'] == true ||
           mining['active'] == true;
@@ -137,12 +182,22 @@ class AppState extends ChangeNotifier {
             mining['end_time'] ??
             mining['expires_at'],
       );
-      _miningRate =
-          await MiningService.instance.getUserMiningRate();
+
+      final rate =
+          await MiningService.instance
+              .getUserMiningRate();
+
+      if (rate > 0) {
+        _miningRate = rate;
+      }
 
       notifyListeners();
     } catch (_) {}
   }
+
+  // ============================================================
+  // REFRESH BALANCE
+  // ============================================================
 
   Future<void> refreshBalance() async {
     try {
@@ -162,9 +217,14 @@ class AppState extends ChangeNotifier {
       _afamBalance = _toDouble(
         profile['afam_balance'],
       );
+
       notifyListeners();
     } catch (_) {}
   }
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
 
   Future<void> logout() async {
     try {
@@ -174,19 +234,33 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // ============================================================
+  // CLEAR
+  // ============================================================
+
   void _clearState() {
     _loading = false;
     _actionLoading = false;
+
     _fanBalance = 0.0;
     _afamBalance = 0.0;
     _miningRate = 0.20;
+
     _miningActive = false;
     _miningEndsAt = null;
+
     _user = null;
+
     notifyListeners();
   }
 
-  double _extractEarned(Map<String, dynamic> result) {
+  // ============================================================
+  // EXTRACT EARNED
+  // ============================================================
+
+  double _extractEarned(
+    Map<String, dynamic> result,
+  ) {
     final value =
         result['earned'] ??
         result['reward'] ??
@@ -198,22 +272,37 @@ class AppState extends ChangeNotifier {
     return _toDouble(value);
   }
 
-  double _toDouble(dynamic value) {
-    if (value == null) return 0.0;
+  // ============================================================
+  // DOUBLE
+  // ============================================================
 
-    if (value is double) return value;
+  double _toDouble(dynamic value) {
+    if (value == null) {
+      return 0.0;
+    }
+
+    if (value is double) {
+      return value;
+    }
 
     if (value is num) {
       return value.toDouble();
     }
+
     return double.tryParse(
           value.toString(),
         ) ??
         0.0;
   }
 
+  // ============================================================
+  // DATE
+  // ============================================================
+
   DateTime? _parseDateTime(dynamic value) {
-    if (value == null) return null;
+    if (value == null) {
+      return null;
+    }
 
     if (value is DateTime) {
       return value.toLocal();
