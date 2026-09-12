@@ -1,11 +1,11 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
 }
-
-import java.util.Properties
-import java.io.FileInputStream
 
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
@@ -20,10 +20,13 @@ android {
 
     defaultConfig {
         applicationId = "com.fanmining.app"
+
         minSdk = 24
         targetSdk = 36
+
         versionCode = 1
         versionName = "1.0.0"
+
         multiDexEnabled = true
     }
 
@@ -32,7 +35,9 @@ android {
             if (keystorePropertiesFile.exists()) {
                 keyAlias = keystoreProperties["keyAlias"] as String
                 keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
+                storeFile = file(
+                    keystoreProperties["storeFile"] as String
+                )
                 storePassword = keystoreProperties["storePassword"] as String
             }
         }
@@ -72,9 +77,37 @@ flutter {
 }
 
 dependencies {
-    implementation("androidx.multidex:multidex:2.0.1")
 
-    // Required for core library desugaring
+    // ============================================================
+    // MULTIDEX
+    // ============================================================
+
+    implementation(
+        "androidx.multidex:multidex:2.0.1"
+    )
+
+    // ============================================================
+    // LEVELPLAY / GOOGLE PLAY SERVICES
+    // Required by Unity LevelPlay mediation
+    // ============================================================
+
+    implementation(
+        "com.google.android.gms:play-services-appset:16.0.2"
+    )
+
+    implementation(
+        "com.google.android.gms:play-services-ads-identifier:18.0.1"
+    )
+
+    implementation(
+        "com.google.android.gms:play-services-basement:18.3.0"
+    )
+
+    // ============================================================
+    // CORE LIBRARY DESUGARING
+    // Required by flutter_local_notifications
+    // ============================================================
+
     coreLibraryDesugaring(
         "com.android.tools:desugar_jdk_libs:2.1.5"
     )
