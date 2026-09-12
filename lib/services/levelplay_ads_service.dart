@@ -9,26 +9,29 @@ import 'supabase_service.dart';
 
 class LevelPlayAdsService
     implements LevelPlayInitListener, LevelPlayRewardedAdListener {
-  static final LevelPlayAdsService instance = LevelPlayAdsService._internal();
+  static final LevelPlayAdsService instance =
+      LevelPlayAdsService._internal();
 
   LevelPlayAdsService._internal();
 
   factory LevelPlayAdsService() => instance;
 
   // ============================================================
-  // LEVELPLAY CONFIG
+  // CONFIG
   // ============================================================
 
   static const String appKeyAndroid = '27f58cf85';
-  static const String rewardedAdUnitId = 'z69e4f6g6emi98mbu';
+
+  static const String rewardedAdUnitId =
+      'z69e4f6g6emi98mbu';
 
   static const int maxAdsPerSession = 7;
 
-  // How long we wait for LevelPlay initialization.
-  static const Duration initTimeout = Duration(seconds: 15);
+  static const Duration initTimeout =
+      Duration(seconds: 15);
 
-  // How long we wait for a rewarded ad to become ready.
-  static const Duration adReadyTimeout = Duration(seconds: 15);
+  static const Duration adReadyTimeout =
+      Duration(seconds: 15);
 
   static const Duration adReadyPollInterval =
       Duration(milliseconds: 500);
@@ -43,7 +46,6 @@ class LevelPlayAdsService
   bool _loading = false;
   bool _showing = false;
   bool _rewardProcessing = false;
-
   bool _rewardGrantedForCurrentAd = false;
 
   int? _adsWatchedBeforeCurrentAd;
@@ -58,7 +60,7 @@ class LevelPlayAdsService
   Completer<void>? _initCompleter;
 
   // ============================================================
-  // INITIALIZATION
+  // INITIALIZE
   // ============================================================
 
   Future<void> initialize() async {
@@ -66,33 +68,39 @@ class LevelPlayAdsService
       return;
     }
 
-    final existingCompleter = _initCompleter;
+    final existing = _initCompleter;
 
-    if (existingCompleter != null) {
-      await existingCompleter.future;
+    if (existing != null) {
+      await existing.future;
       return;
     }
 
-    final user = SupabaseService.client.auth.currentUser;
+    final user =
+        SupabaseService.client.auth.currentUser;
+
     final userId = user?.id;
 
     if (userId == null || userId.isEmpty) {
       debugPrint(
-        'LevelPlay: cannot initialize because user is not authenticated.',
+        'LevelPlay: user is not authenticated.',
       );
       return;
     }
 
     final completer = Completer<void>();
+
     _initCompleter = completer;
 
     try {
-      final initRequest = LevelPlayInitRequest
-          .builder(appKeyAndroid)
-          .withUserId(userId)
-          .build();
+      final initRequest =
+          LevelPlayInitRequest
+              .builder(appKeyAndroid)
+              .withUserId(userId)
+              .build();
 
-      debugPrint('LevelPlay: initializing...');
+      debugPrint(
+        'LevelPlay: initializing...',
+      );
 
       await LevelPlay.init(
         initRequest: initRequest,
@@ -104,7 +112,7 @@ class LevelPlayAdsService
           initTimeout,
           onTimeout: () {
             debugPrint(
-              'LevelPlay: initialization timed out.',
+              'LevelPlay: initialization timeout.',
             );
           },
         );
@@ -117,15 +125,60 @@ class LevelPlayAdsService
       debugPrint(
         'LevelPlay: initialization error: $e',
       );
-      debugPrintStack(stackTrace: stackTrace);
+
+      debugPrintStack(
+        stackTrace: stackTrace,
+      );
 
       if (!completer.isCompleted) {
         completer.complete();
       }
     } finally {
-      if (identical(_initCompleter, completer)) {
+      if (identical(
+        _initCompleter,
+        completer,
+      )) {
         _initCompleter = null;
       }
+    }
+  }
+
+  // ============================================================
+  // PUBLIC: CHECK IF REWARDED AD IS READY
+  // ============================================================
+
+  Future<bool> isRewardedAdReady() async {
+    try {
+      if (!_initialized) {
+        await initialize();
+      }
+
+      if (!_initialized) {
+        return false;
+      }
+
+      if (_rewardedAd == null) {
+        _createRewardedAd();
+      }
+
+      if (_rewardedAd == null) {
+        return false;
+      }
+
+      final ready =
+          await _rewardedAd!.isAdReady();
+
+      debugPrint(
+        'LevelPlay: isRewardedAdReady = $ready',
+      );
+
+      return ready;
+    } catch (e) {
+      debugPrint(
+        'LevelPlay: isRewardedAdReady error: $e',
+      );
+
+      return false;
     }
   }
 
@@ -139,9 +192,6 @@ class LevelPlayAdsService
     }
 
     if (!_initialized) {
-      debugPrint(
-        'LevelPlay: cannot load rewarded ad because SDK is not initialized.',
-      );
       return;
     }
 
@@ -158,17 +208,18 @@ class LevelPlayAdsService
     }
 
     try {
-      final ready = await _rewardedAd!.isAdReady();
+      final ready =
+          await _rewardedAd!.isAdReady();
 
       if (ready) {
         debugPrint(
-          'LevelPlay: rewarded ad is already ready.',
+          'LevelPlay: rewarded ad already ready.',
         );
         return;
       }
     } catch (e) {
       debugPrint(
-        'LevelPlay: isAdReady check failed: $e',
+        'LevelPlay: initial ready check failed: $e',
       );
     }
 
@@ -182,7 +233,7 @@ class LevelPlayAdsService
       await _rewardedAd!.loadAd();
 
       debugPrint(
-        'LevelPlay: rewarded ad load request sent.',
+        'LevelPlay: loadAd request sent.',
       );
     } catch (e, stackTrace) {
       _loading = false;
@@ -198,7 +249,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // ENSURE AD IS READY
+  // WAIT UNTIL AD IS READY
   // ============================================================
 
   Future<bool> _ensureRewardedAdReady() async {
@@ -220,29 +271,26 @@ class LevelPlayAdsService
 
     try {
       if (await _rewardedAd!.isAdReady()) {
-        debugPrint(
-          'LevelPlay: rewarded ad is ready.',
-        );
         return true;
       }
     } catch (e) {
       debugPrint(
-        'LevelPlay: initial readiness check failed: $e',
+        'LevelPlay: ready check failed: $e',
       );
     }
 
-    // Start loading if it is not already loading.
     await loadRewardedAd();
 
     final stopwatch = Stopwatch()..start();
 
-    while (stopwatch.elapsed < adReadyTimeout) {
+    while (stopwatch.elapsed <
+        adReadyTimeout) {
       try {
         if (await _rewardedAd!.isAdReady()) {
           _loading = false;
 
           debugPrint(
-            'LevelPlay: rewarded ad became ready.',
+            'LevelPlay: rewarded ad became READY.',
           );
 
           return true;
@@ -259,8 +307,7 @@ class LevelPlayAdsService
     }
 
     debugPrint(
-      'LevelPlay: rewarded ad did not become ready within '
-      '${adReadyTimeout.inSeconds} seconds.',
+      'LevelPlay: rewarded ad still not ready.',
     );
 
     return false;
@@ -276,8 +323,9 @@ class LevelPlayAdsService
   }) async {
     if (_showing) {
       debugPrint(
-        'LevelPlay: an ad is already showing.',
+        'LevelPlay: ad already showing.',
       );
+
       return false;
     }
 
@@ -287,62 +335,70 @@ class LevelPlayAdsService
       }
 
       if (!_initialized) {
-        debugPrint(
-          'LevelPlay: SDK is not initialized.',
-        );
         return false;
       }
 
-      final user = SupabaseService.client.auth.currentUser;
+      final user =
+          SupabaseService.client.auth.currentUser;
+
       final userId = user?.id;
 
       if (userId == null || userId.isEmpty) {
         debugPrint(
-          'LevelPlay: user is not authenticated.',
+          'LevelPlay: user not authenticated.',
         );
+
         return false;
       }
 
       // ========================================================
-      // GET CURRENT MINING STATE
+      // GET MINING
       // ========================================================
 
       final mining =
-          await MiningService.instance.getActiveMining();
+          await MiningService.instance
+              .getActiveMining();
 
       if (mining.isEmpty) {
         debugPrint(
-          'LevelPlay: no mining session found.',
+          'LevelPlay: no mining session.',
         );
+
         return false;
       }
 
-      final claimable = _isMiningClaimable(mining);
-      final active = _isMiningActive(mining);
+      final active =
+          _isMiningActive(mining);
 
-      if (!claimable && !active) {
+      final claimable =
+          _isMiningClaimable(mining);
+
+      if (!active && !claimable) {
         debugPrint(
-          'LevelPlay: mining session is neither active nor claimable.',
+          'LevelPlay: mining is not active or claimable.',
         );
+
         return false;
       }
 
-      final currentAds =
+      final adsWatched =
           _extractAdsWatched(mining);
 
       // ========================================================
       // MAX 7 ADS
       // ========================================================
 
-      if (active && currentAds >= maxAdsPerSession) {
+      if (active &&
+          adsWatched >= maxAdsPerSession) {
         debugPrint(
-          'LevelPlay: maximum of $maxAdsPerSession ads reached.',
+          'LevelPlay: maximum ads reached.',
         );
+
         return false;
       }
 
       // ========================================================
-      // PREPARE CLAIM REQUEST IF SESSION IS COMPLETE
+      // CLAIM AD
       // ========================================================
 
       String? claimRequestId;
@@ -354,25 +410,27 @@ class LevelPlayAdsService
         if (claimRequestId == null ||
             claimRequestId.isEmpty) {
           debugPrint(
-            'LevelPlay: failed to create claim ad request.',
+            'LevelPlay: failed to create claim request.',
           );
+
           return false;
         }
 
         debugPrint(
-          'LevelPlay: claim ad request created: $claimRequestId',
+          'LevelPlay: claim request created.',
         );
       } else {
-        _adsWatchedBeforeCurrentAd = currentAds;
+        _adsWatchedBeforeCurrentAd =
+            adsWatched;
 
         debugPrint(
-          'LevelPlay: ads before current ad: '
+          'LevelPlay: previous ads = '
           '$_adsWatchedBeforeCurrentAd',
         );
       }
 
       // ========================================================
-      // WAIT FOR ACTUAL AD READINESS
+      // WAIT FOR AD
       // ========================================================
 
       final ready =
@@ -380,17 +438,21 @@ class LevelPlayAdsService
 
       if (!ready) {
         debugPrint(
-          'LevelPlay: rewarded ad is not ready after waiting.',
+          'LevelPlay: rewarded ad is not ready.',
         );
+
         return false;
       }
 
       // ========================================================
-      // SET CURRENT AD STATE
+      // SAVE STATE
       // ========================================================
 
-      _claimRequestId = claimRequestId;
-      _currentAdIsClaimAd = claimable;
+      _claimRequestId =
+          claimRequestId;
+
+      _currentAdIsClaimAd =
+          claimable;
 
       _rewardProcessing = false;
       _rewardGrantedForCurrentAd = false;
@@ -399,7 +461,7 @@ class LevelPlayAdsService
       _onAdClosed = onAdClosed;
 
       // ========================================================
-      // SET DYNAMIC USER ID
+      // DYNAMIC USER ID
       // ========================================================
 
       try {
@@ -413,7 +475,7 @@ class LevelPlayAdsService
       }
 
       // ========================================================
-      // FINAL READINESS CHECK
+      // FINAL CHECK
       // ========================================================
 
       if (_rewardedAd == null) {
@@ -426,13 +488,14 @@ class LevelPlayAdsService
 
       if (!finalReady) {
         debugPrint(
-          'LevelPlay: ad became unavailable before show.',
+          'LevelPlay: ad became unavailable.',
         );
 
         _clearCurrentAdState();
 
-        // Try to preload another one.
-        unawaited(loadRewardedAd());
+        unawaited(
+          loadRewardedAd(),
+        );
 
         return false;
       }
@@ -444,7 +507,7 @@ class LevelPlayAdsService
       _showing = true;
 
       debugPrint(
-        'LevelPlay: showing rewarded ad.',
+        'LevelPlay: SHOWING REWARDED AD.',
       );
 
       await _rewardedAd!.showAd();
@@ -464,14 +527,16 @@ class LevelPlayAdsService
 
       _clearCurrentAdState();
 
-      unawaited(loadRewardedAd());
+      unawaited(
+        loadRewardedAd(),
+      );
 
       return false;
     }
   }
 
   // ============================================================
-  // CLAIM AD REQUEST
+  // CLAIM REQUEST
   // ============================================================
 
   Future<String?> _createClaimAdRequest() async {
@@ -482,7 +547,7 @@ class LevelPlayAdsService
       );
 
       debugPrint(
-        'LevelPlay: request_claim_ad response: $response',
+        'LevelPlay: request_claim_ad = $response',
       );
 
       return _extractRequestId(response);
@@ -500,7 +565,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // CREATE REWARDED AD OBJECT
+  // CREATE AD OBJECT
   // ============================================================
 
   void _createRewardedAd() {
@@ -533,7 +598,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // LEVELPLAY INIT CALLBACKS
+  // INIT SUCCESS
   // ============================================================
 
   @override
@@ -541,38 +606,43 @@ class LevelPlayAdsService
     LevelPlayConfiguration configuration,
   ) {
     debugPrint(
-      'LevelPlay: initialization SUCCESS.',
+      'LevelPlay: INIT SUCCESS.',
     );
 
     _initialized = true;
 
     _createRewardedAd();
 
-    final completer = _initCompleter;
+    final completer =
+        _initCompleter;
 
     if (completer != null &&
         !completer.isCompleted) {
       completer.complete();
     }
 
-    // Preload immediately.
     unawaited(
       loadRewardedAd(),
     );
   }
+
+  // ============================================================
+  // INIT FAILED
+  // ============================================================
 
   @override
   void onInitFailed(
     LevelPlayInitError error,
   ) {
     debugPrint(
-      'LevelPlay: initialization FAILED: $error',
+      'LevelPlay: INIT FAILED: $error',
     );
 
     _initialized = false;
     _loading = false;
 
-    final completer = _initCompleter;
+    final completer =
+        _initCompleter;
 
     if (completer != null &&
         !completer.isCompleted) {
@@ -581,7 +651,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // REWARDED AD CALLBACKS
+  // AD LOADED
   // ============================================================
 
   @override
@@ -591,9 +661,13 @@ class LevelPlayAdsService
     _loading = false;
 
     debugPrint(
-      'LevelPlay: rewarded ad LOADED.',
+      'LevelPlay: AD LOADED.',
     );
   }
+
+  // ============================================================
+  // AD LOAD FAILED
+  // ============================================================
 
   @override
   void onAdLoadFailed(
@@ -602,18 +676,26 @@ class LevelPlayAdsService
     _loading = false;
 
     debugPrint(
-      'LevelPlay: rewarded ad LOAD FAILED: $error',
+      'LevelPlay: AD LOAD FAILED: $error',
     );
   }
+
+  // ============================================================
+  // AD DISPLAYED
+  // ============================================================
 
   @override
   void onAdDisplayed(
     LevelPlayAdInfo adInfo,
   ) {
     debugPrint(
-      'LevelPlay: rewarded ad DISPLAYED.',
+      'LevelPlay: AD DISPLAYED.',
     );
   }
+
+  // ============================================================
+  // AD DISPLAY FAILED
+  // ============================================================
 
   @override
   void onAdDisplayFailed(
@@ -621,56 +703,71 @@ class LevelPlayAdsService
     LevelPlayAdInfo adInfo,
   ) {
     debugPrint(
-      'LevelPlay: rewarded ad DISPLAY FAILED: $error',
+      'LevelPlay: AD DISPLAY FAILED: $error',
     );
 
     _showing = false;
     _rewardProcessing = false;
 
-    final closeCallback = _onAdClosed;
+    final callback =
+        _onAdClosed;
 
     _clearCurrentAdState();
 
-    // Notify only once.
-    closeCallback?.call();
+    callback?.call();
 
-    // Preload next ad.
     unawaited(
       loadRewardedAd(),
     );
   }
 
+  // ============================================================
+  // AD REWARDED
+  // IMPORTANT:
+  // unity_levelplay_mediation 9.2.0 requires:
+  // LevelPlayReward + LevelPlayAdInfo
+  // ============================================================
+
   @override
   void onAdRewarded(
+    LevelPlayReward reward,
     LevelPlayAdInfo adInfo,
   ) {
     if (_rewardProcessing) {
       debugPrint(
-        'LevelPlay: duplicate reward callback ignored.',
+        'LevelPlay: duplicate reward ignored.',
       );
+
       return;
     }
 
     if (_rewardGrantedForCurrentAd) {
       debugPrint(
-        'LevelPlay: reward already granted for this ad.',
+        'LevelPlay: reward already granted.',
       );
+
       return;
     }
 
     _rewardProcessing = true;
 
     debugPrint(
-      'LevelPlay: REWARD CALLBACK received.',
+      'LevelPlay: REWARD CALLBACK.',
+    );
+
+    debugPrint(
+      'LevelPlay: reward name=${reward.name}, '
+      'amount=${reward.amount}',
     );
 
     if (_currentAdIsClaimAd) {
-      final requestId = _claimRequestId;
+      final requestId =
+          _claimRequestId;
 
       if (requestId == null ||
           requestId.isEmpty) {
         debugPrint(
-          'LevelPlay: missing claim request ID.',
+          'LevelPlay: claim request ID missing.',
         );
 
         _rewardProcessing = false;
@@ -694,49 +791,60 @@ class LevelPlayAdsService
     }
   }
 
+  // ============================================================
+  // AD CLICKED
+  // ============================================================
+
   @override
   void onAdClicked(
     LevelPlayAdInfo adInfo,
   ) {
     debugPrint(
-      'LevelPlay: rewarded ad CLICKED.',
+      'LevelPlay: AD CLICKED.',
     );
   }
+
+  // ============================================================
+  // AD CLOSED
+  // ============================================================
 
   @override
   void onAdClosed(
     LevelPlayAdInfo adInfo,
   ) {
     debugPrint(
-      'LevelPlay: rewarded ad CLOSED.',
+      'LevelPlay: AD CLOSED.',
     );
 
     _showing = false;
 
-    final closeCallback = _onAdClosed;
+    final callback =
+        _onAdClosed;
 
     _clearCurrentAdState();
 
-    // Notify only once.
-    closeCallback?.call();
+    callback?.call();
 
-    // Preload the next ad.
     unawaited(
       loadRewardedAd(),
     );
   }
+
+  // ============================================================
+  // AD INFO CHANGED
+  // ============================================================
 
   @override
   void onAdInfoChanged(
     LevelPlayAdInfo adInfo,
   ) {
     debugPrint(
-      'LevelPlay: rewarded ad info changed.',
+      'LevelPlay: AD INFO CHANGED.',
     );
   }
 
   // ============================================================
-  // PROCESS NORMAL MINING AD
+  // NORMAL MINING REWARD
   // ============================================================
 
   Future<void> _processMiningAdReward(
@@ -750,19 +858,21 @@ class LevelPlayAdsService
 
       if (!confirmed) {
         debugPrint(
-          'LevelPlay: S2S mining reward was NOT confirmed.',
+          'LevelPlay: S2S reward NOT confirmed.',
         );
 
         _rewardProcessing = false;
+
         return;
       }
 
       debugPrint(
-        'LevelPlay: S2S mining reward CONFIRMED.',
+        'LevelPlay: S2S reward CONFIRMED.',
       );
 
       try {
-        await KycService().recordDailyBoost();
+        await KycService()
+            .recordDailyBoost();
 
         debugPrint(
           'LevelPlay: daily boost recorded.',
@@ -775,12 +885,13 @@ class LevelPlayAdsService
 
       _rewardGrantedForCurrentAd = true;
 
-      final callback = _onRewarded;
+      final callback =
+          _onRewarded;
 
       callback?.call();
     } catch (e, stackTrace) {
       debugPrint(
-        'LevelPlay: mining reward processing error: $e',
+        'LevelPlay: mining reward error: $e',
       );
 
       debugPrintStack(
@@ -792,7 +903,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // PROCESS CLAIM AD
+  // CLAIM REWARD
   // ============================================================
 
   Future<void> _processClaimAdReward(
@@ -806,25 +917,27 @@ class LevelPlayAdsService
 
       if (!confirmed) {
         debugPrint(
-          'LevelPlay: claim ad verification FAILED.',
+          'LevelPlay: claim verification FAILED.',
         );
 
         _rewardProcessing = false;
+
         return;
       }
 
       debugPrint(
-        'LevelPlay: claim ad verification CONFIRMED.',
+        'LevelPlay: claim verification CONFIRMED.',
       );
 
       _rewardGrantedForCurrentAd = true;
 
-      final callback = _onRewarded;
+      final callback =
+          _onRewarded;
 
       callback?.call();
     } catch (e, stackTrace) {
       debugPrint(
-        'LevelPlay: claim reward processing error: $e',
+        'LevelPlay: claim reward error: $e',
       );
 
       debugPrintStack(
@@ -836,13 +949,13 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // WAIT FOR S2S MINING REWARD
+  // WAIT FOR S2S
   // ============================================================
 
   Future<bool> _waitForS2SRewardConfirmation(
     int previousAdsWatched,
   ) async {
-    const int maxAttempts = 50;
+    const maxAttempts = 50;
 
     for (int attempt = 0;
         attempt < maxAttempts;
@@ -857,11 +970,13 @@ class LevelPlayAdsService
 
         debugPrint(
           'LevelPlay: S2S check '
-          '${attempt + 1}/$maxAttempts - '
-          'ads=$currentAds previous=$previousAdsWatched',
+          '${attempt + 1}/$maxAttempts '
+          'current=$currentAds '
+          'previous=$previousAdsWatched',
         );
 
-        if (currentAds > previousAdsWatched) {
+        if (currentAds >
+            previousAdsWatched) {
           return true;
         }
       } catch (e) {
@@ -879,27 +994,30 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // WAIT FOR CLAIM AD VERIFICATION
+  // WAIT FOR CLAIM VERIFICATION
   // ============================================================
 
   Future<bool> _waitForClaimAdVerification(
     String requestId,
   ) async {
-    const int maxAttempts = 60;
+    const maxAttempts = 60;
 
     for (int attempt = 0;
         attempt < maxAttempts;
         attempt++) {
       try {
+        // IMPORTANT:
+        // getClaimAdStatus() in your MiningService
+        // takes NO positional argument.
         final response =
             await MiningService.instance
-                .getClaimAdStatus(
-          requestId,
-        );
+                .getClaimAdStatus();
 
         debugPrint(
           'LevelPlay: claim status '
-          '${attempt + 1}/$maxAttempts: $response',
+          '${attempt + 1}/$maxAttempts '
+          'request=$requestId '
+          'response=$response',
         );
 
         final verified =
@@ -948,7 +1066,7 @@ class LevelPlayAdsService
         }
       } catch (e) {
         debugPrint(
-          'LevelPlay: claim status polling error: $e',
+          'LevelPlay: claim status error: $e',
         );
       }
 
@@ -961,7 +1079,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // EXTRACT ADS WATCHED
+  // ADS WATCHED
   // ============================================================
 
   int _extractAdsWatched(
@@ -994,7 +1112,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // CHECK ACTIVE MINING
+  // MINING ACTIVE
   // ============================================================
 
   bool _isMiningActive(
@@ -1037,7 +1155,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // CHECK CLAIMABLE
+  // MINING CLAIMABLE
   // ============================================================
 
   bool _isMiningClaimable(
@@ -1081,7 +1199,9 @@ class LevelPlayAdsService
         'ended',
       };
 
-      if (claimStatuses.contains(normalized)) {
+      if (claimStatuses.contains(
+        normalized,
+      )) {
         return true;
       }
     }
@@ -1090,7 +1210,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // EXTRACT REQUEST ID
+  // REQUEST ID
   // ============================================================
 
   String? _extractRequestId(
@@ -1104,10 +1224,12 @@ class LevelPlayAdsService
       ];
 
       for (final key in keys) {
-        final value = response[key];
+        final value =
+            response[key];
 
         if (value != null) {
-          final text = value.toString().trim();
+          final text =
+              value.toString().trim();
 
           if (text.isNotEmpty) {
             return text;
@@ -1120,10 +1242,12 @@ class LevelPlayAdsService
 
       if (nested is Map) {
         for (final key in keys) {
-          final value = nested[key];
+          final value =
+              nested[key];
 
           if (value != null) {
-            final text = value.toString().trim();
+            final text =
+                value.toString().trim();
 
             if (text.isNotEmpty) {
               return text;
@@ -1141,7 +1265,8 @@ class LevelPlayAdsService
     }
 
     if (response is String) {
-      final text = response.trim();
+      final text =
+          response.trim();
 
       if (text.isNotEmpty) {
         return text;
@@ -1152,7 +1277,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // EXTRACT STRING
+  // STRING
   // ============================================================
 
   String? _extractString(
@@ -1166,7 +1291,8 @@ class LevelPlayAdsService
         continue;
       }
 
-      final text = value.toString().trim();
+      final text =
+          value.toString().trim();
 
       if (text.isNotEmpty) {
         return text;
@@ -1177,7 +1303,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // EXTRACT BOOL
+  // BOOL
   // ============================================================
 
   bool? _extractBool(
@@ -1220,17 +1346,21 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // CLEAR CURRENT AD STATE
+  // CLEAR STATE
   // ============================================================
 
   void _clearCurrentAdState() {
     _claimRequestId = null;
+
     _currentAdIsClaimAd = false;
 
-    _adsWatchedBeforeCurrentAd = null;
+    _adsWatchedBeforeCurrentAd =
+        null;
 
     _rewardProcessing = false;
-    _rewardGrantedForCurrentAd = false;
+
+    _rewardGrantedForCurrentAd =
+        false;
 
     _onRewarded = null;
     _onAdClosed = null;
@@ -1245,7 +1375,8 @@ class LevelPlayAdsService
     _loading = false;
     _rewardProcessing = false;
 
-    final completer = _initCompleter;
+    final completer =
+        _initCompleter;
 
     if (completer != null &&
         !completer.isCompleted) {
