@@ -61,8 +61,6 @@ class LevelPlayAdsService
 
   Completer<void>? _initCompleter;
 
-  Completer<bool>? _adReadyCompleter;
-
   // ============================================================
   // INITIALIZE
   // ============================================================
