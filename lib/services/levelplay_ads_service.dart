@@ -6,6 +6,11 @@ import 'package:unity_levelplay_mediation/unity_levelplay_mediation.dart';
 import 'mining_service.dart';
 import 'supabase_service.dart';
 
+enum _RewardedAdMode {
+  boost,
+  activation,
+}
+
 class LevelPlayAdsService
     implements LevelPlayInitListener, LevelPlayRewardedAdListener {
   static final LevelPlayAdsService instance =
@@ -27,11 +32,9 @@ class LevelPlayAdsService
 
   static const int maxAdsPerSession = 7;
 
-  static const Duration initTimeout =
-      Duration(seconds: 20);
+  static const Duration initTimeout = Duration(seconds: 20);
 
-  static const Duration adLoadTimeout =
-      Duration(seconds: 20);
+  static const Duration adLoadTimeout = Duration(seconds: 20);
 
   static const Duration adReadyPollInterval =
       Duration(milliseconds: 500);
@@ -50,6 +53,8 @@ class LevelPlayAdsService
   bool _rewardGrantedForCurrentAd = false;
 
   int _adsWatchedBeforeCurrentAd = 0;
+
+  _RewardedAdMode _currentMode = _RewardedAdMode.boost;
 
   VoidCallback? _onRewarded;
   VoidCallback? _onAdClosed;
@@ -106,10 +111,7 @@ class LevelPlayAdsService
 
   Future<void> initialize() async {
     if (_initialized) {
-      debugPrint(
-        'LevelPlay: already initialized.',
-      );
-
+      debugPrint('LevelPlay: already initialized.');
       return;
     }
 
@@ -122,9 +124,7 @@ class LevelPlayAdsService
 
       if (completer != null) {
         try {
-          await completer.future.timeout(
-            initTimeout,
-          );
+          await completer.future.timeout(initTimeout);
         } catch (_) {
           debugPrint(
             'LevelPlay: waiting for existing initialization timed out.',
@@ -140,8 +140,7 @@ class LevelPlayAdsService
     final userId = user?.id;
 
     if (userId == null || userId.isEmpty) {
-      _lastInitError =
-          'User is not authenticated.';
+      _lastInitError = 'User is not authenticated.';
 
       debugPrint(
         'LevelPlay: $_lastInitError',
@@ -164,37 +163,14 @@ class LevelPlayAdsService
           .withUserId(userId)
           .build();
 
-      debugPrint(
-        '================================================',
-      );
-
-      debugPrint(
-        'LEVELPLAY DIAGNOSTIC START',
-      );
-
-      debugPrint(
-        'LevelPlay: INITIALIZING',
-      );
-
-      debugPrint(
-        'LevelPlay: Android App Key = $appKeyAndroid',
-      );
-
-      debugPrint(
-        'LevelPlay: Rewarded Ad Unit = $rewardedAdUnitId',
-      );
-
-      debugPrint(
-        'LevelPlay: Placement = $rewardedPlacementName',
-      );
-
-      debugPrint(
-        'LevelPlay: User ID = $userId',
-      );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
+      debugPrint('LEVELPLAY DIAGNOSTIC START');
+      debugPrint('LevelPlay: INITIALIZING');
+      debugPrint('LevelPlay: Android App Key = $appKeyAndroid');
+      debugPrint('LevelPlay: Rewarded Ad Unit = $rewardedAdUnitId');
+      debugPrint('LevelPlay: Placement = $rewardedPlacementName');
+      debugPrint('LevelPlay: User ID = $userId');
+      debugPrint('================================================');
 
       await LevelPlay.init(
         initRequest: initRequest,
@@ -202,9 +178,7 @@ class LevelPlayAdsService
       );
 
       try {
-        await completer.future.timeout(
-          initTimeout,
-        );
+        await completer.future.timeout(initTimeout);
       } catch (_) {
         debugPrint(
           'LevelPlay: initialization callback timeout.',
@@ -215,25 +189,15 @@ class LevelPlayAdsService
 
       _lastInitError = e.toString();
 
-      debugPrint(
-        '================================================',
-      );
-
-      debugPrint(
-        'LevelPlay: INITIALIZATION EXCEPTION',
-      );
-
-      debugPrint(
-        'ERROR: $_lastInitError',
-      );
+      debugPrint('================================================');
+      debugPrint('LevelPlay: INITIALIZATION EXCEPTION');
+      debugPrint('ERROR: $_lastInitError');
 
       debugPrintStack(
         stackTrace: stackTrace,
       );
 
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       if (!completer.isCompleted) {
         completer.complete();
@@ -241,17 +205,14 @@ class LevelPlayAdsService
     } finally {
       _initializing = false;
 
-      if (identical(
-        _initCompleter,
-        completer,
-      )) {
+      if (identical(_initCompleter, completer)) {
         _initCompleter = null;
       }
     }
   }
 
   // ============================================================
-  // PUBLIC READY CHECK
+  // READY CHECK
   // ============================================================
 
   Future<bool> isRewardedAdReady() async {
@@ -292,25 +253,15 @@ class LevelPlayAdsService
     } catch (e, stackTrace) {
       _lastAdLoadError = e.toString();
 
-      debugPrint(
-        '================================================',
-      );
-
-      debugPrint(
-        'LevelPlay: READY CHECK ERROR',
-      );
-
-      debugPrint(
-        'ERROR: $_lastAdLoadError',
-      );
+      debugPrint('================================================');
+      debugPrint('LevelPlay: READY CHECK ERROR');
+      debugPrint('ERROR: $_lastAdLoadError');
 
       debugPrintStack(
         stackTrace: stackTrace,
       );
 
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       return false;
     }
@@ -391,25 +342,11 @@ class LevelPlayAdsService
     _loadCompleter = completer;
 
     try {
-      debugPrint(
-        '================================================',
-      );
-
-      debugPrint(
-        'LEVELPLAY REWARDED AD LOAD START',
-      );
-
-      debugPrint(
-        'Ad Unit ID: $rewardedAdUnitId',
-      );
-
-      debugPrint(
-        'Placement: $rewardedPlacementName',
-      );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
+      debugPrint('LEVELPLAY REWARDED AD LOAD START');
+      debugPrint('Ad Unit ID: $rewardedAdUnitId');
+      debugPrint('Placement: $rewardedPlacementName');
+      debugPrint('================================================');
 
       await ad.loadAd();
 
@@ -438,64 +375,34 @@ class LevelPlayAdsService
       }
 
       if (loaded) {
-        debugPrint(
-          '================================================',
-        );
-
-        debugPrint(
-          'LEVELPLAY RESULT: REWARDED AD LOADED',
-        );
-
-        debugPrint(
-          'The ad should now be ready.',
-        );
-
-        debugPrint(
-          '================================================',
-        );
+        debugPrint('================================================');
+        debugPrint('LEVELPLAY RESULT: REWARDED AD LOADED');
+        debugPrint('The ad should now be ready.');
+        debugPrint('================================================');
       } else {
         final error =
             _lastAdLoadError ??
                 'No LevelPlay load error was returned.';
 
-        debugPrint(
-          '================================================',
-        );
-
+        debugPrint('================================================');
         debugPrint(
           'LEVELPLAY RESULT: REWARDED AD DID NOT LOAD',
         );
-
-        debugPrint(
-          'LOAD ERROR: $error',
-        );
-
-        debugPrint(
-          '================================================',
-        );
+        debugPrint('LOAD ERROR: $error');
+        debugPrint('================================================');
       }
     } catch (e, stackTrace) {
       _lastAdLoadError = e.toString();
 
-      debugPrint(
-        '================================================',
-      );
-
-      debugPrint(
-        'LEVELPLAY loadAd() EXCEPTION',
-      );
-
-      debugPrint(
-        'ERROR: $_lastAdLoadError',
-      );
+      debugPrint('================================================');
+      debugPrint('LEVELPLAY loadAd() EXCEPTION');
+      debugPrint('ERROR: $_lastAdLoadError');
 
       debugPrintStack(
         stackTrace: stackTrace,
       );
 
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       if (!completer.isCompleted) {
         completer.complete(false);
@@ -503,17 +410,14 @@ class LevelPlayAdsService
     } finally {
       _loading = false;
 
-      if (identical(
-        _loadCompleter,
-        completer,
-      )) {
+      if (identical(_loadCompleter, completer)) {
         _loadCompleter = null;
       }
     }
   }
 
   // ============================================================
-  // ENSURE AD READY
+  // ENSURE READY
   // ============================================================
 
   Future<bool> _ensureRewardedAdReady() async {
@@ -542,10 +446,6 @@ class LevelPlayAdsService
       return false;
     }
 
-    // ----------------------------------------------------------
-    // CURRENT READY CHECK
-    // ----------------------------------------------------------
-
     try {
       final ready = await ad.isAdReady();
 
@@ -562,15 +462,7 @@ class LevelPlayAdsService
       );
     }
 
-    // ----------------------------------------------------------
-    // LOAD
-    // ----------------------------------------------------------
-
     await loadRewardedAd();
-
-    // ----------------------------------------------------------
-    // POLL
-    // ----------------------------------------------------------
 
     final stopwatch = Stopwatch()..start();
 
@@ -583,17 +475,9 @@ class LevelPlayAdsService
         );
 
         if (ready) {
-          debugPrint(
-            '================================================',
-          );
-
-          debugPrint(
-            'LEVELPLAY: REWARDED AD IS READY',
-          );
-
-          debugPrint(
-            '================================================',
-          );
+          debugPrint('================================================');
+          debugPrint('LEVELPLAY: REWARDED AD IS READY');
+          debugPrint('================================================');
 
           return true;
         }
@@ -608,30 +492,81 @@ class LevelPlayAdsService
       );
     }
 
-    debugPrint(
-      '================================================',
-    );
-
-    debugPrint(
-      'LEVELPLAY: NO READY REWARDED AD',
-    );
-
+    debugPrint('================================================');
+    debugPrint('LEVELPLAY: NO READY REWARDED AD');
     debugPrint(
       'DIAGNOSTIC: $diagnosticMessage',
     );
-
-    debugPrint(
-      '================================================',
-    );
+    debugPrint('================================================');
 
     return false;
   }
 
   // ============================================================
-  // SHOW REWARDED AD
+  // BOOST AD
+  //
+  // THIS IS THE NORMAL WATCH AD.
+  //
+  // It requires ACTIVE mining and:
+  //
+  // record_rewarded_ad
+  //        ↓
+  // verify_rewarded_ad
+  //        ↓
+  // +0.10 FAN/H
+  //
+  // Maximum = 7 per session.
   // ============================================================
 
   Future<bool> showRewardedAd({
+    VoidCallback? onRewarded,
+    VoidCallback? onAdClosed,
+  }) async {
+    return _showRewardedAd(
+      mode: _RewardedAdMode.boost,
+      onRewarded: onRewarded,
+      onAdClosed: onAdClosed,
+    );
+  }
+
+  // ============================================================
+  // ACTIVATION AD
+  //
+  // THIS IS DIFFERENT FROM BOOST AD.
+  //
+  // It is shown BEFORE a NEW mining session starts.
+  //
+  // IMPORTANT:
+  // - Does NOT require active mining.
+  // - Does NOT call record_rewarded_ad.
+  // - Does NOT call verify_rewarded_ad.
+  // - Does NOT increase mining rate.
+  // - Does NOT count toward the 7 Boost Ads.
+  //
+  // The reward callback only tells HomeScreen:
+  //
+  // "Activation Ad completed successfully."
+  //
+  // HomeScreen then calls startMining().
+  // ============================================================
+
+  Future<bool> showActivationAd({
+    VoidCallback? onCompleted,
+    VoidCallback? onAdClosed,
+  }) async {
+    return _showRewardedAd(
+      mode: _RewardedAdMode.activation,
+      onRewarded: onCompleted,
+      onAdClosed: onAdClosed,
+    );
+  }
+
+  // ============================================================
+  // INTERNAL SHOW METHOD
+  // ============================================================
+
+  Future<bool> _showRewardedAd({
+    required _RewardedAdMode mode,
     VoidCallback? onRewarded,
     VoidCallback? onAdClosed,
   }) async {
@@ -653,10 +588,6 @@ class LevelPlayAdsService
       }
 
       if (!_initialized) {
-        debugPrint(
-          'LevelPlay: initialization failed.',
-        );
-
         throw Exception(
           'LevelPlay initialization failed: '
           '${_lastInitError ?? 'unknown error'}',
@@ -679,63 +610,60 @@ class LevelPlayAdsService
       }
 
       // --------------------------------------------------------
-      // GET ACTIVE MINING
+      // BOOST MODE ONLY
+      //
+      // Activation mode deliberately skips this section.
       // --------------------------------------------------------
 
-      final mining =
-          await MiningService.instance.getActiveMining();
+      int adsWatched = 0;
 
-      if (mining.isEmpty) {
-        throw Exception(
-          'No active mining session was found.',
-        );
-      }
+      if (mode == _RewardedAdMode.boost) {
+        final mining =
+            await MiningService.instance.getActiveMining();
 
-      final active =
-          _isMiningActive(mining);
+        if (mining.isEmpty) {
+          throw Exception(
+            'No active mining session was found.',
+          );
+        }
 
-      if (!active) {
-        throw Exception(
-          'Mining session is not active.',
-        );
-      }
+        final active =
+            _isMiningActive(mining);
 
-      final adsWatched =
-          _extractAdsWatched(mining);
+        if (!active) {
+          throw Exception(
+            'Mining session is not active.',
+          );
+        }
 
-      debugPrint(
-        '================================================',
-      );
+        adsWatched =
+            _extractAdsWatched(mining);
 
-      debugPrint(
-        'LEVELPLAY WATCH AD REQUEST',
-      );
+        debugPrint('================================================');
+        debugPrint('LEVELPLAY BOOST AD REQUEST');
+        debugPrint('Active mining: $active');
+        debugPrint('Ads watched: $adsWatched');
+        debugPrint('Maximum ads: $maxAdsPerSession');
+        debugPrint('================================================');
 
-      debugPrint(
-        'Active mining: $active',
-      );
+        if (adsWatched >= maxAdsPerSession) {
+          throw Exception(
+            'You have reached the 7 ads limit '
+            'for this mining session.',
+          );
+        }
+      } else {
+        // ------------------------------------------------------
+        // ACTIVATION MODE
+        // ------------------------------------------------------
 
-      debugPrint(
-        'Ads watched: $adsWatched',
-      );
-
-      debugPrint(
-        'Maximum ads: $maxAdsPerSession',
-      );
-
-      debugPrint(
-        '================================================',
-      );
-
-      // --------------------------------------------------------
-      // MAX ADS
-      // --------------------------------------------------------
-
-      if (adsWatched >= maxAdsPerSession) {
-        throw Exception(
-          'You have reached the 7 ads limit '
-          'for this mining session.',
-        );
+        debugPrint('================================================');
+        debugPrint('LEVELPLAY ACTIVATION AD REQUEST');
+        debugPrint('Mining active check: SKIPPED');
+        debugPrint('Boost RPC: DISABLED');
+        debugPrint('Rate boost: DISABLED');
+        debugPrint('Boost ads count: NOT CHANGED');
+        debugPrint('================================================');
       }
 
       // --------------------------------------------------------
@@ -749,30 +677,19 @@ class LevelPlayAdsService
         final diagnostic =
             diagnosticMessage;
 
-        debugPrint(
-          '================================================',
-        );
+        debugPrint('================================================');
+        debugPrint('LEVELPLAY SHOW BLOCKED');
+        debugPrint(diagnostic);
+        debugPrint('================================================');
 
-        debugPrint(
-          'LEVELPLAY SHOW BLOCKED',
-        );
-
-        debugPrint(
-          diagnostic,
-        );
-
-        debugPrint(
-          '================================================',
-        );
-
-        throw Exception(
-          diagnostic,
-        );
+        throw Exception(diagnostic);
       }
 
       // --------------------------------------------------------
-      // SAVE CALLBACK STATE
+      // SAVE CURRENT AD MODE
       // --------------------------------------------------------
+
+      _currentMode = mode;
 
       _adsWatchedBeforeCurrentAd =
           adsWatched;
@@ -830,7 +747,7 @@ class LevelPlayAdsService
         throw Exception(
           'Rewarded ad became unavailable '
           'immediately before showing.\n'
-          '${diagnosticMessage}',
+          '$diagnosticMessage',
         );
       }
 
@@ -840,29 +757,25 @@ class LevelPlayAdsService
 
       _showing = true;
 
-      debugPrint(
-        '================================================',
-      );
+      final modeName =
+          mode == _RewardedAdMode.activation
+              ? 'ACTIVATION'
+              : 'BOOST';
 
+      debugPrint('================================================');
       debugPrint(
-        'LEVELPLAY: SHOWING REWARDED AD',
+        'LEVELPLAY: SHOWING $modeName REWARDED AD',
       );
-
       debugPrint(
         'Ad Unit: $rewardedAdUnitId',
       );
-
       debugPrint(
         'Placement: $rewardedPlacementName',
       );
-
       debugPrint(
-        'Previous ads: $_adsWatchedBeforeCurrentAd',
+        'Previous boost ads: $_adsWatchedBeforeCurrentAd',
       );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       await ad.showAd(
         placementName: rewardedPlacementName,
@@ -870,17 +783,9 @@ class LevelPlayAdsService
 
       return true;
     } catch (e, stackTrace) {
-      debugPrint(
-        '================================================',
-      );
-
-      debugPrint(
-        'LEVELPLAY SHOW ERROR',
-      );
-
-      debugPrint(
-        'ERROR: $e',
-      );
+      debugPrint('================================================');
+      debugPrint('LEVELPLAY SHOW ERROR');
+      debugPrint('ERROR: $e');
 
       debugPrintStack(
         stackTrace: stackTrace,
@@ -896,9 +801,7 @@ class LevelPlayAdsService
         '${_lastInitError ?? 'none'}',
       );
 
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       _showing = false;
       _rewardProcessing = false;
@@ -931,32 +834,21 @@ class LevelPlayAdsService
 
       _rewardedAd = ad;
 
-      debugPrint(
-        '================================================',
-      );
-
+      debugPrint('================================================');
       debugPrint(
         'LEVELPLAY: REWARDED AD OBJECT CREATED',
       );
-
       debugPrint(
         'Ad Unit ID: $rewardedAdUnitId',
       );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
     } catch (e, stackTrace) {
       _lastAdLoadError = e.toString();
 
-      debugPrint(
-        '================================================',
-      );
-
+      debugPrint('================================================');
       debugPrint(
         'LEVELPLAY: FAILED TO CREATE REWARDED AD',
       );
-
       debugPrint(
         'ERROR: $_lastAdLoadError',
       );
@@ -965,9 +857,7 @@ class LevelPlayAdsService
         stackTrace: stackTrace,
       );
 
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       _rewardedAd = null;
     }
@@ -981,21 +871,12 @@ class LevelPlayAdsService
   void onInitSuccess(
     LevelPlayConfiguration configuration,
   ) {
-    debugPrint(
-      '================================================',
-    );
-
-    debugPrint(
-      'LEVELPLAY: INIT SUCCESS',
-    );
-
+    debugPrint('================================================');
+    debugPrint('LEVELPLAY: INIT SUCCESS');
     debugPrint(
       'Configuration: $configuration',
     );
-
-    debugPrint(
-      '================================================',
-    );
+    debugPrint('================================================');
 
     _initialized = true;
     _lastInitError = null;
@@ -1010,7 +891,6 @@ class LevelPlayAdsService
       completer.complete();
     }
 
-    // Start loading the first rewarded ad.
     unawaited(
       loadRewardedAd(),
     );
@@ -1030,21 +910,12 @@ class LevelPlayAdsService
     _lastInitError =
         error.toString();
 
-    debugPrint(
-      '================================================',
-    );
-
-    debugPrint(
-      'LEVELPLAY: INIT FAILED',
-    );
-
+    debugPrint('================================================');
+    debugPrint('LEVELPLAY: INIT FAILED');
     debugPrint(
       'INIT ERROR: $_lastInitError',
     );
-
-    debugPrint(
-      '================================================',
-    );
+    debugPrint('================================================');
 
     final completer =
         _initCompleter;
@@ -1067,21 +938,14 @@ class LevelPlayAdsService
 
     _lastAdLoadError = null;
 
-    debugPrint(
-      '================================================',
-    );
-
+    debugPrint('================================================');
     debugPrint(
       'LEVELPLAY: REWARDED AD LOADED SUCCESSFULLY',
     );
-
     debugPrint(
       'AD INFO: $adInfo',
     );
-
-    debugPrint(
-      '================================================',
-    );
+    debugPrint('================================================');
 
     final completer =
         _loadCompleter;
@@ -1105,25 +969,15 @@ class LevelPlayAdsService
     _lastAdLoadError =
         error.toString();
 
-    debugPrint(
-      '================================================',
-    );
-
+    debugPrint('================================================');
     debugPrint(
       'LEVELPLAY: REWARDED AD LOAD FAILED',
     );
-
     debugPrint(
       'FULL LOAD ERROR:',
     );
-
-    debugPrint(
-      '$error',
-    );
-
-    debugPrint(
-      '================================================',
-    );
+    debugPrint('$error');
+    debugPrint('================================================');
 
     final completer =
         _loadCompleter;
@@ -1160,25 +1014,17 @@ class LevelPlayAdsService
     LevelPlayAdError error,
     LevelPlayAdInfo adInfo,
   ) {
-    debugPrint(
-      '================================================',
-    );
-
+    debugPrint('================================================');
     debugPrint(
       'LEVELPLAY: AD DISPLAY FAILED',
     );
-
     debugPrint(
       'ERROR: $error',
     );
-
     debugPrint(
       'AD INFO: $adInfo',
     );
-
-    debugPrint(
-      '================================================',
-    );
+    debugPrint('================================================');
 
     _showing = false;
     _rewardProcessing = false;
@@ -1222,29 +1068,39 @@ class LevelPlayAdsService
 
     _rewardProcessing = true;
 
-    debugPrint(
-      '================================================',
-    );
-
+    debugPrint('================================================');
     debugPrint(
       'LEVELPLAY: REWARDED CALLBACK RECEIVED',
     );
-
+    debugPrint(
+      'Mode: $_currentMode',
+    );
     debugPrint(
       'Reward name: ${reward.name}',
     );
-
     debugPrint(
       'Reward amount: ${reward.amount}',
     );
-
     debugPrint(
       'Ad info: $adInfo',
     );
+    debugPrint('================================================');
 
-    debugPrint(
-      '================================================',
-    );
+    // ----------------------------------------------------------
+    // ACTIVATION AD
+    //
+    // NO SUPABASE BOOST RPC HERE.
+    // ----------------------------------------------------------
+
+    if (_currentMode == _RewardedAdMode.activation) {
+      _processActivationReward();
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // BOOST AD
+    // ----------------------------------------------------------
 
     unawaited(
       _processMiningAdReward(),
@@ -1252,7 +1108,48 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // PROCESS MINING REWARD
+  // ACTIVATION REWARD
+  // ============================================================
+
+  void _processActivationReward() {
+    debugPrint('================================================');
+    debugPrint(
+      'LEVELPLAY: ACTIVATION AD COMPLETED',
+    );
+    debugPrint(
+      'NO record_rewarded_ad call.',
+    );
+    debugPrint(
+      'NO verify_rewarded_ad call.',
+    );
+    debugPrint(
+      'NO mining-rate boost.',
+    );
+    debugPrint(
+      'NO boost-ad count increase.',
+    );
+    debugPrint('================================================');
+
+    _rewardGrantedForCurrentAd = true;
+
+    final callback =
+        _onRewarded;
+
+    // This callback tells HomeScreen:
+    //
+    // Activation Ad is complete.
+    // It is now allowed to call start_mining.
+    //
+    callback?.call();
+
+    _rewardProcessing = false;
+
+    // Do NOT clear state while the ad is still showing.
+    // onAdClosed will finish the lifecycle.
+  }
+
+  // ============================================================
+  // BOOST REWARD PROCESSING
   // ============================================================
 
   Future<void> _processMiningAdReward() async {
@@ -1265,21 +1162,12 @@ class LevelPlayAdsService
         },
       );
 
-      debugPrint(
-        '================================================',
-      );
-
+      debugPrint('================================================');
       debugPrint(
         'LevelPlay: record_rewarded_ad RESPONSE',
       );
-
-      debugPrint(
-        '$response',
-      );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('$response');
+      debugPrint('================================================');
 
       final success =
           _extractBool(
@@ -1321,7 +1209,7 @@ class LevelPlayAdsService
       }
 
       // --------------------------------------------------------
-      // VERIFY
+      // VERIFY BOOST
       // --------------------------------------------------------
 
       final verifyResponse =
@@ -1332,21 +1220,12 @@ class LevelPlayAdsService
         },
       );
 
-      debugPrint(
-        '================================================',
-      );
-
+      debugPrint('================================================');
       debugPrint(
         'LevelPlay: verify_rewarded_ad RESPONSE',
       );
-
-      debugPrint(
-        '$verifyResponse',
-      );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('$verifyResponse');
+      debugPrint('================================================');
 
       final verified =
           _extractBool(
@@ -1385,29 +1264,20 @@ class LevelPlayAdsService
         ],
       );
 
+      debugPrint('================================================');
       debugPrint(
-        '================================================',
+        'LEVELPLAY: BOOST REWARD VERIFIED SUCCESSFULLY',
       );
-
-      debugPrint(
-        'LEVELPLAY: REWARD VERIFIED SUCCESSFULLY',
-      );
-
       debugPrint(
         'Ad ID: $adId',
       );
-
       debugPrint(
         'Ads watched: $adsWatched',
       );
-
       debugPrint(
         'New mining rate: $newRate',
       );
-
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       _rewardGrantedForCurrentAd = true;
 
@@ -1422,14 +1292,10 @@ class LevelPlayAdsService
         _clearCurrentAdState();
       }
     } catch (e, stackTrace) {
+      debugPrint('================================================');
       debugPrint(
-        '================================================',
+        'LEVELPLAY: BOOST REWARD PROCESSING ERROR',
       );
-
-      debugPrint(
-        'LEVELPLAY: REWARD PROCESSING ERROR',
-      );
-
       debugPrint(
         'ERROR: $e',
       );
@@ -1438,9 +1304,7 @@ class LevelPlayAdsService
         stackTrace: stackTrace,
       );
 
-      debugPrint(
-        '================================================',
-      );
+      debugPrint('================================================');
 
       _rewardProcessing = false;
     }
@@ -1482,7 +1346,7 @@ class LevelPlayAdsService
       _clearCurrentAdState();
     }
 
-    // Prepare next rewarded ad.
+    // Load the next ad.
     unawaited(
       loadRewardedAd(),
     );
@@ -1500,9 +1364,7 @@ class LevelPlayAdsService
       'LevelPlay: AD INFO CHANGED.',
     );
 
-    debugPrint(
-      '$adInfo',
-    );
+    debugPrint('$adInfo');
   }
 
   // ============================================================
@@ -1749,7 +1611,7 @@ class LevelPlayAdsService
   }
 
   // ============================================================
-  // CLEAR STATE
+  // CLEAR CURRENT AD STATE
   // ============================================================
 
   void _clearCurrentAdState() {
@@ -1758,6 +1620,8 @@ class LevelPlayAdsService
     _rewardProcessing = false;
 
     _rewardGrantedForCurrentAd = false;
+
+    _currentMode = _RewardedAdMode.boost;
 
     _onRewarded = null;
 
@@ -1793,7 +1657,8 @@ class LevelPlayAdsService
 
     _loadCompleter = null;
 
-    final ad = _rewardedAd;
+    final ad =
+        _rewardedAd;
 
     _rewardedAd = null;
 
