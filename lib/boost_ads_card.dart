@@ -23,6 +23,10 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
 
+  static const int maxAdsPerSession = 7;
+  static const double defaultMiningRate = 0.20;
+  static const double boostPerAd = 0.10;
+
   final LevelPlayAdsService _ads =
       LevelPlayAdsService.instance;
 
@@ -34,7 +38,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   bool _adReady = false;
 
   int _adsWatched = 0;
-  double _miningRate = 0.20;
+  double _miningRate = defaultMiningRate;
 
   @override
   void initState() {
@@ -56,18 +60,76 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   Future<void> _initialize() async {
     try {
       await _ads.initialize();
-      await _ads.loadRewardedAd();
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+
       await _refresh();
+
+      // Load rewarded ad in the background.
+      // Do not block the whole Boost card waiting for the ad.
+      _prepareRewardedAd();
     } catch (e) {
       debugPrint(
         'Boost Ads initialization error: $e',
       );
-    } finally {
-      if (mounted) {
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _prepareRewardedAd() async {
+    try {
+      final ready =
+          await _ads.isRewardedAdReady();
+
+      if (ready) {
+        if (!mounted) return;
+
         setState(() {
-          _loading = false;
+          _adReady = true;
         });
+
+        return;
       }
+
+      debugPrint(
+        'Boost Ads: rewarded ad is not ready. Loading...',
+      );
+
+      await _ads.loadRewardedAd();
+
+      if (!mounted) return;
+
+      final readyAfterLoad =
+          await _ads.isRewardedAdReady();
+
+      if (!mounted) return;
+
+      setState(() {
+        _adReady = readyAfterLoad;
+      });
+
+      debugPrint(
+        'Boost Ads: rewarded ad ready = $readyAfterLoad',
+      );
+    } catch (e) {
+      debugPrint(
+        'Boost Ads prepare error: $e',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _adReady = false;
+      });
     }
   }
 
@@ -81,15 +143,28 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       final rate =
           await _mining.getUserMiningRate();
 
-      final ready =
-          await _ads.isRewardedAdReady();
+      bool ready = false;
+
+      try {
+        ready =
+            await _ads.isRewardedAdReady();
+      } catch (e) {
+        debugPrint(
+          'Boost Ads readiness check error: $e',
+        );
+      }
 
       if (!mounted) return;
 
       setState(() {
-        _adsWatched = adsWatched.clamp(0, 7);
+        _adsWatched = adsWatched.clamp(
+          0,
+          maxAdsPerSession,
+        );
+
         _miningRate =
-            rate > 0 ? rate : 0.20;
+            rate > 0 ? rate : defaultMiningRate;
+
         _adReady = ready;
       });
     } catch (e) {
@@ -113,46 +188,95 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
     if (!mounted) return;
 
-    if (_adsWatched >= 7) {
+    if (_adsWatched >= maxAdsPerSession) {
       _showMessage(
         'You have reached the 7 Boost Ads limit for this mining session.',
       );
       return;
     }
 
-    if (!_adReady) {
-      await _ads.loadRewardedAd();
-
-      if (!mounted) return;
-
-      final ready =
-          await _ads.isRewardedAdReady();
-
-      if (!ready) {
-        _showMessage(
-          'Rewarded Ad is still loading. Please try again.',
-        );
-        return;
-      }
-    }
-
-    if (!mounted) return;
-
     setState(() {
       _watching = true;
     });
 
     try {
+      /*
+       * If HomeScreen supplied its own ad callback,
+       * use it. This prevents this card from creating
+       * a second competing ad flow.
+       */
+      if (widget.onWatchAd != null) {
+        await widget.onWatchAd!();
+
+        if (!mounted) return;
+
+        await _waitForRewardToBeRecorded();
+
+        if (!mounted) return;
+
+        widget.onRewarded?.call();
+
+        return;
+      }
+
+      /*
+       * Otherwise use LevelPlayAdsService directly.
+       */
+
+      // First try to use an already loaded ad.
+      bool ready =
+          await _ads.isRewardedAdReady();
+
+      // If not ready, explicitly load it now.
+      if (!ready) {
+        debugPrint(
+          'Boost Ads: ad not ready, loading before show...',
+        );
+
+        await _ads.loadRewardedAd();
+
+        if (!mounted) return;
+
+        ready =
+            await _ads.isRewardedAdReady();
+      }
+
+      if (!ready) {
+        if (!mounted) return;
+
+        _showMessage(
+          'Rewarded Ad is not available yet. Please try again.',
+        );
+
+        return;
+      }
+
+      if (!mounted) return;
+
+      bool rewarded = false;
+
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () async {
-          await _refresh();
+          rewarded = true;
+
+          debugPrint(
+            'Boost Ads: LevelPlay reward callback received.',
+          );
+
+          // Give the backend/S2S flow a little time
+          // to record the ad reward.
+          await _waitForRewardToBeRecorded();
 
           if (!mounted) return;
 
           widget.onRewarded?.call();
         },
         onAdClosed: () async {
+          debugPrint(
+            'Boost Ads: rewarded ad closed.',
+          );
+
           await _refresh();
 
           if (!mounted) return;
@@ -163,9 +287,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
         },
       );
 
-      if (!shown) {
-        if (!mounted) return;
+      if (!mounted) return;
 
+      if (!shown) {
         setState(() {
           _watching = false;
         });
@@ -175,7 +299,36 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
         if (!mounted) return;
 
         _showMessage(
-          'Rewarded Ad is not ready yet. Please try again.',
+          'Rewarded Ad could not be shown. Please try again.',
+        );
+
+        return;
+      }
+
+      /*
+       * Some LevelPlay/S2S flows deliver the reward
+       * shortly after the ad has closed.
+       *
+       * If the callback already fired, _waitForRewardToBeRecorded()
+       * above has handled it.
+       */
+      if (!rewarded) {
+        await _waitForRewardToBeRecorded();
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _watching = false;
+      });
+
+      await _refresh();
+
+      if (!mounted) return;
+
+      if (_adsWatched > 0) {
+        debugPrint(
+          'Boost Ads: current ads watched = $_adsWatched',
         );
       }
     } catch (e) {
@@ -195,9 +348,79 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
     }
   }
 
-  void _showMessage(
-    String message,
-  ) {
+  Future<void> _waitForRewardToBeRecorded() async {
+    int previousCount = _adsWatched;
+
+    for (int i = 0; i < 15; i++) {
+      await Future<void>.delayed(
+        const Duration(milliseconds: 700),
+      );
+
+      if (!mounted) return;
+
+      try {
+        final currentCount =
+            await _mining.getAdsWatched();
+
+        debugPrint(
+          'Boost Ads reward check ${i + 1}/15: '
+          '$previousCount -> $currentCount',
+        );
+
+        if (currentCount > previousCount) {
+          if (!mounted) return;
+
+          final rate =
+              await _mining.getUserMiningRate();
+
+          if (!mounted) return;
+
+          setState(() {
+            _adsWatched =
+                currentCount.clamp(
+              0,
+              maxAdsPerSession,
+            );
+
+            _miningRate =
+                rate > 0 ? rate : defaultMiningRate;
+
+            _adReady = false;
+          });
+
+          // Load the next ad for the next click.
+          _prepareRewardedAd();
+
+          debugPrint(
+            'Boost Ads: reward recorded successfully. '
+            'Ads watched = $_adsWatched, '
+            'rate = $_miningRate',
+          );
+
+          return;
+        }
+
+        if (!mounted) return;
+
+        setState(() {
+          _adsWatched =
+              currentCount.clamp(
+            0,
+            maxAdsPerSession,
+          );
+        });
+      } catch (e) {
+        debugPrint(
+          'Boost Ads reward polling error: $e',
+        );
+      }
+    }
+
+    // Final refresh even if S2S took longer than expected.
+    await _refresh();
+  }
+
+  void _showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -213,22 +436,44 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   @override
   Widget build(BuildContext context) {
     final remaining =
-        (7 - _adsWatched).clamp(0, 7);
+        (maxAdsPerSession - _adsWatched)
+            .clamp(0, maxAdsPerSession);
 
+    /*
+     * IMPORTANT:
+     *
+     * _adReady is intentionally NOT required here.
+     *
+     * The user must be able to press Watch Ad even
+     * while LevelPlay is loading. _watchAd() will
+     * attempt to load the ad.
+     */
     final canWatch =
         widget.isMining &&
         !_watching &&
         !_loading &&
-        _adsWatched < 7 &&
-        _adReady;
+        _adsWatched < maxAdsPerSession;
+
+    String buttonText;
+
+    if (_watching) {
+      buttonText = 'REWARD PROCESSING...';
+    } else if (!widget.isMining) {
+      buttonText = 'START MINING FIRST';
+    } else if (_adsWatched >= maxAdsPerSession) {
+      buttonText = '7/7 ADS COMPLETED';
+    } else if (_adReady) {
+      buttonText = 'WATCH AD +0.10 FAN/H';
+    } else {
+      buttonText = 'WATCH AD +0.10 FAN/H';
+    }
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -266,8 +511,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                       style: TextStyle(
                         color: deepPurple,
                         fontSize: 15,
-                        fontWeight:
-                            FontWeight.w800,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     SizedBox(height: 4),
@@ -295,12 +539,11 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                       BorderRadius.circular(10),
                 ),
                 child: Text(
-                  '$_adsWatched/7',
+                  '$_adsWatched/$maxAdsPerSession',
                   style: const TextStyle(
                     color: primaryPurple,
                     fontSize: 11,
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -311,8 +554,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: const Color(0xFFF8F8FC),
               borderRadius:
@@ -331,21 +573,19 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                     crossAxisAlignment:
                         CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        '+0.10 FAN/H',
-                        style: TextStyle(
+                      Text(
+                        '+${boostPerAd.toStringAsFixed(2)} FAN/H',
+                        style: const TextStyle(
                           color: deepPurple,
                           fontSize: 14,
-                          fontWeight:
-                              FontWeight.w900,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'Current rate: '
                         '${_miningRate.toStringAsFixed(2)} FAN/H',
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           color: Colors.grey,
                           fontSize: 11,
                         ),
@@ -364,8 +604,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
             style: TextStyle(
               color: Colors.grey.shade700,
               fontSize: 11,
-              fontWeight:
-                  FontWeight.w600,
+              fontWeight: FontWeight.w600,
             ),
           ),
 
@@ -379,7 +618,8 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                   canWatch ? _watchAd : null,
               style: ButtonStyle(
                 backgroundColor:
-                    WidgetStateProperty.resolveWith<Color?>(
+                    WidgetStateProperty.resolveWith<
+                        Color?>(
                   (states) {
                     if (states.contains(
                       WidgetState.disabled,
@@ -391,7 +631,8 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                   },
                 ),
                 foregroundColor:
-                    WidgetStateProperty.resolveWith<Color?>(
+                    WidgetStateProperty.resolveWith<
+                        Color?>(
                   (states) {
                     if (states.contains(
                       WidgetState.disabled,
@@ -403,7 +644,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                   },
                 ),
                 elevation:
-                    const WidgetStatePropertyAll<double>(0),
+                    const WidgetStatePropertyAll<double>(
+                  0,
+                ),
                 shape:
                     WidgetStatePropertyAll<
                         OutlinedBorder>(
@@ -427,18 +670,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
                       Icons.play_arrow_rounded,
                     ),
               label: Text(
-                _watching
-                    ? 'REWARD PROCESSING...'
-                    : !widget.isMining
-                        ? 'START MINING FIRST'
-                        : _adsWatched >= 7
-                            ? '7/7 ADS COMPLETED'
-                            : !_adReady
-                                ? 'LOADING AD...'
-                                : 'WATCH AD +0.10 FAN/H',
+                buttonText,
                 style: const TextStyle(
-                  fontWeight:
-                      FontWeight.w800,
+                  fontWeight: FontWeight.w800,
                   fontSize: 12,
                 ),
               ),
