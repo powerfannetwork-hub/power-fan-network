@@ -15,6 +15,10 @@ class MiningService {
 
   final SupabaseClient _client = SupabaseService.client;
 
+  // ============================================================
+  // MINING CONFIG
+  // ============================================================
+
   static const int miningDurationSeconds = 86400;
   static const int maxAdsPerSession = 7;
   static const double defaultMiningRate = 0.20;
@@ -134,9 +138,19 @@ class MiningService {
 
   // ============================================================
   // START MINING
+  //
+  // IMPORTANT:
+  // Activation Ad is handled by LevelPlayAdsService/HomeScreen.
+  // This method ONLY starts the mining session.
   // ============================================================
 
   Future<Map<String, dynamic>> startMining() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('You must be signed in.');
+    }
+
     final response = await _client.rpc('start_mining');
 
     return _prepareMiningResult(response);
@@ -147,6 +161,12 @@ class MiningService {
   // ============================================================
 
   Future<Map<String, dynamic>> getActiveMining() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('You must be signed in.');
+    }
+
     final response = await _client.rpc('get_active_mining');
 
     return _prepareMiningResult(response);
@@ -161,14 +181,21 @@ class MiningService {
 
     final status = _value(
       data,
-      ['status', 'mining_status'],
+      [
+        'status',
+        'mining_status',
+      ],
       '',
-    ).toString().toLowerCase();
+    ).toString().trim().toLowerCase();
 
     final active = _toBool(
       _value(
         data,
-        ['active', 'is_active', 'mining_active'],
+        [
+          'active',
+          'is_active',
+          'mining_active',
+        ],
         false,
       ),
     );
@@ -190,7 +217,10 @@ class MiningService {
     final expired = _toBool(
       _value(
         data,
-        ['expired', 'is_expired'],
+        [
+          'expired',
+          'is_expired',
+        ],
         false,
       ),
     );
@@ -234,6 +264,19 @@ class MiningService {
 
     if (remainingSeconds < 0) {
       remainingSeconds = 0;
+    }
+
+    // If the backend returned an end time, calculate the remaining
+    // time again on the client so the countdown stays accurate.
+    if (endsAt != null) {
+      final calculatedRemaining =
+          endsAt.difference(DateTime.now()).inSeconds;
+
+      if (calculatedRemaining >= 0) {
+        remainingSeconds = calculatedRemaining;
+      } else {
+        remainingSeconds = 0;
+      }
     }
 
     final rate = _toDouble(
@@ -309,16 +352,10 @@ class MiningService {
   Future<bool> isMining() async {
     final result = await getActiveMining();
 
-    final active = result['active'];
-
-    if (active is bool) {
-      return active;
-    }
-
-    final status = result['status']?.toString().toLowerCase();
-
-    return status == 'active' ||
-        status == 'mining';
+    return _toBool(
+      result['active'],
+      false,
+    );
   }
 
   // ============================================================
@@ -328,13 +365,11 @@ class MiningService {
   Future<bool> isClaimable() async {
     final result = await getActiveMining();
 
-    final claimable = result['claimable'];
-
-    if (claimable is bool) {
-      return claimable;
+    if (_toBool(result['claimable'], false)) {
+      return true;
     }
 
-    final status = result['status']?.toString().toLowerCase();
+    final status = result['status']?.toString().trim().toLowerCase();
 
     return status == 'claimable' ||
         status == 'ready_to_claim' ||
@@ -427,6 +462,9 @@ class MiningService {
 
   // ============================================================
   // GET ADS WATCHED
+  //
+  // These are BOOST ADS for the CURRENT mining session.
+  // Activation Ad is NOT counted here.
   // ============================================================
 
   Future<int> getAdsWatched() async {
@@ -447,32 +485,62 @@ class MiningService {
   }
 
   // ============================================================
-  // REQUEST CLAIM AD
-  // ============================================================
-
-  Future<Map<String, dynamic>> requestClaimAd() async {
-    final response = await _client.rpc('request_claim_ad');
-
-    return _normalize(response);
-  }
-
-  // ============================================================
-  // GET CLAIM AD STATUS
-  // ============================================================
-
-  Future<Map<String, dynamic>> getClaimAdStatus() async {
-    final response = await _client.rpc('get_claim_ad_status');
-
-    return _normalize(response);
-  }
-
-  // ============================================================
   // CLAIM MINING
+  //
+  // IMPORTANT:
+  // CLAIM DOES NOT REQUIRE AN AD.
+  //
+  // Correct flow:
+  //
+  // 1. 24h expires
+  // 2. User presses CLAIM
+  // 3. claim_mining runs directly
+  // 4. User presses START MINING
+  // 5. HomeScreen shows Activation Ad
+  // 6. After Activation Ad reward -> startMining()
   // ============================================================
 
   Future<Map<String, dynamic>> claimMining() async {
+    final user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception('You must be signed in.');
+    }
+
     final response = await _client.rpc('claim_mining');
 
     return _normalize(response);
+  }
+
+  // ============================================================
+  // BACKWARD COMPATIBILITY
+  //
+  // These methods are intentionally NOT used by the new mining
+  // flow. Claiming no longer requires an ad.
+  //
+  // They are kept here so other old code will not fail to compile
+  // if it still references them.
+  // ============================================================
+
+  @Deprecated(
+    'Claim ads are no longer part of the mining flow. '
+    'Use claimMining() directly.',
+  )
+  Future<Map<String, dynamic>> requestClaimAd() async {
+    return <String, dynamic>{
+      'success': false,
+      'message': 'Claiming mining does not require an ad.',
+    };
+  }
+
+  @Deprecated(
+    'Claim ads are no longer part of the mining flow. '
+    'Use claimMining() directly.',
+  )
+  Future<Map<String, dynamic>> getClaimAdStatus() async {
+    return <String, dynamic>{
+      'success': false,
+      'message': 'Claiming mining does not require an ad.',
+    };
   }
 }
