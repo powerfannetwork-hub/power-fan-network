@@ -39,7 +39,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isMining = false;
   bool _canClaim = false;
-  bool _claimAdWaiting = false;
 
   double _fan = 0.0;
   double _rate = MiningService.defaultMiningRate;
@@ -272,10 +271,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _remaining = remaining;
       _sessionReward = liveReward < 0 ? 0.0 : liveReward;
       _adsWatched = ads.clamp(0, maxAds).toInt();
-
-      if (active) {
-        _claimAdWaiting = false;
-      }
     });
 
     if (_isMining) {
@@ -490,6 +485,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // START MINING FLOW
+  //
+  // CLAIM expired session
+  //       ↓
+  // START MINING
+  //       ↓
+  // Activation Ad (exactly 1)
+  //       ↓
+  // start_mining()
+  //       ↓
+  // 24-hour ACTIVE mining
+  //       ↓
+  // Boost Ads up to 7
+  // ============================================================
+
   Future<void> _startMining() async {
     if (_busy || _isMining || _canClaim) {
       return;
@@ -500,6 +511,74 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      /*
+       * IMPORTANT:
+       * This is the Activation Ad.
+       *
+       * It is NOT a Boost Ad.
+       * It does NOT call record_rewarded_ad().
+       * It does NOT call verify_rewarded_ad().
+       * It does NOT increase mining rate.
+       * It does NOT count toward the 7 Boost Ads.
+       */
+      try {
+        await _ads.initialize();
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      _message(
+        'Watch 1 activation ad to start your 24-hour mining session.',
+      );
+
+      final activationCompleted = Completer<bool>();
+
+      var activationCallbackReceived = false;
+
+      final shown = await _ads.showActivationAd(
+        onRewarded: () {
+          if (activationCallbackReceived) {
+            return;
+          }
+
+          activationCallbackReceived = true;
+
+          if (!activationCompleted.isCompleted) {
+            activationCompleted.complete(true);
+          }
+        },
+        onAdClosed: () {},
+      );
+
+      if (!shown) {
+        throw Exception(
+          'Activation ad is not ready. Please wait a moment and try again.',
+        );
+      }
+
+      final rewarded = await activationCompleted.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => false,
+      );
+
+      if (!rewarded) {
+        throw Exception(
+          'Activation ad was not completed. Mining has not started.',
+        );
+      }
+
+      if (!mounted) return;
+
+      _message(
+        'Activation ad completed. Starting your 24-hour mining session...',
+      );
+
+      /*
+       * ONLY NOW do we call start_mining().
+       *
+       * This guarantees the user cannot start a new mining
+       * session without completing the Activation Ad first.
+       */
       final result = await _mining.startMining();
 
       if (result.isEmpty) {
@@ -527,7 +606,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         _message(
-          'Your 24-hour mining session is complete and ready to claim.',
+          'Your previous 24-hour mining session is complete and ready to claim.',
         );
 
         return;
@@ -579,7 +658,8 @@ class _HomeScreenState extends State<HomeScreen> {
           errorText.contains('claim your completed') ||
           errorText.contains('claim_required') ||
           errorText.contains('claim required') ||
-          errorText.contains('completed mining session');
+          errorText.contains('completed mining session') ||
+          errorText.contains('claim your reward');
 
       if (claimRequired) {
         setState(() {
@@ -604,6 +684,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // CLAIM FLOW
+  //
+  // No ad.
+  // No LevelPlay.
+  // Direct claim_mining RPC.
+  // ============================================================
+
   Future<void> _claimMining() async {
     if (_busy || !_canClaim || _isMining) {
       return;
@@ -611,52 +699,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _busy = true;
-      _claimAdWaiting = true;
     });
 
     try {
-      try {
-        await _ads.initialize();
-      } catch (_) {}
-
-      final adCompleted = Completer<bool>();
-
-      var adCallbackReceived = false;
-
-      final shown = await _ads.showRewardedAd(
-        onRewarded: () {
-          if (adCallbackReceived) {
-            return;
-          }
-
-          adCallbackReceived = true;
-
-          if (!adCompleted.isCompleted) {
-            adCompleted.complete(true);
-          }
-        },
-        onAdClosed: () {},
-      );
-
-      if (!shown) {
-        throw Exception(
-          'Rewarded ad is not ready. Please wait a moment and try again.',
-        );
-      }
-
-      final adVerified = await adCompleted.future.timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => false,
-      );
-
-      if (!adVerified) {
-        throw Exception(
-          'Ad reward could not be verified. Your FAN was not claimed.',
-        );
-      }
-
-      if (!mounted) return;
-
+      /*
+       * IMPORTANT:
+       * Claiming an expired mining session does NOT require an ad.
+       *
+       * Do NOT call showRewardedAd() here.
+       * Do NOT call record_rewarded_ad() here.
+       */
       final result = await _mining.claimMining();
 
       if (result.isEmpty) {
@@ -686,6 +738,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _remaining = Duration.zero;
         _displayDeadline = null;
         _adsWatched = 0;
+        _rate = MiningService.defaultMiningRate;
       });
 
       await _loadProfile();
@@ -708,10 +761,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _busy = false;
-        _claimAdWaiting = false;
       });
     }
   }
+
+  // ============================================================
+  // BOOST ADS
+  //
+  // Only available while mining is ACTIVE.
+  // Maximum 7 per 24-hour session.
+  // Each successful Boost Ad = +0.10 FAN/H.
+  // ============================================================
 
   Future<void> _watchAd() async {
     if (_busy || !_isMining) {
@@ -1167,25 +1227,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final isReadyToClaim = _canClaim && !_isMining;
 
     final buttonText =
-        _claimAdWaiting
-            ? 'WATCHING AD...'
-            : _busy && isReadyToClaim
-                ? 'PROCESSING...'
-                : isReadyToClaim
-                    ? 'READY TO CLAIM'
-                    : _isMining
-                        ? _formatDuration(_remaining)
+        _busy && isReadyToClaim
+            ? 'PROCESSING...'
+            : isReadyToClaim
+                ? 'READY TO CLAIM'
+                : _isMining
+                    ? _formatDuration(_remaining)
+                    : _busy
+                        ? 'WATCHING ACTIVATION AD...'
                         : 'START MINING';
 
     final buttonIcon =
-        _claimAdWaiting
-            ? Icons.ondemand_video_rounded
-            : _busy && isReadyToClaim
-                ? Icons.hourglass_top_rounded
-                : isReadyToClaim
-                    ? Icons.card_giftcard_rounded
-                    : _isMining
-                        ? Icons.timer_rounded
+        _busy && isReadyToClaim
+            ? Icons.hourglass_top_rounded
+            : isReadyToClaim
+                ? Icons.card_giftcard_rounded
+                : _isMining
+                    ? Icons.timer_rounded
+                    : _busy
+                        ? Icons.ondemand_video_rounded
                         : Icons.construction_rounded;
 
     return _card(
@@ -1301,10 +1361,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          if (_claimAdWaiting) ...[
+          if (!_isMining && !_canClaim) ...[
             const SizedBox(height: 9),
             const Text(
-              'Please complete the rewarded ad. Your FAN will be claimed after the ad is verified.',
+              'Watch 1 activation ad before starting a new 24-hour mining session.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: deepPurple,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (_isMining) ...[
+            const SizedBox(height: 9),
+            const Text(
+              'Mining is active. You can watch up to 7 Boost Ads.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: deepPurple,
@@ -1458,8 +1530,8 @@ class _HomeScreenState extends State<HomeScreen> {
             alignment: Alignment.centerRight,
             child: Text(
               _isMining
-                  ? '7 ads maximum per session'
-                  : 'Start mining before watching ads',
+                  ? '7 Boost Ads maximum per session'
+                  : 'Start mining before watching Boost Ads',
               style: TextStyle(
                 color: Colors.grey.shade600,
                 fontSize: 10,
