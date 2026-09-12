@@ -21,7 +21,7 @@ class LevelPlayAdsService
 
   static const String appKeyAndroid = '27f58cf85';
 
-  static const String rewardedAdUnitId = 'z69e4f6g6emi98mbu';
+  static const String rewardedAdUnitId = 'z69e4fg6emi98mbu';
 
   static const String rewardedPlacementName = 'Default';
 
