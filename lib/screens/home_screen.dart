@@ -39,7 +39,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isMining = false;
   bool _canClaim = false;
-
   bool _readyToStart = false;
 
   double _fan = 0.0;
@@ -49,23 +48,20 @@ class _HomeScreenState extends State<HomeScreen> {
   /*
    * IMPORTANT:
    *
-   * This is ONLY the server-provided remaining time.
+   * This is server-provided remaining time.
    *
-   * We intentionally DO NOT store a DateTime deadline here.
-   *
-   * The countdown therefore does not depend on:
+   * We NEVER calculate it from:
    *
    *   DateTime.now()
    *   phone date
    *   phone clock
-   *   changing phone date/time
+   *   ends_at - local time
+   *
+   * The server gives us remaining_seconds.
+   * The UI only decreases that value visually.
    */
   Duration _remaining = Duration.zero;
 
-  /*
-   * Used to prevent multiple server refreshes from racing
-   * with the countdown.
-   */
   int _miningLoadGeneration = 0;
 
   int _adsWatched = 0;
@@ -88,10 +84,18 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  // ============================================================
+  // ADS INITIALIZATION
+  // ============================================================
+
   Future<void> _initializeAds() async {
     try {
       await _ads.initialize();
-    } catch (_) {}
+    } catch (_) {
+      // Ads are optional for activation.
+      // Mining must still be able to start if activation ad
+      // is unavailable.
+    }
   }
 
   // ============================================================
@@ -161,25 +165,20 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
   // MINING LOAD
   //
-  // IMPORTANT:
+  // SERVER remaining_seconds IS AUTHORITATIVE.
   //
-  // SERVER remaining_seconds is the source of truth.
-  //
-  // We do NOT convert it into:
-  //
-  // DateTime.now().add(...)
-  //
-  // Therefore phone date/time cannot break the countdown.
+  // No phone DateTime is used.
   // ============================================================
 
   Future<void> _loadMining() async {
     final generation = ++_miningLoadGeneration;
 
     /*
-     * After successful claim, keep the screen on START MINING.
+     * After a successful claim, keep the screen on
+     * START MINING.
      *
-     * This prevents an old backend response from bringing the
-     * previous completed session back to READY TO CLAIM.
+     * Do not allow an old completed session response
+     * to put the UI back into READY TO CLAIM.
      */
     if (_readyToStart) {
       if (!mounted) return;
@@ -201,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final data = await _mining.getActiveMining();
 
     /*
-     * Ignore an old response if another load has already started.
+     * Ignore stale server responses.
      */
     if (generation != _miningLoadGeneration) {
       return;
@@ -253,9 +252,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    // ------------------------------------------------------------
+    // ==========================================================
     // RATE
-    // ------------------------------------------------------------
+    // ==========================================================
 
     double rate = _toDouble(
       data['total_rate'] ??
@@ -275,28 +274,32 @@ class _HomeScreenState extends State<HomeScreen> {
       rate = MiningService.defaultMiningRate;
     }
 
-    // ------------------------------------------------------------
-    // ADS
-    // ------------------------------------------------------------
+    // ==========================================================
+    // BOOST ADS
+    // ==========================================================
 
-    final ads = _toInt(
+    var ads = _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
           data['ads_count'] ??
           data['daily_ads_watched'],
     );
 
-    // ------------------------------------------------------------
+    if (ads < 0) {
+      ads = 0;
+    }
+
+    if (ads > maxAds) {
+      ads = maxAds;
+    }
+
+    // ==========================================================
     // SERVER REMAINING TIME
     //
-    // THIS IS THE IMPORTANT FIX.
+    // DO NOT USE ends_at.
     //
-    // We use the number returned by Supabase directly.
-    //
-    // No DateTime.now()
-    // No phone date
-    // No local deadline.
-    // ------------------------------------------------------------
+    // DO NOT USE DateTime.now().
+    // ==========================================================
 
     var serverRemaining = _toInt(
       data['remaining_seconds'] ??
@@ -312,9 +315,9 @@ class _HomeScreenState extends State<HomeScreen> {
       serverRemaining = miningDuration.inSeconds;
     }
 
-    // ------------------------------------------------------------
+    // ==========================================================
     // SERVER REWARD
-    // ------------------------------------------------------------
+    // ==========================================================
 
     final serverReward = _toDouble(
       data['reward'] ??
@@ -323,9 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
           data['reward_amount'],
     );
 
-    // ------------------------------------------------------------
-    // DETERMINE ACTIVE STATE
-    // ------------------------------------------------------------
+    // ==========================================================
+    // ACTIVE STATE
+    // ==========================================================
 
     bool active = false;
 
@@ -341,31 +344,20 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    /*
-     * If the server says the session is active but remaining time
-     * is zero, we do NOT create a local 24-hour session.
-     *
-     * We simply keep the server result authoritative.
-     *
-     * The next refresh will determine whether it is claimable.
-     */
     final finalCanClaim =
         !alreadyClaimed &&
         !active &&
         (serverClaimable || statusIsClaimable);
 
-    // ------------------------------------------------------------
-    // REWARD CALCULATION
+    // ==========================================================
+    // DISPLAY REWARD
     //
-    // Uses server remaining seconds.
-    // No DateTime.now().
-    // ------------------------------------------------------------
+    // Uses only server remaining_seconds.
+    // ==========================================================
 
     double liveReward = serverReward;
 
-    if (liveReward <= 0 &&
-        active &&
-        serverRemaining >= 0) {
+    if (liveReward <= 0 && active) {
       final elapsedSeconds =
           miningDuration.inSeconds - serverRemaining;
 
@@ -383,12 +375,12 @@ class _HomeScreenState extends State<HomeScreen> {
       _isMining = active;
       _canClaim = finalCanClaim;
       _rate = rate;
-      _remaining = Duration(seconds: serverRemaining);
+      _remaining = Duration(
+        seconds: serverRemaining,
+      );
       _sessionReward =
           liveReward < 0 ? 0.0 : liveReward;
-      _adsWatched = ads
-          .clamp(0, maxAds)
-          .toInt();
+      _adsWatched = ads;
     });
 
     if (_isMining) {
@@ -484,9 +476,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return true;
     }
 
-    // ------------------------------------------------------------
+    // ==========================================================
     // SERVER REMAINING TIME
-    // ------------------------------------------------------------
+    // ==========================================================
 
     var serverRemaining = _toInt(
       data['remaining_seconds'] ??
@@ -519,17 +511,26 @@ class _HomeScreenState extends State<HomeScreen> {
           data['rate'],
     );
 
-    final ads = _toInt(
+    var ads = _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
           data['ads_count'] ??
           data['daily_ads_watched'],
     );
 
+    if (ads < 0) {
+      ads = 0;
+    }
+
+    if (ads > maxAds) {
+      ads = maxAds;
+    }
+
     final reward = _toDouble(
       data['reward'] ??
           data['session_reward'] ??
-          data['earned_reward'],
+          data['earned_reward'] ??
+          data['reward_amount'],
     );
 
     if (!mounted) {
@@ -539,16 +540,17 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer?.cancel();
 
     setState(() {
-      _remaining =
-          Duration(seconds: serverRemaining);
+      _remaining = Duration(
+        seconds: serverRemaining,
+      );
 
       if (returnedRate > 0) {
         _rate = returnedRate;
+      } else {
+        _rate = MiningService.defaultMiningRate;
       }
 
-      _adsWatched = ads
-          .clamp(0, maxAds)
-          .toInt();
+      _adsWatched = ads;
 
       _isMining = active;
 
@@ -573,14 +575,14 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
   // SERVER-AUTHORITATIVE COUNTDOWN
   //
-  // IMPORTANT FIX:
+  // IMPORTANT:
   //
-  // There is NO DateTime.now() here.
+  // NO DateTime.now()
+  // NO phone clock
+  // NO phone date
+  // NO ends_at calculation
   //
-  // We simply subtract one second from the server-provided
-  // remaining duration every second.
-  //
-  // Therefore changing phone date/time cannot break it.
+  // We only count down from the server snapshot.
   // ============================================================
 
   void _startTimer() {
@@ -601,29 +603,24 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_remaining <= Duration.zero) {
           _timer?.cancel();
 
-          /*
-           * Do not invent another session.
-           *
-           * Ask the server what the real mining state is.
-           */
-          unawaited(_refreshAfterTimer());
+          unawaited(
+            _refreshAfterTimer(),
+          );
 
           return;
         }
 
         final nextRemaining =
-            _remaining - const Duration(seconds: 1);
+            _remaining -
+                const Duration(seconds: 1);
 
         final safeRemaining =
             nextRemaining.isNegative
                 ? Duration.zero
                 : nextRemaining;
 
-        /*
-         * Calculate display reward from remaining seconds.
-         * Again, no phone clock is involved.
-         */
-        double displayReward = _sessionReward;
+        double displayReward =
+            _sessionReward;
 
         final elapsedSeconds =
             miningDuration.inSeconds -
@@ -639,13 +636,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _sessionReward = displayReward;
         });
 
-        /*
-         * When it reaches zero, immediately ask the server.
-         */
         if (safeRemaining == Duration.zero) {
           _timer?.cancel();
 
-          unawaited(_refreshAfterTimer());
+          unawaited(
+            _refreshAfterTimer(),
+          );
         }
       },
     );
@@ -669,6 +665,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // START MINING
+  //
+  // FLOW:
+  //
+  // CLAIM
+  //   ↓
+  // START MINING
+  //   ↓
+  // TRY ACTIVATION AD
+  //   ↓
+  // IF AD AVAILABLE:
+  //       USER COMPLETES AD
+  //       ↓
+  //       REWARD CALLBACK
+  //       ↓
+  //       start_mining()
+  //
+  // IF AD NOT AVAILABLE:
+  //       after activation timeout
+  //       ↓
+  //       start_mining() DIRECTLY
+  //
+  // Activation Ad is NOT a Boost Ad.
+  // It never adds +0.10 FAN/H.
   // ============================================================
 
   Future<void> _startMining() async {
@@ -683,14 +702,23 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       try {
         await _ads.initialize();
-      } catch (_) {}
+      } catch (_) {
+        // Activation is optional.
+      }
 
       if (!mounted) return;
 
       _message(
-        'Watch 1 activation ad to start your 24-hour mining session.',
+        'Checking for activation ad...',
       );
 
+      /*
+       * The LevelPlay service has a short activation-ad
+       * readiness window.
+       *
+       * If no ad is available, showActivationAd()
+       * returns false and we continue directly to mining.
+       */
       final activationCompleted =
           Completer<bool>();
 
@@ -712,29 +740,53 @@ class _HomeScreenState extends State<HomeScreen> {
         onAdClosed: () {},
       );
 
+      // --------------------------------------------------------
+      // NO ACTIVATION AD AVAILABLE
+      //
+      // This is the ONLY case where activation can be bypassed.
+      // --------------------------------------------------------
+
       if (!shown) {
-        throw Exception(
-          'Activation ad is not ready. Please wait a moment and try again.',
+        if (!mounted) return;
+
+        _message(
+          'No activation ad is available. Starting mining without it...',
+        );
+      } else {
+        // ------------------------------------------------------
+        // ACTIVATION AD WAS SHOWN.
+        //
+        // Now reward must be confirmed.
+        // ------------------------------------------------------
+
+        if (!mounted) return;
+
+        _message(
+          'Activation ad shown. Complete it to start mining.',
+        );
+
+        final rewarded =
+            await activationCompleted.future.timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => false,
+        );
+
+        if (!rewarded) {
+          throw Exception(
+            'Activation ad was not completed. Mining has not started.',
+          );
+        }
+
+        if (!mounted) return;
+
+        _message(
+          'Activation ad completed. Starting your 24-hour mining session...',
         );
       }
 
-      final rewarded =
-          await activationCompleted.future.timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => false,
-      );
-
-      if (!rewarded) {
-        throw Exception(
-          'Activation ad was not completed. Mining has not started.',
-        );
-      }
-
-      if (!mounted) return;
-
-      _message(
-        'Activation ad completed. Starting your 24-hour mining session...',
-      );
+      // ========================================================
+      // START MINING ON SERVER
+      // ========================================================
 
       final result =
           await _mining.startMining();
@@ -788,7 +840,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final applied =
-          await _applyMiningResult(result);
+          await _applyMiningResult(
+        result,
+      );
 
       if (!applied) {
         await _loadMining();
@@ -852,7 +906,9 @@ class _HomeScreenState extends State<HomeScreen> {
           'Your 24-hour mining session is complete and ready to claim.',
         );
       } else {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -865,6 +921,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // CLAIM MINING
+  //
+  // NO AD REQUIRED.
   // ============================================================
 
   Future<void> _claimMining() async {
@@ -910,6 +968,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _remaining = Duration.zero;
 
         _adsWatched = 0;
+
         _rate =
             MiningService.defaultMiningRate;
 
@@ -917,9 +976,11 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       /*
-       * Only reload balance.
+       * Only reload FAN balance.
        *
-       * Do NOT reload get_active_mining here.
+       * We deliberately do not immediately call get_active_mining()
+       * because the old completed session may still be returned
+       * during a race.
        */
       await _loadProfile();
 
@@ -930,7 +991,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } catch (e) {
       if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -943,6 +1006,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // BOOST ADS
+  //
+  // IMPORTANT:
+  //
+  // Boost is STRICT.
+  //
+  // User must:
+  //
+  // 1. Be actively mining.
+  // 2. Get a rewarded ad.
+  // 3. Complete the ad.
+  // 4. Reward callback occurs.
+  // 5. LevelPlayAdsService records/verifies it.
+  // 6. Server updates ads_watched.
+  //
+  // Only after server verification does this UI show
+  // the new boost.
   // ============================================================
 
   Future<void> _watchAd() async {
@@ -966,6 +1045,8 @@ class _HomeScreenState extends State<HomeScreen> {
         await _ads.initialize();
       } catch (_) {}
 
+      final oldCount = _adsWatched;
+
       final shown =
           await _ads.showRewardedAd(
         onRewarded: () {},
@@ -975,18 +1056,23 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!shown) {
         if (mounted) {
           _message(
-            'Rewarded ad is not ready. Please try again.',
+            'Rewarded ad is not ready. No boost was added.',
           );
         }
 
         return;
       }
 
-      final oldCount = _adsWatched;
-
+      /*
+       * The ad service only calls its successful reward callback
+       * after backend verification.
+       *
+       * We therefore wait for the server to expose the new
+       * verified ad count.
+       */
       var updated = false;
 
-      for (var i = 0; i < 10; i++) {
+      for (var i = 0; i < 12; i++) {
         await Future<void>.delayed(
           const Duration(milliseconds: 700),
         );
@@ -1009,16 +1095,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (updated) {
         _message(
-          'Ad completed. Your mining boost has been updated.',
+          'Ad verified successfully. +0.10 FAN/H boost added.',
         );
       } else {
         _message(
-          'Ad completed. Waiting for server verification. Please refresh in a moment.',
+          'Ad reward is still being verified. No boost was added yet.',
         );
       }
     } catch (e) {
       if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -1117,7 +1205,9 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadTasks();
     } catch (e) {
       if (mounted) {
-        _message(_error(e));
+        _message(
+          _error(e),
+        );
       }
     } finally {
       if (!mounted) return;
@@ -1156,7 +1246,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    unawaited(_loadKyc());
+    unawaited(
+      _loadKyc(),
+    );
   }
 
   // ============================================================
@@ -1173,8 +1265,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _load,
           child: _loading
               ? const Center(
-                  child:
-                      CircularProgressIndicator(
+                  child: CircularProgressIndicator(
                     color: primaryPurple,
                   ),
                 )
@@ -1467,7 +1558,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         _remaining,
                       )
                     : _busy
-                        ? 'WATCHING ACTIVATION AD...'
+                        ? 'STARTING MINING...'
                         : 'START MINING';
 
     final buttonIcon =
@@ -1618,8 +1709,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 9),
             Text(
               _readyToStart
-                  ? 'Press START MINING to watch the activation ad and begin a new 24-hour session.'
-                  : 'Watch 1 activation ad before starting a new 24-hour mining session.',
+                  ? 'An activation ad may appear before the new mining session starts. If no ad is available, mining will start automatically.'
+                  : 'Activation ad is optional. If no ad is available, the 24-hour mining session will start automatically.',
               textAlign:
                   TextAlign.center,
               style: const TextStyle(
@@ -1693,7 +1784,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Each ad adds +0.1 FAN/H',
+                      'Each verified ad adds +0.1 FAN/H',
                       style: TextStyle(
                         fontSize: 12,
                         color:
@@ -2074,7 +2165,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // COMMON UI
+  // COMMON CARD
   // ============================================================
 
   Widget _card({
@@ -2239,6 +2330,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$hours:$minutes:$seconds';
   }
 
+  // ============================================================
+  // FAN FORMAT
+  // ============================================================
+
   String _formatFan(double value) {
     if (value ==
         value.roundToDouble()) {
@@ -2325,6 +2420,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return text;
   }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void _message(String message) {
     if (!mounted ||
