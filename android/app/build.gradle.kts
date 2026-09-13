@@ -47,7 +47,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
 
-        // Required by flutter_local_notifications
         isCoreLibraryDesugaringEnabled = true
     }
 
@@ -88,7 +87,6 @@ dependencies {
 
     // ============================================================
     // LEVELPLAY / GOOGLE PLAY SERVICES
-    // Required by Unity LevelPlay mediation
     // ============================================================
 
     implementation(
@@ -101,6 +99,19 @@ dependencies {
 
     implementation(
         "com.google.android.gms:play-services-basement:18.3.0"
+    )
+
+    // ============================================================
+    // YANDEX ADS - UNITY LEVELPLAY ADAPTER
+    // Yandex adapter 5.14.0 uses Yandex Mobile Ads 8.4.0
+    // ============================================================
+
+    implementation(
+        "com.unity3d.ads-mediation:yandex-adapter:5.14.0"
+    )
+
+    implementation(
+        "com.yandex.android:mobileads:8.4.0"
     )
 
     // ============================================================
