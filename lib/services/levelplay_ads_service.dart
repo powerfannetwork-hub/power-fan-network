@@ -30,14 +30,14 @@ class LevelPlayAdsService
   static const Duration _initTimeout =
       Duration(seconds: 30);
 
-  // NEW:
-  // Lokacin da user ya danna START MINING,
-  // za mu jira Rewarded Ad ya yi ready.
   static const Duration _adReadyTimeout =
       Duration(seconds: 30);
 
   static const Duration _adReadyPollInterval =
       Duration(milliseconds: 500);
+
+  static const Duration _loadRetryDelay =
+      Duration(seconds: 5);
 
   final SupabaseClient _supabase =
       SupabaseService.client;
@@ -47,6 +47,9 @@ class LevelPlayAdsService
   bool _initialized = false;
   bool _initializing = false;
   bool _disposed = false;
+
+  bool _loadingAd = false;
+  Timer? _retryTimer;
 
   Completer<bool>? _initCompleter;
   Completer<bool>? _showCompleter;
@@ -238,10 +241,42 @@ class LevelPlayAdsService
       return;
     }
 
+    if (!_initialized) {
+      return;
+    }
+
     final ad = _rewardedAd;
 
     if (ad == null) {
       return;
+    }
+
+    if (_loadingAd) {
+      debugPrint(
+        'LEVELPLAY: rewarded ad load already in progress.',
+      );
+
+      return;
+    }
+
+    _loadingAd = true;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+
+    try {
+      final ready = await ad.isAdReady();
+
+      if (ready) {
+        debugPrint(
+          'LEVELPLAY: rewarded ad is already ready.',
+        );
+
+        return;
+      }
+    } catch (e) {
+      debugPrint(
+        'LEVELPLAY: ready check before load failed: $e',
+      );
     }
 
     try {
@@ -259,7 +294,54 @@ class LevelPlayAdsService
         'LEVELPLAY LOAD ERROR: $e',
       );
       debugPrint('$st');
+
+      _scheduleLoadRetry();
+    } finally {
+      _loadingAd = false;
     }
+  }
+
+  // ------------------------------------------------------------
+  // LOAD RETRY
+  // ------------------------------------------------------------
+
+  void _scheduleLoadRetry() {
+    if (_disposed) {
+      return;
+    }
+
+    if (!_initialized) {
+      return;
+    }
+
+    if (_rewardedAd == null) {
+      return;
+    }
+
+    if (_retryTimer != null &&
+        _retryTimer!.isActive) {
+      return;
+    }
+
+    debugPrint(
+      'LEVELPLAY: scheduling rewarded ad retry '
+      'in ${_loadRetryDelay.inSeconds}s.',
+    );
+
+    _retryTimer = Timer(
+      _loadRetryDelay,
+      () {
+        _retryTimer = null;
+
+        if (_disposed) {
+          return;
+        }
+
+        unawaited(
+          _loadRewardedAdInternal(),
+        );
+      },
+    );
   }
 
   // ------------------------------------------------------------
@@ -351,7 +433,6 @@ class LevelPlayAdsService
       return false;
     }
 
-    // First check.
     try {
       final alreadyReady =
           await ad.isAdReady();
@@ -369,21 +450,15 @@ class LevelPlayAdsService
       );
     }
 
-    // Ask LevelPlay to load it.
-    try {
-      debugPrint(
-        'LEVELPLAY: rewarded ad not ready. '
-        'Requesting load...',
-      );
+    debugPrint(
+      'LEVELPLAY: rewarded ad is not ready. '
+      'Requesting load...',
+    );
 
-      await ad.loadAd();
-    } catch (e) {
-      debugPrint(
-        'LEVELPLAY: load request failed: $e',
-      );
-    }
+    unawaited(
+      _loadRewardedAdInternal(),
+    );
 
-    // Wait and repeatedly check.
     final stopwatch = Stopwatch()..start();
 
     while (!_disposed &&
@@ -462,6 +537,15 @@ class LevelPlayAdsService
       return false;
     }
 
+    if (_showCompleter != null &&
+        !_showCompleter!.isCompleted) {
+      debugPrint(
+        'LEVELPLAY: another rewarded ad is already showing.',
+      );
+
+      return false;
+    }
+
     final initialized = await initialize();
 
     if (!initialized) {
@@ -536,37 +620,21 @@ class LevelPlayAdsService
         'LEVELPLAY: Activation Ad requested.',
       );
 
-      // IMPORTANT:
-      //
-      // Activation Ad does NOT require active mining.
-      //
-      // It is watched BEFORE start_mining().
-      //
-      // It does NOT:
-      // - record Boost Ad
-      // - call record_rewarded_ad
-      // - call verify_rewarded_ad
-      // - increase mining rate
-    }
-
-    // ----------------------------------------------------------
-    // PREVENT TWO ADS AT ONCE
-    // ----------------------------------------------------------
-
-    if (_showCompleter != null &&
-        !_showCompleter!.isCompleted) {
       debugPrint(
-        'LEVELPLAY: another rewarded ad is already showing.',
+        'LEVELPLAY: Activation Ad does not require active mining.',
       );
 
-      return false;
+      debugPrint(
+        'LEVELPLAY: Activation Ad does not record Boost reward.',
+      );
+
+      debugPrint(
+        'LEVELPLAY: Activation Ad does not increase mining rate.',
+      );
     }
 
     // ----------------------------------------------------------
-    // IMPORTANT NEW FIX
-    //
-    // Instead of immediately returning false when the ad
-    // is not ready, WAIT for it to become ready.
+    // WAIT FOR AD READY
     // ----------------------------------------------------------
 
     final ready =
@@ -590,7 +658,10 @@ class LevelPlayAdsService
       return false;
     }
 
-    // Final ready check immediately before show.
+    // ----------------------------------------------------------
+    // FINAL READY CHECK
+    // ----------------------------------------------------------
+
     try {
       final finalReady =
           await ad.isAdReady();
@@ -640,7 +711,8 @@ class LevelPlayAdsService
         placementName: placementName,
       );
 
-      final completer = _showCompleter;
+      final completer =
+          _showCompleter;
 
       if (completer == null) {
         return false;
@@ -746,11 +818,11 @@ class LevelPlayAdsService
         );
 
         debugPrint(
-          'LEVELPLAY: Activation Ad does NOT record a Boost reward.',
+          'LEVELPLAY: Activation Ad completed without Boost reward.',
         );
 
         debugPrint(
-          'LEVELPLAY: Activation Ad does NOT increase mining rate.',
+          'LEVELPLAY: Activation Ad completed without mining rate change.',
         );
 
         final callback = _onRewarded;
@@ -840,7 +912,7 @@ class LevelPlayAdsService
       }
 
       // --------------------------------------------------------
-      // VERIFY
+      // VERIFY BOOST REWARD
       // --------------------------------------------------------
 
       debugPrint(
@@ -867,6 +939,10 @@ class LevelPlayAdsService
 
         return;
       }
+
+      debugPrint(
+        'LEVELPLAY: Boost Ad verified successfully.',
+      );
 
       final callback = _onRewarded;
 
@@ -899,9 +975,10 @@ class LevelPlayAdsService
         return !success;
       }
 
-      final status = response['status']
-          ?.toString()
-          .toLowerCase();
+      final status =
+          response['status']
+              ?.toString()
+              .toLowerCase();
 
       if (status == 'error' ||
           status == 'failed' ||
@@ -940,7 +1017,8 @@ class LevelPlayAdsService
 
       if (response is List &&
           response.isNotEmpty) {
-        final first = response.first;
+        final first =
+            response.first;
 
         if (first is Map<String, dynamic>) {
           return first;
@@ -1122,7 +1200,7 @@ class LevelPlayAdsService
   }
 
   // ------------------------------------------------------------
-  // TRY FINISH
+  // TRY FINISH CURRENT AD
   // ------------------------------------------------------------
 
   void _tryFinishCurrentAd() {
@@ -1137,13 +1215,6 @@ class LevelPlayAdsService
         completer.isCompleted) {
       return;
     }
-
-    /*
-     * We finish only after:
-     *
-     * 1. LevelPlay has closed the ad
-     * 2. Reward callback has been processed
-     */
 
     if (!_adClosed) {
       return;
@@ -1204,8 +1275,11 @@ class LevelPlayAdsService
     LevelPlayAdInfo adInfo,
   ) {
     debugPrint(
-      'LEVELPLAY: rewarded ad loaded.',
+      'LEVELPLAY: rewarded ad loaded successfully.',
     );
+
+    _retryTimer?.cancel();
+    _retryTimer = null;
   }
 
   // ------------------------------------------------------------
@@ -1221,8 +1295,9 @@ class LevelPlayAdsService
       '${error.errorCode} - ${error.errorMessage}',
     );
 
-    // Idan fill bai samu ba, sai mu sake neman ad.
-    // Ba za mu kira start_mining() ba.
+    _loadingAd = false;
+
+    _scheduleLoadRetry();
   }
 
   // ------------------------------------------------------------
@@ -1384,10 +1459,6 @@ class LevelPlayAdsService
     _onRewarded = null;
     _onAdClosed = null;
 
-    /*
-     * Load next rewarded ad after current ad finishes.
-     */
-
     Future<void>.delayed(
       const Duration(milliseconds: 500),
       () {
@@ -1436,6 +1507,9 @@ class LevelPlayAdsService
 
     _disposed = true;
 
+    _retryTimer?.cancel();
+    _retryTimer = null;
+
     _clearAdState();
 
     final ad =
@@ -1457,5 +1531,6 @@ class LevelPlayAdsService
 
     _initialized = false;
     _initializing = false;
+    _loadingAd = false;
   }
 }
