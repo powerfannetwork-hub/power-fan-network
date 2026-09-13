@@ -34,9 +34,8 @@ class LevelPlayAdsService
       Duration(seconds: 30);
 
   // Activation Ad is optional.
-  // We give LevelPlay about 12 seconds to find an ad.
-  // If no ad is available after that, showActivationAd()
-  // returns false so HomeScreen can continue with mining.
+  // If no ad is available after this period, the caller
+  // may continue with mining without an activation ad.
   static const Duration _activationAdReadyTimeout =
       Duration(seconds: 12);
 
@@ -84,13 +83,17 @@ class LevelPlayAdsService
   bool _adClosed = false;
   bool _rewardProcessing = false;
 
-  // LevelPlay reward was received and our server/client
-  // processing was successful.
+  // IMPORTANT:
+  //
+  // This does NOT mean the database reward has been granted.
+  //
+  // For Boost Ads, the actual +0.10 FAN/H reward is granted only
+  // by the LevelPlay S2S -> Supabase backend flow.
+  //
+  // This flag only means that the local LevelPlay reward callback
+  // was received and the ad event can be considered completed
+  // from the SDK side.
   bool _rewardProcessingSucceeded = false;
-
-  // Used only to generate a unique reference without
-  // depending on the phone's DateTime.
-  int _adReferenceCounter = 0;
 
   // ------------------------------------------------------------
   // INITIALIZE
@@ -122,17 +125,35 @@ class LevelPlayAdsService
       return false;
     }
 
+    final user = _supabase.auth.currentUser;
+
+    if (user == null) {
+      debugPrint(
+        'LEVELPLAY: cannot initialize without authenticated user.',
+      );
+
+      return false;
+    }
+
     _initializing = true;
     _initCompleter = Completer<bool>();
 
     try {
       debugPrint(
-        'LEVELPLAY: initializing SDK...',
+        'LEVELPLAY: initializing SDK for user ${user.id}...',
       );
 
+      // IMPORTANT:
+      //
+      // The Supabase user ID is passed to LevelPlay.
+      //
+      // The LevelPlay S2S callback uses the user identifier to
+      // connect the rewarded event to the correct Power Fan
+      // Network account.
       final initRequest =
           LevelPlayInitRequest
               .builder(appKey)
+              .withUserId(user.id)
               .build();
 
       await LevelPlay.init(
@@ -629,11 +650,7 @@ class LevelPlayAdsService
         return false;
       }
 
-      // IMPORTANT:
-      //
-      // Do NOT use DateTime.now() here.
-      //
-      // The server's remaining_seconds is authoritative.
+      // Server time is authoritative.
       final remainingSeconds =
           _readInt(
         mining,
@@ -947,12 +964,14 @@ class LevelPlayAdsService
           'LEVELPLAY: Activation Ad completed.',
         );
 
-        // IMPORTANT:
         // Activation reward NEVER becomes Boost reward.
-        // It does NOT call record_rewarded_ad.
-        // It does NOT call verify_rewarded_ad.
-        // It does NOT add +0.10 FAN/H.
-
+        //
+        // No rewarded-ad RPC.
+        // No verification RPC.
+        // No +0.10 FAN/H.
+        //
+        // The caller uses this callback only to know that
+        // the activation ad was completed.
         debugPrint(
           'LEVELPLAY: Activation Ad completed '
           'without Boost reward.',
@@ -996,7 +1015,7 @@ class LevelPlayAdsService
   }
 
   // ------------------------------------------------------------
-  // BOOST SERVER REWARD
+  // BOOST REWARD
   // ------------------------------------------------------------
 
   Future<void> _processBoostReward() async {
@@ -1009,8 +1028,8 @@ class LevelPlayAdsService
 
     if (user == null) {
       debugPrint(
-        'LEVELPLAY: cannot record Boost Ad. '
-        'User is not authenticated.',
+        'LEVELPLAY: Boost reward callback received, '
+        'but user is no longer authenticated.',
       );
 
       _rewardProcessingSucceeded = false;
@@ -1018,167 +1037,83 @@ class LevelPlayAdsService
       return;
     }
 
-    try {
-      // --------------------------------------------------------
-      // UNIQUE REFERENCE
-      // --------------------------------------------------------
+    // IMPORTANT SECURITY RULE:
+    //
+    // DO NOT call:
+    //
+    //   record_rewarded_ad
+    //   verify_rewarded_ad
+    //
+    // from Flutter.
+    //
+    // Those old client RPCs are not the authoritative LevelPlay
+    // reward path.
+    //
+    // The real Boost reward path is:
+    //
+    // LevelPlay rewarded ad
+    //        ↓
+    // LevelPlay reward callback
+    //        ↓
+    // LevelPlay S2S callback
+    //        ↓
+    // Supabase Edge Function: levelplay-s2s
+    //        ↓
+    // record_levelplay_reward(user_id, event_id)
+    //        ↓
+    // ad_rewards
+    //        ↓
+    // +0.10 FAN/H
+    //
+    // Therefore Flutter must NOT fabricate an EVENT_ID and must
+    // NOT insert/verify the reward itself.
+    //
+    // HomeScreen can poll get_active_mining() after this callback
+    // and wait for the S2S result to appear.
 
-      _adReferenceCounter++;
+    debugPrint(
+      'LEVELPLAY: Boost reward callback received for '
+      'user ${user.id}.',
+    );
 
-      final adReference =
-          'levelplay_${user.id}_$_adReferenceCounter';
+    debugPrint(
+      'LEVELPLAY: Boost reward is now waiting for '
+      'server-side LevelPlay S2S verification.',
+    );
 
-      // --------------------------------------------------------
-      // RECORD BOOST AD
-      // --------------------------------------------------------
+    debugPrint(
+      'LEVELPLAY: Flutter will NOT call '
+      'record_rewarded_ad.',
+    );
 
-      debugPrint(
-        'LEVELPLAY: recording Boost Ad on server...',
-      );
+    debugPrint(
+      'LEVELPLAY: Flutter will NOT call '
+      'verify_rewarded_ad.',
+    );
 
-      final recordResponse =
-          await _supabase.rpc(
-        'record_rewarded_ad',
-        params: {
-          'p_ad_reference':
-              adReference,
-        },
-      );
+    debugPrint(
+      'LEVELPLAY: Flutter will NOT fabricate an EVENT_ID.',
+    );
 
-      debugPrint(
-        'LEVELPLAY record_rewarded_ad response: '
-        '$recordResponse',
-      );
+    // This means the LevelPlay SDK reward callback was received.
+    //
+    // It does NOT mean +0.10 FAN/H has already been granted.
+    _rewardProcessingSucceeded = true;
 
-      if (_responseIsFailure(
-        recordResponse,
-      )) {
+    final callback =
+        _onRewarded;
+
+    if (callback != null) {
+      try {
+        callback();
+      } catch (e) {
         debugPrint(
-          'LEVELPLAY: server rejected Boost Ad.',
+          'LEVELPLAY Boost callback error: $e',
         );
 
         _rewardProcessingSucceeded = false;
-
-        return;
-      }
-
-      final adId =
-          _extractAdId(
-        recordResponse,
-      );
-
-      if (adId == null) {
-        debugPrint(
-          'LEVELPLAY: server did not return ad_id. '
-          'Boost verification skipped.',
-        );
-
-        _rewardProcessingSucceeded = false;
-
-        return;
-      }
-
-      // --------------------------------------------------------
-      // VERIFY BOOST REWARD
-      // --------------------------------------------------------
-
-      debugPrint(
-        'LEVELPLAY: verifying Boost Ad...',
-      );
-
-      final verifyResponse =
-          await _supabase.rpc(
-        'verify_rewarded_ad',
-        params: {
-          'p_ad_id': adId,
-        },
-      );
-
-      debugPrint(
-        'LEVELPLAY verify_rewarded_ad response: '
-        '$verifyResponse',
-      );
-
-      if (_responseIsFailure(
-        verifyResponse,
-      )) {
-        debugPrint(
-          'LEVELPLAY: Boost verification failed.',
-        );
-
-        _rewardProcessingSucceeded = false;
-
-        return;
-      }
-
-      // --------------------------------------------------------
-      // SUCCESS
-      // --------------------------------------------------------
-
-      debugPrint(
-        'LEVELPLAY: Boost Ad verified successfully.',
-      );
-
-      debugPrint(
-        'LEVELPLAY: +0.10 FAN/H may now be reflected '
-        'by the server.',
-      );
-
-      _rewardProcessingSucceeded = true;
-
-      final callback =
-          _onRewarded;
-
-      if (callback != null) {
-        try {
-          callback();
-        } catch (e) {
-          debugPrint(
-            'LEVELPLAY Boost callback error: $e',
-          );
-
-          _rewardProcessingSucceeded = false;
-        }
-      }
-    } catch (e, st) {
-      debugPrint(
-        'LEVELPLAY BOOST SERVER ERROR: $e',
-      );
-
-      debugPrint('$st');
-
-      _rewardProcessingSucceeded = false;
-    }
-  }
-
-  // ------------------------------------------------------------
-  // RESPONSE FAILURE
-  // ------------------------------------------------------------
-
-  bool _responseIsFailure(
-    dynamic response,
-  ) {
-    if (response is Map) {
-      final success =
-          response['success'];
-
-      if (success is bool) {
-        return !success;
-      }
-
-      final status =
-          response['status']
-              ?.toString()
-              .toLowerCase();
-
-      if (status == 'error' ||
-          status == 'failed' ||
-          status == 'failure') {
-        return true;
       }
     }
-
-    return false;
   }
 
   // ------------------------------------------------------------
@@ -1232,56 +1167,6 @@ class LevelPlayAdsService
 
       return null;
     }
-  }
-
-  // ------------------------------------------------------------
-  // EXTRACT AD ID
-  // ------------------------------------------------------------
-
-  dynamic _extractAdId(
-    dynamic response,
-  ) {
-    if (response is Map) {
-      final direct =
-          response['ad_id'] ??
-              response['id'];
-
-      if (direct != null) {
-        return direct;
-      }
-
-      final data =
-          response['data'];
-
-      if (data is Map) {
-        return data['ad_id'] ??
-            data['id'];
-      }
-
-      if (data is List &&
-          data.isNotEmpty) {
-        final first =
-            data.first;
-
-        if (first is Map) {
-          return first['ad_id'] ??
-              first['id'];
-        }
-      }
-    }
-
-    if (response is List &&
-        response.isNotEmpty) {
-      final first =
-          response.first;
-
-      if (first is Map) {
-        return first['ad_id'] ??
-            first['id'];
-      }
-    }
-
-    return null;
   }
 
   // ------------------------------------------------------------
@@ -1408,15 +1293,16 @@ class LevelPlayAdsService
       return;
     }
 
-    // Reward received, but server processing is still running.
+    // Reward callback received, but local processing is still
+    // running.
     if (_rewardProcessing) {
       return;
     }
 
-    // Reward received but server processing failed.
+    // Local processing failed.
     if (!_rewardProcessingSucceeded) {
       debugPrint(
-        'LEVELPLAY: reward processing was not successful.',
+        'LEVELPLAY: reward callback processing was not successful.',
       );
 
       completer.complete(false);
@@ -1427,7 +1313,13 @@ class LevelPlayAdsService
     }
 
     debugPrint(
-      'LEVELPLAY: rewarded ad completed successfully.',
+      'LEVELPLAY: rewarded ad completed successfully '
+      'from SDK callback perspective.',
+    );
+
+    debugPrint(
+      'LEVELPLAY: actual Boost balance/rate update remains '
+      'server-side through LevelPlay S2S.',
     );
 
     completer.complete(true);
