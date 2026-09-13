@@ -175,8 +175,6 @@ class MiningService {
   // ============================================================
   // START MINING
   //
-  // IMPORTANT:
-  //
   // Activation Ad is handled by HomeScreen /
   // LevelPlayAdsService.
   //
@@ -206,9 +204,7 @@ class MiningService {
 
     final response = await _client.rpc('start_mining');
 
-    final result = _prepareMiningResult(response);
-
-    return result;
+    return _prepareMiningResult(response);
   }
 
   // ============================================================
@@ -229,6 +225,22 @@ class MiningService {
 
   // ============================================================
   // PREPARE / NORMALIZE MINING RESULT
+  //
+  // IMPORTANT:
+  //
+  // remaining_seconds MUST COME FROM THE SERVER.
+  //
+  // DO NOT calculate it using:
+  //
+  //   DateTime.now()
+  //
+  // DO NOT calculate it from:
+  //
+  //   ends_at - DateTime.now()
+  //
+  // The phone's date/time can be changed by the user.
+  //
+  // The backend/server remains authoritative.
   // ============================================================
 
   Map<String, dynamic> _prepareMiningResult(dynamic raw) {
@@ -238,6 +250,10 @@ class MiningService {
       return <String, dynamic>{};
     }
 
+    // ------------------------------------------------------------
+    // STATUS
+    // ------------------------------------------------------------
+
     final status = _value(
       data,
       [
@@ -246,6 +262,10 @@ class MiningService {
       ],
       '',
     ).toString().trim().toLowerCase();
+
+    // ------------------------------------------------------------
+    // ACTIVE
+    // ------------------------------------------------------------
 
     final active = _toBool(
       _value(
@@ -258,6 +278,10 @@ class MiningService {
         false,
       ),
     );
+
+    // ------------------------------------------------------------
+    // CLAIMABLE
+    // ------------------------------------------------------------
 
     final claimable = _toBool(
       _value(
@@ -275,6 +299,10 @@ class MiningService {
       ),
     );
 
+    // ------------------------------------------------------------
+    // EXPIRED
+    // ------------------------------------------------------------
+
     final expired = _toBool(
       _value(
         data,
@@ -285,6 +313,10 @@ class MiningService {
         false,
       ),
     );
+
+    // ------------------------------------------------------------
+    // CLAIMED
+    // ------------------------------------------------------------
 
     final claimed =
         _toBool(
@@ -299,6 +331,14 @@ class MiningService {
         ) ||
         status == 'claimed';
 
+    // ------------------------------------------------------------
+    // START TIME
+    //
+    // This is metadata only.
+    //
+    // It MUST NOT be used to calculate countdown.
+    // ------------------------------------------------------------
+
     final startedAt = _toDateTime(
       _value(
         data,
@@ -310,6 +350,14 @@ class MiningService {
         ],
       ),
     );
+
+    // ------------------------------------------------------------
+    // END TIME
+    //
+    // This is metadata only.
+    //
+    // It MUST NOT be used to calculate countdown.
+    // ------------------------------------------------------------
 
     final endsAt = _toDateTime(
       _value(
@@ -324,7 +372,22 @@ class MiningService {
       ),
     );
 
-    int remainingSeconds = _toInt(
+    // ------------------------------------------------------------
+    // SERVER REMAINING TIME
+    //
+    // THIS IS THE IMPORTANT FIX.
+    //
+    // We trust:
+    //
+    //   remaining_seconds
+    //
+    // returned by Supabase/Postgres.
+    //
+    // We NEVER replace it with a calculation based on
+    // the phone's DateTime.
+    // ------------------------------------------------------------
+
+    var remainingSeconds = _toInt(
       _value(
         data,
         [
@@ -338,18 +401,6 @@ class MiningService {
 
     if (remainingSeconds < 0) {
       remainingSeconds = 0;
-    }
-
-    // ------------------------------------------------------------
-    // SERVER END TIME IS AUTHORITATIVE
-    // ------------------------------------------------------------
-
-    if (endsAt != null) {
-      final now = DateTime.now().toUtc();
-
-      final calculated = endsAt.difference(now).inSeconds;
-
-      remainingSeconds = calculated > 0 ? calculated : 0;
     }
 
     // ------------------------------------------------------------
@@ -393,7 +444,8 @@ class MiningService {
     // ------------------------------------------------------------
     // BOOST ADS ONLY
     //
-    // Activation Ad is NOT counted.
+    // Activation Ad is NEVER counted here.
+    // Only verified Boost Ads belong to this count.
     // ------------------------------------------------------------
 
     var adsWatched = _toInt(
@@ -421,7 +473,7 @@ class MiningService {
     // NORMALIZED RESULT
     // ------------------------------------------------------------
 
-    final normalized = <String, dynamic>{
+    return <String, dynamic>{
       ...data,
 
       'status': status,
@@ -434,10 +486,14 @@ class MiningService {
 
       'claimed': claimed,
 
+      // Keep timestamps only as server metadata.
       'started_at': startedAt?.toIso8601String(),
 
       'ends_at': endsAt?.toIso8601String(),
 
+      // SERVER AUTHORITATIVE VALUE.
+      //
+      // No DateTime.now() calculation here.
       'remaining_seconds': remainingSeconds,
 
       'rate': rate,
@@ -452,12 +508,12 @@ class MiningService {
 
       'ads_watched': adsWatched,
     };
-
-    return normalized;
   }
 
   // ============================================================
   // CHECK IF CURRENT USER IS MINING
+  //
+  // Uses server-provided active + remaining_seconds.
   // ============================================================
 
   Future<bool> isMining() async {
@@ -667,28 +723,17 @@ class MiningService {
   //
   // CLAIM DOES NOT REQUIRE AN AD.
   //
-  // IMPORTANT FIX:
+  // Flow:
   //
-  // Supabase may return:
-  //
-  //   success: true
-  //
-  // OR:
-  //
-  //   claimed: true
-  //
-  // OR:
-  //
-  //   status: claimed
-  //
-  // We normalize all successful claim responses to:
-  //
-  //   success: true
-  //   claimed: true
-  //   already_claimed: true
-  //
-  // This makes HomeScreen reliably switch to
-  // START MINING after a successful claim.
+  // 24h complete
+  //      ↓
+  // CLAIM
+  //      ↓
+  // START MINING
+  //      ↓
+  // Activation Ad attempt
+  //      ↓
+  // New 24h session
   // ============================================================
 
   Future<Map<String, dynamic>> claimMining() async {
@@ -729,7 +774,8 @@ class MiningService {
       '',
     ).toString().trim();
 
-    final claimed = _toBool(
+    final claimed =
+        _toBool(
           _value(
             data,
             [
@@ -745,7 +791,8 @@ class MiningService {
         status == 'claim_success' ||
         status == 'claimed_successfully';
 
-    final alreadyClaimed = _toBool(
+    final alreadyClaimed =
+        _toBool(
           _value(
             data,
             [
@@ -769,7 +816,10 @@ class MiningService {
       false,
     );
 
-    final success = explicitSuccess || claimed || alreadyClaimed;
+    final success =
+        explicitSuccess ||
+        claimed ||
+        alreadyClaimed;
 
     return <String, dynamic>{
       ...data,
