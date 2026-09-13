@@ -103,15 +103,11 @@ dependencies {
 
     // ============================================================
     // YANDEX ADS - UNITY LEVELPLAY ADAPTER
-    // Yandex adapter 5.14.0 uses Yandex Mobile Ads 8.4.0
+    // Adapter 5.14.0 includes the compatible Yandex Ads SDK 8.4.0
     // ============================================================
 
     implementation(
         "com.unity3d.ads-mediation:yandex-adapter:5.14.0"
-    )
-
-    implementation(
-        "com.yandex.android:mobileads:8.4.0"
     )
 
     // ============================================================
