@@ -40,10 +40,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isMining = false;
   bool _canClaim = false;
 
-  // IMPORTANT:
-  // This becomes true immediately after a successful claim.
-  // It prevents an old/stale get_active_mining response
-  // from putting the screen back on READY TO CLAIM.
+  // After a successful claim, this keeps the UI on START MINING
+  // and prevents a stale mining response from showing READY TO CLAIM.
   bool _readyToStart = false;
 
   double _fan = 0.0;
@@ -350,6 +348,25 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['claimed']) ||
         _toBool(data['is_claimed']) ||
         status == 'claimed';
+
+    if (alreadyClaimed) {
+      if (mounted) {
+        _timer?.cancel();
+
+        setState(() {
+          _isMining = false;
+          _canClaim = false;
+          _readyToStart = true;
+          _remaining = Duration.zero;
+          _displayDeadline = null;
+          _sessionReward = 0.0;
+          _adsWatched = 0;
+          _rate = MiningService.defaultMiningRate;
+        });
+      }
+
+      return true;
+    }
 
     if (claimRequired && !serverActive && !alreadyClaimed) {
       if (mounted) {
@@ -701,15 +718,7 @@ class _HomeScreenState extends State<HomeScreen> {
   //
   // After successful claim, DO NOT call _loadMining().
   //
-  // The backend may still return the just-claimed old session
-  // through get_active_mining(). If we call _loadMining() here,
-  // the UI goes back to READY TO CLAIM.
-  //
-  // Instead, successful claim immediately changes the UI to:
-  //
-  // START MINING
-  //
-  // Then the user must watch the Activation Ad.
+  // The screen immediately becomes START MINING.
   // ============================================================
 
   Future<void> _claimMining() async {
@@ -744,13 +753,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      /*
-       * SUCCESSFUL CLAIM
-       *
-       * Do NOT call _loadMining() here.
-       *
-       * Put the screen directly into START MINING state.
-       */
+      // ========================================================
+      // SUCCESSFUL CLAIM
+      //
+      // DO NOT CALL:
+      //
+      // await _loadMining();
+      //
+      // The old session may still be returned by the backend.
+      // Keep the UI directly on START MINING.
+      // ========================================================
+
       setState(() {
         _sessionReward = 0.0;
 
@@ -766,10 +779,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _readyToStart = true;
       });
 
-      /*
-       * Only reload the user's FAN balance.
-       * We deliberately do NOT reload get_active_mining().
-       */
+      // Only reload FAN balance.
+      // We deliberately do NOT reload get_active_mining().
       await _loadProfile();
 
       if (!mounted) return;
