@@ -24,23 +24,23 @@ class LevelPlayAdsService
 
   static const int maxAdsPerSession = 7;
 
-  static const Duration _showTimeout =
-      Duration(seconds: 90);
+  static const Duration _showTimeout = Duration(seconds: 90);
 
-  static const Duration _initTimeout =
-      Duration(seconds: 30);
+  static const Duration _initTimeout = Duration(seconds: 30);
 
-  static const Duration _adReadyTimeout =
-      Duration(seconds: 30);
+  static const Duration _adReadyTimeout = Duration(seconds: 30);
 
   static const Duration _adReadyPollInterval =
       Duration(milliseconds: 500);
 
-  static const Duration _loadRetryDelay =
-      Duration(seconds: 5);
+  static const Duration _loadRetryDelay = Duration(seconds: 5);
 
-  final SupabaseClient _supabase =
-      SupabaseService.client;
+  // Some LevelPlay versions can send onAdClosed before onAdRewarded.
+  // Keep the ad state alive briefly so a late reward callback is accepted.
+  static const Duration _rewardCallbackGracePeriod =
+      Duration(seconds: 8);
+
+  final SupabaseClient _supabase = SupabaseService.client;
 
   LevelPlayRewardedAd? _rewardedAd;
 
@@ -50,6 +50,7 @@ class LevelPlayAdsService
 
   bool _loadingAd = false;
   Timer? _retryTimer;
+  Timer? _rewardGraceTimer;
 
   Completer<bool>? _initCompleter;
   Completer<bool>? _showCompleter;
@@ -62,6 +63,16 @@ class LevelPlayAdsService
   bool _rewardGrantedForCurrentAd = false;
   bool _adClosed = false;
   bool _rewardProcessing = false;
+
+  // This is separate from _rewardGrantedForCurrentAd.
+  //
+  // _rewardGrantedForCurrentAd means LevelPlay told us that the ad
+  // was rewarded.
+  //
+  // _rewardProcessingSucceeded means our application accepted the
+  // reward successfully. For Boost Ads this requires server
+  // record + verification.
+  bool _rewardProcessingSucceeded = false;
 
   // ------------------------------------------------------------
   // INITIALIZE
@@ -690,11 +701,15 @@ class LevelPlayAdsService
     // PREPARE STATE
     // ----------------------------------------------------------
 
+    _rewardGraceTimer?.cancel();
+    _rewardGraceTimer = null;
+
     _currentMode = mode;
 
     _rewardGrantedForCurrentAd = false;
     _adClosed = false;
     _rewardProcessing = false;
+    _rewardProcessingSucceeded = false;
 
     _onRewarded = onRewarded;
     _onAdClosed = onAdClosed;
@@ -779,6 +794,11 @@ class LevelPlayAdsService
       return;
     }
 
+    // IMPORTANT:
+    // Cancel the close grace timer because the reward has now arrived.
+    _rewardGraceTimer?.cancel();
+    _rewardGraceTimer = null;
+
     _rewardGrantedForCurrentAd = true;
 
     unawaited(
@@ -800,6 +820,7 @@ class LevelPlayAdsService
     }
 
     _rewardProcessing = true;
+    _rewardProcessingSucceeded = false;
 
     try {
       final mode = _currentMode;
@@ -825,6 +846,8 @@ class LevelPlayAdsService
           'LEVELPLAY: Activation Ad completed without mining rate change.',
         );
 
+        _rewardProcessingSucceeded = true;
+
         final callback = _onRewarded;
 
         if (callback != null) {
@@ -834,6 +857,8 @@ class LevelPlayAdsService
             debugPrint(
               'LEVELPLAY activation callback error: $e',
             );
+
+            _rewardProcessingSucceeded = false;
           }
         }
 
@@ -869,6 +894,8 @@ class LevelPlayAdsService
         'User is not authenticated.',
       );
 
+      _rewardProcessingSucceeded = false;
+
       return;
     }
 
@@ -896,6 +923,8 @@ class LevelPlayAdsService
           'LEVELPLAY: server rejected Boost Ad.',
         );
 
+        _rewardProcessingSucceeded = false;
+
         return;
       }
 
@@ -907,6 +936,8 @@ class LevelPlayAdsService
           'LEVELPLAY: server did not return ad_id. '
           'Boost verification skipped.',
         );
+
+        _rewardProcessingSucceeded = false;
 
         return;
       }
@@ -937,12 +968,16 @@ class LevelPlayAdsService
           'LEVELPLAY: Boost verification failed.',
         );
 
+        _rewardProcessingSucceeded = false;
+
         return;
       }
 
       debugPrint(
         'LEVELPLAY: Boost Ad verified successfully.',
       );
+
+      _rewardProcessingSucceeded = true;
 
       final callback = _onRewarded;
 
@@ -953,6 +988,8 @@ class LevelPlayAdsService
           debugPrint(
             'LEVELPLAY Boost callback error: $e',
           );
+
+          _rewardProcessingSucceeded = false;
         }
       }
     } catch (e, st) {
@@ -960,6 +997,8 @@ class LevelPlayAdsService
         'LEVELPLAY BOOST SERVER ERROR: $e',
       );
       debugPrint('$st');
+
+      _rewardProcessingSucceeded = false;
     }
   }
 
@@ -1130,6 +1169,26 @@ class LevelPlayAdsService
         return data['ad_id'] ??
             data['id'];
       }
+
+      if (data is List &&
+          data.isNotEmpty) {
+        final first = data.first;
+
+        if (first is Map) {
+          return first['ad_id'] ??
+              first['id'];
+        }
+      }
+    }
+
+    if (response is List &&
+        response.isNotEmpty) {
+      final first = response.first;
+
+      if (first is Map) {
+        return first['ad_id'] ??
+            first['id'];
+      }
     }
 
     return null;
@@ -1200,6 +1259,62 @@ class LevelPlayAdsService
   }
 
   // ------------------------------------------------------------
+  // START REWARD GRACE TIMER
+  // ------------------------------------------------------------
+
+  void _startRewardGraceTimer() {
+    _rewardGraceTimer?.cancel();
+
+    if (_disposed) {
+      return;
+    }
+
+    if (_rewardGrantedForCurrentAd) {
+      _tryFinishCurrentAd();
+
+      return;
+    }
+
+    debugPrint(
+      'LEVELPLAY: ad closed before reward callback. '
+      'Waiting ${_rewardCallbackGracePeriod.inSeconds}s '
+      'for a late reward callback.',
+    );
+
+    _rewardGraceTimer = Timer(
+      _rewardCallbackGracePeriod,
+      () {
+        _rewardGraceTimer = null;
+
+        if (_disposed) {
+          return;
+        }
+
+        if (_rewardGrantedForCurrentAd) {
+          _tryFinishCurrentAd();
+
+          return;
+        }
+
+        debugPrint(
+          'LEVELPLAY: no reward callback received during '
+          'the grace period.',
+        );
+
+        final completer =
+            _showCompleter;
+
+        if (completer != null &&
+            !completer.isCompleted) {
+          completer.complete(false);
+        }
+
+        _resetAfterAd();
+      },
+    );
+  }
+
+  // ------------------------------------------------------------
   // TRY FINISH CURRENT AD
   // ------------------------------------------------------------
 
@@ -1216,20 +1331,46 @@ class LevelPlayAdsService
       return;
     }
 
+    // The ad has not closed yet.
+    //
+    // We cannot finish the show operation until LevelPlay closes it.
     if (!_adClosed) {
       return;
     }
 
+    // The ad closed, but reward callback has not arrived yet.
+    //
+    // IMPORTANT:
+    // Do NOT fail immediately here.
+    // LevelPlay may deliver onAdRewarded after onAdClosed.
     if (!_rewardGrantedForCurrentAd) {
+      _startRewardGraceTimer();
+
+      return;
+    }
+
+    // Reward callback arrived, but server/client reward processing
+    // is still running.
+    if (_rewardProcessing) {
+      return;
+    }
+
+    // Reward callback arrived but processing failed.
+    if (!_rewardProcessingSucceeded) {
+      debugPrint(
+        'LEVELPLAY: reward processing was not successful.',
+      );
+
       completer.complete(false);
+
       _resetAfterAd();
 
       return;
     }
 
-    if (_rewardProcessing) {
-      return;
-    }
+    debugPrint(
+      'LEVELPLAY: rewarded ad completed successfully.',
+    );
 
     completer.complete(true);
 
@@ -1263,6 +1404,9 @@ class LevelPlayAdsService
       }
     }
 
+    // Do not immediately complete false.
+    //
+    // LevelPlay can send the reward callback after close.
     _tryFinishCurrentAd();
   }
 
@@ -1294,6 +1438,15 @@ class LevelPlayAdsService
       'LEVELPLAY: rewarded ad load failed: '
       '${error.errorCode} - ${error.errorMessage}',
     );
+
+    // 509 means mediation currently has no fill.
+    // Keep retrying; this is not treated as a successful ad.
+    if (error.errorCode == 509) {
+      debugPrint(
+        'LEVELPLAY: no fill (509). '
+        'There is currently no rewarded ad available.',
+      );
+    }
 
     _loadingAd = false;
 
@@ -1448,6 +1601,9 @@ class LevelPlayAdsService
   // ------------------------------------------------------------
 
   void _resetAfterAd() {
+    _rewardGraceTimer?.cancel();
+    _rewardGraceTimer = null;
+
     _showCompleter = null;
 
     _currentMode = null;
@@ -1455,6 +1611,7 @@ class LevelPlayAdsService
     _rewardGrantedForCurrentAd = false;
     _adClosed = false;
     _rewardProcessing = false;
+    _rewardProcessingSucceeded = false;
 
     _onRewarded = null;
     _onAdClosed = null;
@@ -1476,6 +1633,9 @@ class LevelPlayAdsService
   // ------------------------------------------------------------
 
   void _clearAdState() {
+    _rewardGraceTimer?.cancel();
+    _rewardGraceTimer = null;
+
     final completer =
         _showCompleter;
 
@@ -1491,6 +1651,7 @@ class LevelPlayAdsService
     _rewardGrantedForCurrentAd = false;
     _adClosed = false;
     _rewardProcessing = false;
+    _rewardProcessingSucceeded = false;
 
     _onRewarded = null;
     _onAdClosed = null;
@@ -1509,6 +1670,9 @@ class LevelPlayAdsService
 
     _retryTimer?.cancel();
     _retryTimer = null;
+
+    _rewardGraceTimer?.cancel();
+    _rewardGraceTimer = null;
 
     _clearAdState();
 
