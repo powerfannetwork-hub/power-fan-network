@@ -64,55 +64,34 @@ class DailySocialTask {
     return DailySocialTask(
       id: (map['id'] ?? '').toString(),
       title: (map['title'] ?? '').toString(),
-      description:
-          (map['description'] ?? '').toString(),
-      url: (map['task_url'] ??
-              map['url'] ??
-              '')
-          .toString(),
-      platform:
-          (map['platform'] ?? '')
-              .toString()
-              .toLowerCase()
-              .trim(),
-      rewardFan:
-          reward > 0 ? reward : 10.0,
-      claimed:
-          _toBool(map['claimed']),
-      canClaim:
-          _toBool(map['can_claim']),
-      followVerified:
-          _toBool(map['follow_verified']),
-      likeVerified:
-          _toBool(map['like_verified']),
-      commentVerified:
-          _toBool(map['comment_verified']),
-      shareVerified:
-          _toBool(map['share_verified']),
-      joinVerified:
-          _toBool(map['join_verified']),
-      subscribeVerified:
-          _toBool(map['subscribe_verified']),
-      requiresFollow:
-          _toBool(map['requires_follow']),
-      requiresLike:
-          _toBool(map['requires_like']),
-      requiresComment:
-          _toBool(map['requires_comment']),
-      requiresShare:
-          _toBool(map['requires_share']),
-      requiresJoin:
-          _toBool(map['requires_join']),
-      requiresSubscribe:
-          _toBool(map['requires_subscribe']),
-      taskDate:
-          _toDate(map['task_date']),
-      postExternalId:
-          _toNullableString(
+      description: (map['description'] ?? '').toString(),
+      url: (map['task_url'] ?? map['url'] ?? '').toString(),
+      platform: (map['platform'] ?? '')
+          .toString()
+          .toLowerCase()
+          .trim(),
+      rewardFan: reward > 0 ? reward : 10.0,
+      claimed: _toBool(map['claimed']),
+      canClaim: _toBool(map['can_claim']),
+      followVerified: _toBool(map['follow_verified']),
+      likeVerified: _toBool(map['like_verified']),
+      commentVerified: _toBool(map['comment_verified']),
+      shareVerified: _toBool(map['share_verified']),
+      joinVerified: _toBool(map['join_verified']),
+      subscribeVerified: _toBool(map['subscribe_verified']),
+      requiresFollow: _toBool(map['requires_follow']),
+      requiresLike: _toBool(map['requires_like']),
+      requiresComment: _toBool(map['requires_comment']),
+      requiresShare: _toBool(map['requires_share']),
+      requiresJoin: _toBool(map['requires_join']),
+      requiresSubscribe: _toBool(map['requires_subscribe']),
+      taskDate: _toDate(map['task_date']),
+      postExternalId: _toNullableString(
         map['post_external_id'],
       ),
-      postPublishedAt:
-          _toDate(map['post_published_at']),
+      postPublishedAt: _toDate(
+        map['post_published_at'],
+      ),
     );
   }
 
@@ -140,8 +119,7 @@ class DailySocialTask {
       return value != 0;
     }
 
-    final text =
-        value?.toString().toLowerCase().trim();
+    final text = value?.toString().toLowerCase().trim();
 
     return text == 'true' ||
         text == '1' ||
@@ -154,8 +132,7 @@ class DailySocialTask {
       return null;
     }
 
-    final text =
-        value.toString().trim();
+    final text = value.toString().trim();
 
     if (text.isEmpty) {
       return null;
@@ -164,15 +141,12 @@ class DailySocialTask {
     return DateTime.tryParse(text);
   }
 
-  static String? _toNullableString(
-    dynamic value,
-  ) {
+  static String? _toNullableString(dynamic value) {
     if (value == null) {
       return null;
     }
 
-    final text =
-        value.toString().trim();
+    final text = value.toString().trim();
 
     if (text.isEmpty) {
       return null;
@@ -187,33 +161,27 @@ class DailySocialTask {
   }
 
   bool get allRequiredActionsVerified {
-    if (requiresFollow &&
-        !followVerified) {
+    if (requiresFollow && !followVerified) {
       return false;
     }
 
-    if (requiresLike &&
-        !likeVerified) {
+    if (requiresLike && !likeVerified) {
       return false;
     }
 
-    if (requiresComment &&
-        !commentVerified) {
+    if (requiresComment && !commentVerified) {
       return false;
     }
 
-    if (requiresShare &&
-        !shareVerified) {
+    if (requiresShare && !shareVerified) {
       return false;
     }
 
-    if (requiresJoin &&
-        !joinVerified) {
+    if (requiresJoin && !joinVerified) {
       return false;
     }
 
-    if (requiresSubscribe &&
-        !subscribeVerified) {
+    if (requiresSubscribe && !subscribeVerified) {
       return false;
     }
 
@@ -351,8 +319,7 @@ class SocialTaskService {
           continue;
         }
 
-        final task =
-            DailySocialTask.fromMap(
+        final task = DailySocialTask.fromMap(
           Map<String, dynamic>.from(item),
         );
 
@@ -378,8 +345,7 @@ class SocialTaskService {
   Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
-    final cleanTaskId =
-        taskId.trim();
+    final cleanTaskId = taskId.trim();
 
     if (cleanTaskId.isEmpty) {
       throw Exception(
@@ -407,16 +373,13 @@ class SocialTaskService {
         );
       }
 
-      final data =
-          Map<String, dynamic>.from(
+      final data = Map<String, dynamic>.from(
         response,
       );
 
-      final success =
-          data['success'];
+      final success = data['success'];
 
-      if (success is bool &&
-          !success) {
+      if (success is bool && !success) {
         throw Exception(
           (data['message'] ??
                   data['error'] ??
@@ -440,8 +403,7 @@ class SocialTaskService {
   Future<bool> openTaskUrl(
     String url,
   ) async {
-    final cleanUrl =
-        url.trim();
+    final cleanUrl = url.trim();
 
     if (cleanUrl.isEmpty) {
       return false;
@@ -467,16 +429,14 @@ class SocialTaskService {
     try {
       return await launchUrl(
         uri,
-        mode:
-            LaunchMode.externalApplication,
+        mode: LaunchMode.externalApplication,
       );
     } catch (_) {
       return false;
     }
   }
 
-  Future<Map<String, dynamic>>
-      verifyAndClaim({
+  Future<Map<String, dynamic>> verifyAndClaim({
     required String taskId,
   }) async {
     return claimReward(
@@ -484,12 +444,10 @@ class SocialTaskService {
     );
   }
 
-  Future<Map<String, dynamic>>
-      claimReward({
+  Future<Map<String, dynamic>> claimReward({
     required String taskId,
   }) async {
-    final cleanTaskId =
-        taskId.trim();
+    final cleanTaskId = taskId.trim();
 
     if (cleanTaskId.isEmpty) {
       throw Exception(
@@ -499,7 +457,7 @@ class SocialTaskService {
 
     try {
       final response = await _client.rpc(
-        'claim_daily_social_reward',
+        'claim_social_task',
         params: {
           'p_task_id': cleanTaskId,
         },
@@ -517,16 +475,13 @@ class SocialTaskService {
         );
       }
 
-      final data =
-          Map<String, dynamic>.from(
+      final data = Map<String, dynamic>.from(
         response,
       );
 
-      final success =
-          data['success'];
+      final success = data['success'];
 
-      if (success is bool &&
-          !success) {
+      if (success is bool && !success) {
         throw Exception(
           (data['message'] ??
                   data['error'] ??
