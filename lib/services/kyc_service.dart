@@ -1,793 +1,698 @@
-import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class ProfileScreen extends StatelessWidget {
-  final String? name;
-  final String? email;
-  final String? profileImageUrl;
-  final double fanBalance;
-  final double afamBalance;
-  final int activeReferrals;
+class KycStatus {
+final bool available;
+final bool comingSoon;
+final bool migrationAvailable;
 
-  final int checkInDays;
-  final int boostDays;
-  final bool faceVerificationUnlocked;
-  final bool faceVerified;
+final int checkInDays;
+final int boostDays;
 
-  const ProfileScreen({
-    super.key,
-    this.name,
-    this.email,
-    this.profileImageUrl,
-    this.fanBalance = 0.0,
-    this.afamBalance = 0.0,
-    this.activeReferrals = 0,
-    this.checkInDays = 0,
-    this.boostDays = 0,
-    this.faceVerificationUnlocked = false,
-    this.faceVerified = false,
-  });
+final bool checkedInToday;
+final bool boostedToday;
 
-  static const Color primaryPurple = Color(0xFF3B159B);
-  static const Color deepPurple = Color(0xFF241064);
-  static const Color successGreen = Color(0xFF159B61);
+final bool faceVerificationUnlocked;
+final bool faceVerified;
+final bool faceVerificationStarted;
 
-  String get displayName {
-    final value = name?.trim() ?? '';
-    return value.isEmpty ? 'POWER FAN User' : value;
-  }
+const KycStatus({
+required this.available,
+required this.comingSoon,
+required this.migrationAvailable,
+required this.checkInDays,
+required this.boostDays,
+required this.checkedInToday,
+required this.boostedToday,
+required this.faceVerificationUnlocked,
+required this.faceVerified,
+required this.faceVerificationStarted,
+});
 
-  String get displayEmail {
-    final value = email?.trim() ?? '';
-    return value.isEmpty ? 'No email available' : value;
-  }
+factory KycStatus.initial() {
+return const KycStatus(
+available: false,
+comingSoon: false,
+migrationAvailable: false,
+checkInDays: 0,
+boostDays: 0,
+checkedInToday: false,
+boostedToday: false,
+faceVerificationUnlocked: false,
+faceVerified: false,
+faceVerificationStarted: false,
+);
+}
 
-  bool get requirementsComplete {
-    return checkInProgress >= 30 && boostProgress >= 30;
-  }
+factory KycStatus.fromMap(
+Map<String, dynamic> map,
+) {
+final int checkInDays = _toInt(
+map['kyc_checkin_days'] ??
+map['checkin_days'],
+);
 
-  bool get effectiveFaceVerificationUnlocked {
-    return faceVerificationUnlocked || requirementsComplete;
-  }
+final int boostDays = _toInt(  
+  map['kyc_boost_days'] ??  
+      map['boost_days'],  
+);  
 
-  String get kycStatus {
-    if (faceVerified) {
-      return 'Face Verified';
-    }
+final bool faceUnlocked = _toBool(  
+  map['kyc_face_verification_unlocked'] ??  
+      map['face_verification_unlocked'] ??  
+      map['face_unlocked'],  
+);  
 
-    if (effectiveFaceVerificationUnlocked) {
-      return 'Ready for Face Verification';
-    }
+final bool faceVerified = _toBool(  
+  map['kyc_face_verified'] ??  
+      map['face_verified'] ??  
+      map['verified'],  
+);  
 
-    return 'Coming Soon';
-  }
+final bool faceStarted = _toBool(  
+  map['face_verification_started'] ??  
+      map['face_verification_started_at'] != null,  
+);  
 
-  Color get kycStatusColor {
-    if (faceVerified) {
-      return successGreen;
-    }
+final bool requirementsComplete =  
+    checkInDays >= 30 &&  
+    boostDays >= 30;  
 
-    if (effectiveFaceVerificationUnlocked) {
-      return primaryPurple;
-    }
+return KycStatus(  
+  available:  
+      requirementsComplete ||  
+      faceUnlocked ||  
+      faceVerified,  
+  comingSoon: _toBool(  
+    map['coming_soon'],  
+  ),  
+  migrationAvailable: _toBool(  
+    map['migration_available'] ??  
+        map['migrationAvailable'],  
+  ),  
+  checkInDays:  
+      checkInDays.clamp(0, 30),  
+  boostDays:  
+      boostDays.clamp(0, 30),  
+  checkedInToday: _toBool(  
+    map['checked_in_today'] ??  
+        map['checkedInToday'],  
+  ),  
+  boostedToday: _toBool(  
+    map['boosted_today'] ??  
+        map['boostedToday'],  
+  ),  
+  faceVerificationUnlocked:  
+      requirementsComplete ||  
+      faceUnlocked ||  
+      faceVerified,  
+  faceVerified: faceVerified,  
+  faceVerificationStarted:  
+      faceStarted,  
+);
 
-    return Colors.orange;
-  }
+}
 
-  int get checkInProgress {
-    if (checkInDays < 0) return 0;
-    if (checkInDays > 30) return 30;
-    return checkInDays;
-  }
+bool get requirementsComplete {
+return checkInDays >= 30 &&
+boostDays >= 30;
+}
 
-  int get boostProgress {
-    if (boostDays < 0) return 0;
-    if (boostDays > 30) return 30;
-    return boostDays;
-  }
+bool get canStartFaceVerification {
+return requirementsComplete &&
+faceVerificationUnlocked &&
+!faceVerified &&
+!faceVerificationStarted;
+}
 
-  double get referralMiningBonus {
-    return activeReferrals * 0.02;
-  }
+bool get isVerified => faceVerified;
 
-  bool get hasProfileImage {
-    final url = profileImageUrl?.trim() ?? '';
-    return url.isNotEmpty;
-  }
+double get checkInProgress {
+return (checkInDays / 30)
+.clamp(0.0, 1.0);
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F8FC),
-      appBar: AppBar(
-        title: const Text(
-          'Profile',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: deepPurple,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: primaryPurple,
-          onRefresh: () async {
-            await Future<void>.delayed(
-              const Duration(milliseconds: 300),
-            );
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                _buildProfileHeader(),
-                const SizedBox(height: 16),
-                _buildBalances(),
-                const SizedBox(height: 16),
-                _buildAccountInfo(),
-                const SizedBox(height: 16),
-                _buildKycSection(),
-                const SizedBox(height: 16),
-                _buildReferralInfo(),
-                const SizedBox(height: 16),
-                _buildMigrationInfo(),
-                const SizedBox(height: 16),
-                _buildSecurityInfo(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+double get boostProgress {
+return (boostDays / 30)
+.clamp(0.0, 1.0);
+}
 
-  Widget _buildProfileHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            primaryPurple,
-            deepPurple,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        children: [
-          _buildProfilePhoto(),
-          const SizedBox(height: 12),
-          Text(
-            displayName,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            displayEmail,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.80),
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.verified_user,
-                  size: 15,
-                  color: Colors.white,
-                ),
-                SizedBox(width: 5),
-                Text(
-                  'POWER FAN NETWORK',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+String get statusLabel {
+if (faceVerified) {
+return 'KYC VERIFIED';
+}
 
-  Widget _buildProfilePhoto() {
-    return Container(
-      width: 104,
-      height: 104,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.45),
-          width: 2,
-        ),
-      ),
-      child: ClipOval(
-        child: hasProfileImage
-            ? Image.network(
-                profileImageUrl!.trim(),
-                width: 98,
-                height: 98,
-                fit: BoxFit.cover,
-                errorBuilder: (
-                  context,
-                  error,
-                  stackTrace,
-                ) {
-                  return _buildInitialAvatar();
-                },
-                loadingBuilder: (
-                  context,
-                  child,
-                  loadingProgress,
-                ) {
-                  if (loadingProgress == null) {
-                    return child;
-                  }
+if (requirementsComplete &&  
+    faceVerificationUnlocked) {  
+  return 'KYC READY';  
+}  
 
-                  return Container(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 25,
-                      height: 25,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
-                    ),
-                  );
-                },
-              )
-            : _buildInitialAvatar(),
-      ),
-    );
-  }
+return '30-Day KYC Requirement';
 
-  Widget _buildInitialAvatar() {
-    return Container(
-      width: 98,
-      height: 98,
-      alignment: Alignment.center,
-      color: Colors.white.withValues(alpha: 0.15),
-      child: Text(
-        _initials(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 30,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
+}
 
-  String _initials() {
-    final value = displayName.trim();
+String get verificationMethod {
+return 'Live Face Verification';
+}
 
-    if (value.isEmpty) {
-      return 'PF';
-    }
+KycStatus copyWith({
+bool? available,
+bool? comingSoon,
+bool? migrationAvailable,
+int? checkInDays,
+int? boostDays,
+bool? checkedInToday,
+bool? boostedToday,
+bool? faceVerificationUnlocked,
+bool? faceVerified,
+bool? faceVerificationStarted,
+}) {
+return KycStatus(
+available:
+available ?? this.available,
+comingSoon:
+comingSoon ?? this.comingSoon,
+migrationAvailable:
+migrationAvailable ??
+this.migrationAvailable,
+checkInDays:
+checkInDays ?? this.checkInDays,
+boostDays:
+boostDays ?? this.boostDays,
+checkedInToday:
+checkedInToday ??
+this.checkedInToday,
+boostedToday:
+boostedToday ??
+this.boostedToday,
+faceVerificationUnlocked:
+faceVerificationUnlocked ??
+this.faceVerificationUnlocked,
+faceVerified:
+faceVerified ?? this.faceVerified,
+faceVerificationStarted:
+faceVerificationStarted ??
+this.faceVerificationStarted,
+);
+}
 
-    final parts = value.split(RegExp(r'\s+'));
+static int _toInt(dynamic value) {
+if (value == null) return 0;
 
-    if (parts.length == 1) {
-      final text = parts.first;
+if (value is int) {  
+  return value;  
+}  
 
-      return text
-          .substring(
-            0,
-            text.length > 2 ? 2 : text.length,
-          )
-          .toUpperCase();
-    }
+if (value is num) {  
+  return value.toInt();  
+}  
 
-    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-  }
+return int.tryParse(  
+      value.toString(),  
+    ) ??  
+    0;
 
-  Widget _buildBalances() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildBalanceCard(
-            title: 'FAN Balance',
-            value: fanBalance.toStringAsFixed(4),
-            suffix: 'FAN',
-            icon: Icons.bolt,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildBalanceCard(
-            title: 'AFAM Balance',
-            value: afamBalance.toStringAsFixed(4),
-            suffix: 'AFAM',
-            icon: Icons.account_balance_wallet,
-          ),
-        ),
-      ],
-    );
-  }
+}
 
-  Widget _buildBalanceCard({
-    required String title,
-    required String value,
-    required String suffix,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 21,
-            color: primaryPurple,
-          ),
-          const SizedBox(height: 9),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 10,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            suffix,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: primaryPurple,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+static bool _toBool(dynamic value) {
+if (value == null) return false;
 
-  Widget _buildAccountInfo() {
-    return _buildSection(
-      title: 'Account Information',
-      icon: Icons.person_outline,
-      children: [
-        _buildInfoRow(
-          icon: Icons.person,
-          title: 'Name',
-          value: displayName,
-        ),
-        _buildInfoRow(
-          icon: Icons.email_outlined,
-          title: 'Email',
-          value: displayEmail,
-        ),
-        _buildInfoRow(
-          icon: Icons.shield_outlined,
-          title: 'Account Status',
-          value: 'Active',
-          valueColor: successGreen,
-        ),
-      ],
-    );
-  }
+if (value is bool) {  
+  return value;  
+}  
 
-  Widget _buildKycSection() {
-    final checkInComplete = checkInProgress >= 30;
-    final boostComplete = boostProgress >= 30;
-    final requirementsComplete =
-        checkInComplete && boostComplete;
+if (value is num) {  
+  return value != 0;  
+}  
 
-    return _buildSection(
-      title: 'KYC Face Verification',
-      icon: Icons.face_retouching_natural,
-      children: [
-        _buildProgressRow(
-          icon: Icons.calendar_month,
-          title: 'Daily Check-in',
-          value: '$checkInProgress / 30 days',
-          progress: checkInProgress / 30,
-          completed: checkInComplete,
-        ),
-        _buildProgressRow(
-          icon: Icons.bolt,
-          title: 'Daily Boost',
-          value: '$boostProgress / 30 days',
-          progress: boostProgress / 30,
-          completed: boostComplete,
-        ),
-        _buildInfoRow(
-          icon: Icons.face,
-          title: 'Face Verification',
-          value: kycStatus,
-          valueColor: kycStatusColor,
-        ),
-        const SizedBox(height: 4),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: primaryPurple.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            requirementsComplete
-                ? 'KYC requirements completed. Face Verification is now unlocked.'
-                : 'KYC Face Verification becomes available after '
-                    '30 consecutive daily check-ins and at least one '
-                    'boost every day for 30 days.',
-            style: const TextStyle(
-              fontSize: 11,
-              color: Colors.black54,
-              height: 1.4,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+final String text =  
+    value.toString().toLowerCase().trim();  
 
-  Widget _buildProgressRow({
-    required IconData icon,
-    required String title,
-    required String value,
-    required double progress,
-    required bool completed,
-  }) {
-    final safeProgress = progress.clamp(0.0, 1.0);
+return text == 'true' ||  
+    text == '1' ||  
+    text == 'yes' ||  
+    text == 'verified';
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: Colors.grey.shade500,
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: completed
-                      ? successGreen
-                      : Colors.black87,
-                ),
-              ),
-              if (completed) ...[
-                const SizedBox(width: 5),
-                const Icon(
-                  Icons.check_circle,
-                  size: 16,
-                  color: successGreen,
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 7),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(
-              value: safeProgress,
-              minHeight: 6,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                completed
-                    ? successGreen
-                    : primaryPurple,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+}
+}
 
-  Widget _buildReferralInfo() {
-    return _buildSection(
-      title: 'Referral Information',
-      icon: Icons.people_outline,
-      children: [
-        _buildInfoRow(
-          icon: Icons.people,
-          title: 'Active Referrals',
-          value: '$activeReferrals',
-        ),
-        _buildInfoRow(
-          icon: Icons.bolt,
-          title: 'Mining Bonus',
-          value:
-              '+${referralMiningBonus.toStringAsFixed(2)} FAN/H',
-          valueColor: successGreen,
-        ),
-        _buildInfoRow(
-          icon: Icons.card_giftcard,
-          title: 'Your Referral Reward',
-          value: '5 FAN',
-        ),
-        _buildInfoRow(
-          icon: Icons.person_add_alt,
-          title: 'New User Reward',
-          value: '20 FAN',
-        ),
-      ],
-    );
-  }
+// ============================================================
+// MIGRATION STATUS
+// ============================================================
 
-  Widget _buildMigrationInfo() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: primaryPurple.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.swap_horiz,
-              color: primaryPurple,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Migration',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'FAN → AFAM',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  '100 FAN = 1 AFAM',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: primaryPurple,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Coming Soon',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 6,
-            ),
-            decoration: BoxDecoration(
-              color: primaryPurple.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'COMING SOON',
-              style: TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
-                color: primaryPurple,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class MigrationStatus {
+final bool success;
+final bool migrationOpen;
+final bool migrationAvailable;
+final bool faceVerified;
+final bool migrationCompleted;
 
-  Widget _buildSecurityInfo() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.security,
-            color: successGreen,
-            size: 22,
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Account Security',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 5),
-                Text(
-                  'POWER FAN NETWORK uses one-device-per-account '
-                  'protection to help prevent multiple accounts '
-                  'from being used on the same device.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+final double fanBalance;
+final double afamBalance;
+final double fanPerAfam;
 
-  Widget _buildSection({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: primaryPurple,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...children,
-        ],
-      ),
-    );
-  }
+final String message;
 
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String title,
-    required String value,
-    Color? valueColor,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 18,
-            color: Colors.grey.shade500,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-            ),
-          ),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: valueColor ?? Colors.black87,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+const MigrationStatus({
+required this.success,
+required this.migrationOpen,
+required this.migrationAvailable,
+required this.faceVerified,
+required this.migrationCompleted,
+required this.fanBalance,
+required this.afamBalance,
+required this.fanPerAfam,
+required this.message,
+});
+
+factory MigrationStatus.initial() {
+return const MigrationStatus(
+success: false,
+migrationOpen: false,
+migrationAvailable: false,
+faceVerified: false,
+migrationCompleted: false,
+fanBalance: 0,
+afamBalance: 0,
+fanPerAfam: 100,
+message: 'Migration is Coming Soon.',
+);
+}
+
+factory MigrationStatus.fromMap(
+Map<String, dynamic> map,
+) {
+return MigrationStatus(
+success: _toBool(map['success']),
+migrationOpen:
+_toBool(map['migration_open']),
+migrationAvailable:
+_toBool(map['migration_available']),
+faceVerified:
+_toBool(map['face_verified']),
+migrationCompleted:
+_toBool(map['migration_completed']),
+fanBalance:
+_toDouble(map['fan_balance']),
+afamBalance:
+_toDouble(map['afam_balance']),
+fanPerAfam:
+_toDouble(
+map['fan_per_afam'],
+) == 0
+? 100
+: _toDouble(
+map['fan_per_afam'],
+),
+message:
+map['message']?.toString() ??
+'Migration is Coming Soon.',
+);
+}
+
+static bool _toBool(dynamic value) {
+if (value is bool) return value;
+if (value is num) return value != 0;
+
+final text =  
+    value?.toString().toLowerCase().trim();  
+
+return text == 'true' ||  
+    text == '1' ||  
+    text == 'yes';
+
+}
+
+static double _toDouble(dynamic value) {
+if (value is num) {
+return value.toDouble();
+}
+
+return double.tryParse(  
+      value?.toString() ?? '',  
+    ) ??  
+    0.0;
+
+}
+}
+
+// ============================================================
+// KYC SERVICE
+// ============================================================
+
+class KycService {
+KycService({
+SupabaseClient? client,
+}) : _supabase =
+client ?? Supabase.instance.client;
+
+final SupabaseClient _supabase;
+
+// ==========================================================
+// KYC PROGRESS
+// ==========================================================
+
+Future<KycStatus> getProgress() async {
+final user =
+_supabase.auth.currentUser;
+
+if (user == null) {  
+  return KycStatus.initial();  
+}  
+
+try {  
+  final dynamic response =  
+      await _supabase.rpc(  
+    'get_kyc_progress',  
+  );  
+
+  if (response == null) {  
+    return KycStatus.initial();  
+  }  
+
+  Map<String, dynamic>? data;  
+
+  if (response  
+      is Map<String, dynamic>) {  
+    data = response;  
+  } else if (response is List &&  
+      response.isNotEmpty) {  
+    final first = response.first;  
+
+    if (first  
+        is Map<String, dynamic>) {  
+      data = first;  
+    } else if (first is Map) {  
+      data =  
+          Map<String, dynamic>.from(  
+        first,  
+      );  
+    }  
+  } else if (response is Map) {  
+    data =  
+        Map<String, dynamic>.from(  
+      response,  
+    );  
+  }  
+
+  if (data == null) {  
+    return KycStatus.initial();  
+  }  
+
+  return KycStatus.fromMap(data);  
+} on PostgrestException {  
+  rethrow;  
+}
+
+}
+
+// ==========================================================
+// DAILY CHECK-IN
+// ==========================================================
+
+Future<KycStatus>
+claimDailyCheckIn() async {
+await _supabase.rpc(
+'claim_daily_checkin',
+);
+
+return getProgress();
+
+}
+
+// ==========================================================
+// DAILY BOOST
+// ==========================================================
+
+Future<KycStatus>
+recordDailyBoost() async {
+await _supabase.rpc(
+'record_daily_boost',
+);
+
+return getProgress();
+
+}
+
+// ==========================================================
+// START FACE VERIFICATION
+// ==========================================================
+
+Future<String?>
+startFaceVerification() async {
+final user =
+_supabase.auth.currentUser;
+
+if (user == null) {  
+  throw Exception(  
+    'User is not signed in.',  
+  );  
+}  
+
+final status =  
+    await getProgress();  
+
+if (!status.requirementsComplete) {  
+  throw Exception(  
+    'Complete 30 days of daily check-ins and 30 days of daily boosts first.',  
+  );  
+}  
+
+if (!status.faceVerificationUnlocked) {  
+  throw Exception(  
+    'Face verification is not unlocked yet.',  
+  );  
+}  
+
+if (status.faceVerified) {  
+  return null;  
+}  
+
+final dynamic response =  
+    await _supabase.rpc(  
+  'start_face_verification',  
+);  
+
+if (response == null) {  
+  return null;  
+}  
+
+if (response is String) {  
+  return response;  
+}  
+
+if (response is Map) {  
+  final map =  
+      Map<String, dynamic>.from(  
+    response,  
+  );  
+
+  final value =  
+      map['verification_id'] ??  
+          map['id'] ??  
+          map['session_id'];  
+
+  return value?.toString();  
+}  
+
+if (response is List &&  
+    response.isNotEmpty) {  
+  final first =  
+      response.first;  
+
+  if (first is String) {  
+    return first;  
+  }  
+
+  if (first is Map) {  
+    final map =  
+        Map<String, dynamic>.from(  
+      first,  
+    );  
+
+    final value =  
+        map['verification_id'] ??  
+            map['id'] ??  
+            map['session_id'];  
+
+    return value?.toString();  
+  }  
+}  
+
+return null;
+
+}
+
+// ==========================================================
+// COMPLETE FACE VERIFICATION
+// ==========================================================
+
+Future<KycStatus>
+completeFaceVerification({
+required String verificationId,
+}) async {
+if (verificationId.trim().isEmpty) {
+throw Exception(
+'Invalid verification session.',
+);
+}
+
+await _supabase.rpc(  
+  'complete_face_verification',  
+  params: {  
+    'p_verification_id':  
+        verificationId,  
+  },  
+);  
+
+return getProgress();
+
+}
+
+// ==========================================================
+// MIGRATION STATUS
+// ==========================================================
+
+Future<MigrationStatus>
+getMigrationStatus() async {
+final user =
+_supabase.auth.currentUser;
+
+if (user == null) {  
+  return MigrationStatus.initial();  
+}  
+
+final dynamic response =  
+    await _supabase.rpc(  
+  'get_migration_status',  
+);  
+
+if (response == null) {  
+  return MigrationStatus.initial();  
+}  
+
+Map<String, dynamic>? data;  
+
+if (response  
+    is Map<String, dynamic>) {  
+  data = response;  
+} else if (response is Map) {  
+  data =  
+      Map<String, dynamic>.from(  
+    response,  
+  );  
+} else if (response is List &&  
+    response.isNotEmpty) {  
+  final first =  
+      response.first;  
+
+  if (first  
+      is Map<String, dynamic>) {  
+    data = first;  
+  } else if (first is Map) {  
+    data =  
+        Map<String, dynamic>.from(  
+      first,  
+    );  
+  }  
+}  
+
+if (data == null) {  
+  return MigrationStatus.initial();  
+}  
+
+return MigrationStatus.fromMap(  
+  data,  
+);
+
+}
+
+// ==========================================================
+// FAN → AFAM
+// ==========================================================
+
+Future<Map<String, dynamic>>
+migrateFanToAfam() async {
+final user =
+_supabase.auth.currentUser;
+
+if (user == null) {  
+  throw Exception(  
+    'Authentication required.',  
+  );  
+}  
+
+final dynamic response =  
+    await _supabase.rpc(  
+  'migrate_fan_to_afam',  
+);  
+
+if (response  
+    is Map<String, dynamic>) {  
+  return response;  
+}  
+
+if (response is Map) {  
+  return Map<String, dynamic>.from(  
+    response,  
+  );  
+}  
+
+throw Exception(  
+  'Invalid response from migrate_fan_to_afam.',  
+);
+
+}
+
+// ==========================================================
+// HELPERS
+// ==========================================================
+
+Future<bool>
+areRequirementsComplete() async {
+final status =
+await getProgress();
+
+return status.requirementsComplete;
+
+}
+
+Future<bool> isVerified() async {
+final status =
+await getProgress();
+
+return status.faceVerified;
+
+}
+
+Future<bool> checkedInToday() async {
+final status =
+await getProgress();
+
+return status.checkedInToday;
+
+}
+
+Future<bool> boostedToday() async {
+final status =
+await getProgress();
+
+return status.boostedToday;
+
+}
+
+Future<int> getCheckInDays() async {
+final status =
+await getProgress();
+
+return status.checkInDays;
+
+}
+
+Future<int> getBoostDays() async {
+final status =
+await getProgress();
+
+return status.boostDays;
+
+}
 }
