@@ -214,31 +214,75 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
 
-                const SizedBox(height: 38),
+                const SizedBox(height: 28),
 
-                // BRAND
-                Text(
-                  t.translate('brandName'),
-                  style: const TextStyle(
-                    color: Color(0xFF241064),
-                    fontSize: 25,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.4,
+                // ----------------------------------------------------------------
+                // POWER FAN NETWORK BRAND HEADER
+                // Only this top branding section is changed.
+                // The login form below remains unchanged.
+                // ----------------------------------------------------------------
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF241064),
+                        Color(0xFF3B159B),
+                        Color(0xFF5B16C9),
+                      ],
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(22),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'POWER FAN',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                          height: 1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'NETWORK',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                          height: 1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Mine FAN. Earn More.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(
+                            alpha: 0.92,
+                          ),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
-                const SizedBox(height: 3),
-
-                Text(
-                  t.translate('powerFanNetwork'),
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-
-                const SizedBox(height: 34),
+                const SizedBox(height: 28),
 
                 Text(
                   t.translate('welcomeBack'),
@@ -572,10 +616,6 @@ class _RegisterPageState
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // REGISTRATION WARNING
-  // ---------------------------------------------------------------------------
-
   Future<bool> _showRegistrationWarning() async {
     bool accepted = false;
 
@@ -866,7 +906,6 @@ class _RegisterPageState
 
     FocusScope.of(context).unfocus();
 
-    // Show the rules before any registration request is sent.
     final accepted = await _showRegistrationWarning();
 
     if (!accepted || !mounted) {
