@@ -26,10 +26,7 @@ class DailySocialTask {
   final bool requiresJoin;
   final bool requiresSubscribe;
 
-  // Kept for compatibility with the existing UI/code.
   final DateTime? taskDate;
-
-  // New-post system fields.
   final String? postExternalId;
   final DateTime? postPublishedAt;
 
@@ -59,222 +56,150 @@ class DailySocialTask {
     required this.postPublishedAt,
   });
 
-  factory DailySocialTask.fromMap(
-    Map<String, dynamic> map,
-  ) {
+  factory DailySocialTask.fromMap(Map<String, dynamic> map) {
     return DailySocialTask(
       id: (map['id'] ?? '').toString(),
-
       title: (map['title'] ?? '').toString(),
-
       description: (map['description'] ?? '').toString(),
+      url: (map['task_url'] ?? map['url'] ?? '').toString(),
+      platform: (map['platform'] ?? '').toString().toLowerCase().trim(),
 
-      url: (
-        map['task_url'] ??
-        map['url'] ??
-        ''
-      ).toString(),
+      // Each social task is intended to be 10 FAN.
+      // If Supabase returns another valid value, use the server value.
+      rewardFan: _toDouble(map['reward_fan']) > 0
+          ? _toDouble(map['reward_fan'])
+          : 10.0,
 
-      platform: (
-        map['platform'] ??
-        ''
-      ).toString(),
+      claimed: _toBool(map['claimed']),
+      canClaim: _toBool(map['can_claim']),
 
-      rewardFan: _toDouble(
-        map['reward_fan'],
-      ),
+      followVerified: _toBool(map['follow_verified']),
+      likeVerified: _toBool(map['like_verified']),
+      commentVerified: _toBool(map['comment_verified']),
+      shareVerified: _toBool(map['share_verified']),
+      joinVerified: _toBool(map['join_verified']),
+      subscribeVerified: _toBool(map['subscribe_verified']),
 
-      claimed: _toBool(
-        map['claimed'],
-      ),
+      requiresFollow: _toBool(map['requires_follow']),
+      requiresLike: _toBool(map['requires_like']),
+      requiresComment: _toBool(map['requires_comment']),
+      requiresShare: _toBool(map['requires_share']),
+      requiresJoin: _toBool(map['requires_join']),
+      requiresSubscribe: _toBool(map['requires_subscribe']),
 
-      canClaim: _toBool(
-        map['can_claim'],
-      ),
-
-      followVerified: _toBool(
-        map['follow_verified'],
-      ),
-
-      likeVerified: _toBool(
-        map['like_verified'],
-      ),
-
-      commentVerified: _toBool(
-        map['comment_verified'],
-      ),
-
-      shareVerified: _toBool(
-        map['share_verified'],
-      ),
-
-      joinVerified: _toBool(
-        map['join_verified'],
-      ),
-
-      subscribeVerified: _toBool(
-        map['subscribe_verified'],
-      ),
-
-      requiresFollow: _toBool(
-        map['requires_follow'],
-      ),
-
-      requiresLike: _toBool(
-        map['requires_like'],
-      ),
-
-      requiresComment: _toBool(
-        map['requires_comment'],
-      ),
-
-      requiresShare: _toBool(
-        map['requires_share'],
-      ),
-
-      requiresJoin: _toBool(
-        map['requires_join'],
-      ),
-
-      requiresSubscribe: _toBool(
-        map['requires_subscribe'],
-      ),
-
-      taskDate: _toDate(
-        map['task_date'],
-      ),
-
-      postExternalId: _toNullableString(
-        map['post_external_id'],
-      ),
-
-      postPublishedAt: _toDate(
-        map['post_published_at'],
-      ),
+      taskDate: _toDate(map['task_date']),
+      postExternalId: _toNullableString(map['post_external_id']),
+      postPublishedAt: _toDate(map['post_published_at']),
     );
   }
 
-  static double _toDouble(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return 0.0;
-    }
-
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(
-          value.toString(),
-        ) ??
-        0.0;
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 
-  static bool _toBool(
-    dynamic value,
-  ) {
-    if (value is bool) {
-      return value;
-    }
+  static bool _toBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
 
-    if (value is num) {
-      return value != 0;
-    }
-
-    final text =
-        value?.toString().toLowerCase().trim();
+    final text = value?.toString().toLowerCase().trim();
 
     return text == 'true' || text == '1';
   }
 
-  static DateTime? _toDate(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
+  static DateTime? _toDate(dynamic value) {
+    if (value == null) return null;
 
-    final text =
-        value.toString().trim();
+    final text = value.toString().trim();
 
-    if (text.isEmpty) {
-      return null;
-    }
+    if (text.isEmpty) return null;
 
     return DateTime.tryParse(text);
   }
 
-  static String? _toNullableString(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
+  static String? _toNullableString(dynamic value) {
+    if (value == null) return null;
 
-    final text =
-        value.toString().trim();
+    final text = value.toString().trim();
 
-    if (text.isEmpty) {
-      return null;
-    }
+    if (text.isEmpty) return null;
 
     return text;
   }
 
-  /// Whether this task has a valid official post reference.
   bool get isNewPostTask {
     return postExternalId != null &&
         postExternalId!.trim().isNotEmpty;
   }
 
-  /// Whether all configured actions for this task
-  /// have been verified.
+  /// Only actions required by the SERVER are considered.
   bool get allRequiredActionsVerified {
-    if (requiresFollow && !followVerified) {
-      return false;
-    }
-
-    if (requiresLike && !likeVerified) {
-      return false;
-    }
-
-    if (requiresComment && !commentVerified) {
-      return false;
-    }
-
-    if (requiresShare && !shareVerified) {
-      return false;
-    }
-
-    if (requiresJoin && !joinVerified) {
-      return false;
-    }
-
-    if (requiresSubscribe && !subscribeVerified) {
-      return false;
-    }
+    if (requiresFollow && !followVerified) return false;
+    if (requiresLike && !likeVerified) return false;
+    if (requiresComment && !commentVerified) return false;
+    if (requiresShare && !shareVerified) return false;
+    if (requiresJoin && !joinVerified) return false;
+    if (requiresSubscribe && !subscribeVerified) return false;
 
     return true;
   }
 
-  /// Whether the user has completed the three
-  /// mandatory actions for a post reward.
+  /// Kept for compatibility with existing HomeScreen code.
   bool get postActionsVerified {
-    return likeVerified &&
-        commentVerified &&
-        shareVerified;
+    return allRequiredActionsVerified;
+  }
+
+  List<String> get requiredActions {
+    final actions = <String>[];
+
+    if (requiresFollow) actions.add('Follow');
+    if (requiresLike) actions.add('Like');
+    if (requiresComment) actions.add('Comment');
+    if (requiresShare) actions.add('Share');
+    if (requiresJoin) actions.add('Join');
+    if (requiresSubscribe) actions.add('Subscribe');
+
+    return actions;
+  }
+
+  List<String> get verifiedActions {
+    final actions = <String>[];
+
+    if (followVerified) actions.add('Follow');
+    if (likeVerified) actions.add('Like');
+    if (commentVerified) actions.add('Comment');
+    if (shareVerified) actions.add('Share');
+    if (joinVerified) actions.add('Join');
+    if (subscribeVerified) actions.add('Subscribe');
+
+    return actions;
+  }
+
+  String get requiredActionsText {
+    if (requiredActions.isEmpty) {
+      return 'Complete the task';
+    }
+
+    return requiredActions.join(' • ');
+  }
+
+  String get platformName {
+    if (platform == 'facebook') return 'Facebook';
+    if (platform == 'instagram') return 'Instagram';
+    if (platform == 'twitter' || platform == 'x') return 'X';
+    if (platform == 'tiktok') return 'TikTok';
+    if (platform == 'youtube') return 'YouTube';
+    if (platform == 'telegram') return 'Telegram';
+
+    return platform.isEmpty ? 'Social' : platform;
   }
 }
 
 class SocialTaskService {
-  final SupabaseClient _client =
-      Supabase.instance.client;
+  final SupabaseClient _client = Supabase.instance.client;
 
-  /// Gets currently available official social-post tasks
-  /// for the logged-in user.
-  Future<List<DailySocialTask>>
-      getDailyTasksForCard() async {
+  Future<List<DailySocialTask>> getDailyTasksForCard() async {
     try {
       final response = await _client.rpc(
         'get_daily_social_tasks',
@@ -290,23 +215,17 @@ class SocialTaskService {
         );
       }
 
-      return response
+      final tasks = response
+          .whereType<Map>()
           .map(
-            (item) {
-              if (item is! Map) {
-                throw Exception(
-                  'Invalid social task item.',
-                );
-              }
-
-              return DailySocialTask.fromMap(
-                Map<String, dynamic>.from(
-                  item,
-                ),
-              );
-            },
+            (item) => DailySocialTask.fromMap(
+              Map<String, dynamic>.from(item),
+            ),
           )
+          .where((task) => task.id.isNotEmpty)
           .toList();
+
+      return tasks;
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to load social tasks: ${e.message}',
@@ -318,7 +237,6 @@ class SocialTaskService {
     }
   }
 
-  /// Starts one specific official social task.
   Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
@@ -350,9 +268,7 @@ class SocialTaskService {
         );
       }
 
-      return Map<String, dynamic>.from(
-        response,
-      );
+      return Map<String, dynamic>.from(response);
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to start social task: ${e.message}',
@@ -364,10 +280,7 @@ class SocialTaskService {
     }
   }
 
-  /// Opens the official social-media task URL.
-  Future<bool> openTaskUrl(
-    String url,
-  ) async {
+  Future<bool> openTaskUrl(String url) async {
     final cleanUrl = url.trim();
 
     if (cleanUrl.isEmpty) {
@@ -398,9 +311,6 @@ class SocialTaskService {
     }
   }
 
-  /// Claims the reward for a verified social task.
-  ///
-  /// Verification is performed by the trusted backend.
   Future<Map<String, dynamic>> verifyAndClaim({
     required String taskId,
   }) async {
@@ -409,7 +319,6 @@ class SocialTaskService {
     );
   }
 
-  /// Claims a verified social-task reward.
   Future<Map<String, dynamic>> claimReward({
     required String taskId,
   }) async {
@@ -441,9 +350,7 @@ class SocialTaskService {
         );
       }
 
-      return Map<String, dynamic>.from(
-        response,
-      );
+      return Map<String, dynamic>.from(response);
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to claim social reward: ${e.message}',
@@ -455,9 +362,7 @@ class SocialTaskService {
     }
   }
 
-  /// Reloads currently available social tasks.
-  Future<List<DailySocialTask>>
-      refreshTasks() async {
+  Future<List<DailySocialTask>> refreshTasks() {
     return getDailyTasksForCard();
   }
 }
