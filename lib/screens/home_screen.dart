@@ -24,7 +24,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Color successLight = Color(0xFFEAF8F0);
 
   static const Duration miningDuration = Duration(hours: 24);
-
   static const int maxAds = 7;
 
   final MiningService _mining = MiningService.instance;
@@ -45,25 +44,9 @@ class _HomeScreenState extends State<HomeScreen> {
   double _rate = MiningService.defaultMiningRate;
   double _sessionReward = 0.0;
 
-  /*
-   * IMPORTANT:
-   *
-   * This is server-provided remaining time.
-   *
-   * We NEVER calculate it from:
-   *
-   *   DateTime.now()
-   *   phone date
-   *   phone clock
-   *   ends_at - local time
-   *
-   * The server gives us remaining_seconds.
-   * The UI only decreases that value visually.
-   */
   Duration _remaining = Duration.zero;
 
   int _miningLoadGeneration = 0;
-
   int _adsWatched = 0;
 
   List<DailySocialTask> _tasks = [];
@@ -91,11 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeAds() async {
     try {
       await _ads.initialize();
-    } catch (_) {
-      // Ads are optional for activation.
-      // Mining must still be able to start if activation ad
-      // is unavailable.
-    }
+    } catch (_) {}
   }
 
   // ============================================================
@@ -164,22 +143,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // MINING LOAD
-  //
-  // SERVER remaining_seconds IS AUTHORITATIVE.
-  //
-  // No phone DateTime is used.
   // ============================================================
 
   Future<void> _loadMining() async {
     final generation = ++_miningLoadGeneration;
 
-    /*
-     * After a successful claim, keep the screen on
-     * START MINING.
-     *
-     * Do not allow an old completed session response
-     * to put the UI back into READY TO CLAIM.
-     */
     if (_readyToStart) {
       if (!mounted) return;
 
@@ -199,9 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final data = await _mining.getActiveMining();
 
-    /*
-     * Ignore stale server responses.
-     */
     if (generation != _miningLoadGeneration) {
       return;
     }
@@ -223,10 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final status = data['status']
-        ?.toString()
-        .trim()
-        .toLowerCase();
+    final status = data['status']?.toString().trim().toLowerCase();
 
     final serverActive = _toBool(data['active']);
 
@@ -252,10 +214,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _toBool(data['is_claimed']) ||
         status == 'claimed';
 
-    // ==========================================================
-    // RATE
-    // ==========================================================
-
     double rate = _toDouble(
       data['total_rate'] ??
           data['mining_rate'] ??
@@ -274,10 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
       rate = MiningService.defaultMiningRate;
     }
 
-    // ==========================================================
-    // BOOST ADS
-    // ==========================================================
-
     var ads = _toInt(
       data['ads_watched'] ??
           data['ad_count'] ??
@@ -293,14 +247,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ads = maxAds;
     }
 
-    // ==========================================================
-    // SERVER REMAINING TIME
-    //
-    // DO NOT USE ends_at.
-    //
-    // DO NOT USE DateTime.now().
-    // ==========================================================
-
     var serverRemaining = _toInt(
       data['remaining_seconds'] ??
           data['seconds_remaining'] ??
@@ -315,20 +261,12 @@ class _HomeScreenState extends State<HomeScreen> {
       serverRemaining = miningDuration.inSeconds;
     }
 
-    // ==========================================================
-    // SERVER REWARD
-    // ==========================================================
-
     final serverReward = _toDouble(
       data['reward'] ??
           data['session_reward'] ??
           data['earned_reward'] ??
           data['reward_amount'],
     );
-
-    // ==========================================================
-    // ACTIVE STATE
-    // ==========================================================
 
     bool active = false;
 
@@ -348,12 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
         !alreadyClaimed &&
         !active &&
         (serverClaimable || statusIsClaimable);
-
-    // ==========================================================
-    // DISPLAY REWARD
-    //
-    // Uses only server remaining_seconds.
-    // ==========================================================
 
     double liveReward = serverReward;
 
@@ -375,9 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _isMining = active;
       _canClaim = finalCanClaim;
       _rate = rate;
-      _remaining = Duration(
-        seconds: serverRemaining,
-      );
+      _remaining = Duration(seconds: serverRemaining);
       _sessionReward =
           liveReward < 0 ? 0.0 : liveReward;
       _adsWatched = ads;
@@ -387,10 +317,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _startTimer();
     }
   }
-
-  // ============================================================
-  // CLAIMABLE STATUS
-  // ============================================================
 
   bool _isClaimableStatus(String? status) {
     if (status == null || status.trim().isEmpty) {
@@ -413,7 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // APPLY START MINING RESULT
+  // APPLY MINING RESULT
   // ============================================================
 
   Future<bool> _applyMiningResult(
@@ -423,10 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
 
-    final status = data['status']
-        ?.toString()
-        .trim()
-        .toLowerCase();
+    final status = data['status']?.toString().trim().toLowerCase();
 
     final serverActive = _toBool(data['active']);
 
@@ -475,10 +398,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       return true;
     }
-
-    // ==========================================================
-    // SERVER REMAINING TIME
-    // ==========================================================
 
     var serverRemaining = _toInt(
       data['remaining_seconds'] ??
@@ -540,23 +459,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer?.cancel();
 
     setState(() {
-      _remaining = Duration(
-        seconds: serverRemaining,
-      );
+      _remaining =
+          Duration(seconds: serverRemaining);
 
-      if (returnedRate > 0) {
-        _rate = returnedRate;
-      } else {
-        _rate = MiningService.defaultMiningRate;
-      }
+      _rate = returnedRate > 0
+          ? returnedRate
+          : MiningService.defaultMiningRate;
 
       _adsWatched = ads;
-
       _isMining = active;
-
-      _canClaim =
-          claimRequired && !active;
-
+      _canClaim = claimRequired && !active;
       _sessionReward =
           reward > 0 ? reward : 0.0;
 
@@ -573,16 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // SERVER-AUTHORITATIVE COUNTDOWN
-  //
-  // IMPORTANT:
-  //
-  // NO DateTime.now()
-  // NO phone clock
-  // NO phone date
-  // NO ends_at calculation
-  //
-  // We only count down from the server snapshot.
+  // MINING TIMER
   // ============================================================
 
   void _startTimer() {
@@ -591,9 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
-        if (!mounted) {
-          return;
-        }
+        if (!mounted) return;
 
         if (!_isMining) {
           _timer?.cancel();
@@ -647,10 +548,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ============================================================
-  // REFRESH AFTER COUNTDOWN
-  // ============================================================
-
   Future<void> _refreshAfterTimer() async {
     if (!mounted) return;
 
@@ -665,29 +562,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // START MINING
-  //
-  // FLOW:
-  //
-  // CLAIM
-  //   ↓
-  // START MINING
-  //   ↓
-  // TRY ACTIVATION AD
-  //   ↓
-  // IF AD AVAILABLE:
-  //       USER COMPLETES AD
-  //       ↓
-  //       REWARD CALLBACK
-  //       ↓
-  //       start_mining()
-  //
-  // IF AD NOT AVAILABLE:
-  //       after activation timeout
-  //       ↓
-  //       start_mining() DIRECTLY
-  //
-  // Activation Ad is NOT a Boost Ad.
-  // It never adds +0.10 FAN/H.
   // ============================================================
 
   Future<void> _startMining() async {
@@ -702,9 +576,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       try {
         await _ads.initialize();
-      } catch (_) {
-        // Activation is optional.
-      }
+      } catch (_) {}
 
       if (!mounted) return;
 
@@ -712,13 +584,6 @@ class _HomeScreenState extends State<HomeScreen> {
         'Checking for activation ad...',
       );
 
-      /*
-       * The LevelPlay service has a short activation-ad
-       * readiness window.
-       *
-       * If no ad is available, showActivationAd()
-       * returns false and we continue directly to mining.
-       */
       final activationCompleted =
           Completer<bool>();
 
@@ -740,12 +605,6 @@ class _HomeScreenState extends State<HomeScreen> {
         onAdClosed: () {},
       );
 
-      // --------------------------------------------------------
-      // NO ACTIVATION AD AVAILABLE
-      //
-      // This is the ONLY case where activation can be bypassed.
-      // --------------------------------------------------------
-
       if (!shown) {
         if (!mounted) return;
 
@@ -753,12 +612,6 @@ class _HomeScreenState extends State<HomeScreen> {
           'No activation ad is available. Starting mining without it...',
         );
       } else {
-        // ------------------------------------------------------
-        // ACTIVATION AD WAS SHOWN.
-        //
-        // Now reward must be confirmed.
-        // ------------------------------------------------------
-
         if (!mounted) return;
 
         _message(
@@ -784,10 +637,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
 
-      // ========================================================
-      // START MINING ON SERVER
-      // ========================================================
-
       final result =
           await _mining.startMining();
 
@@ -801,18 +650,10 @@ class _HomeScreenState extends State<HomeScreen> {
           result['success'] == true;
 
       final claimRequired =
-          _toBool(
-            result['claim_required'],
-          ) ||
-          _toBool(
-            result['requires_claim'],
-          ) ||
-          _toBool(
-            result['needs_claim'],
-          ) ||
-          _toBool(
-            result['claimable'],
-          );
+          _toBool(result['claim_required']) ||
+          _toBool(result['requires_claim']) ||
+          _toBool(result['needs_claim']) ||
+          _toBool(result['claimable']);
 
       if (!success && claimRequired) {
         if (mounted) {
@@ -840,9 +681,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final applied =
-          await _applyMiningResult(
-        result,
-      );
+          await _applyMiningResult(result);
 
       if (!applied) {
         await _loadMining();
@@ -906,9 +745,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'Your 24-hour mining session is complete and ready to claim.',
         );
       } else {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -921,8 +758,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // CLAIM MINING
-  //
-  // NO AD REQUIRED.
   // ============================================================
 
   Future<void> _claimMining() async {
@@ -961,27 +796,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _sessionReward = 0.0;
-
         _canClaim = false;
         _isMining = false;
-
         _remaining = Duration.zero;
-
         _adsWatched = 0;
-
-        _rate =
-            MiningService.defaultMiningRate;
-
+        _rate = MiningService.defaultMiningRate;
         _readyToStart = true;
       });
 
-      /*
-       * Only reload FAN balance.
-       *
-       * We deliberately do not immediately call get_active_mining()
-       * because the old completed session may still be returned
-       * during a race.
-       */
       await _loadProfile();
 
       if (!mounted) return;
@@ -991,9 +813,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } catch (e) {
       if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1006,22 +826,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // BOOST ADS
-  //
-  // IMPORTANT:
-  //
-  // Boost is STRICT.
-  //
-  // User must:
-  //
-  // 1. Be actively mining.
-  // 2. Get a rewarded ad.
-  // 3. Complete the ad.
-  // 4. Reward callback occurs.
-  // 5. LevelPlayAdsService records/verifies it.
-  // 6. Server updates ads_watched.
-  //
-  // Only after server verification does this UI show
-  // the new boost.
   // ============================================================
 
   Future<void> _watchAd() async {
@@ -1063,13 +867,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      /*
-       * The ad service only calls its successful reward callback
-       * after backend verification.
-       *
-       * We therefore wait for the server to expose the new
-       * verified ad count.
-       */
       var updated = false;
 
       for (var i = 0; i < 12; i++) {
@@ -1104,9 +901,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1119,6 +914,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // SOCIAL TASKS
+  //
+  // IMPORTANT:
+  //
+  // Each task is handled independently.
+  //
+  // We DO NOT use _tasks.first for every action.
+  //
+  // Every button sends its own task.id to:
+  //
+  // start_social_task
+  // claim_daily_social_reward
   // ============================================================
 
   Future<void> _loadTasks() async {
@@ -1140,17 +946,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _socialAction() async {
+  Future<void> _socialAction(
+    DailySocialTask task,
+  ) async {
     if (_busy) return;
-
-    if (_tasks.isEmpty) {
-      _message(
-        'No social task is available right now.',
-      );
-      return;
-    }
-
-    final task = _tasks.first;
 
     if (task.claimed) {
       _message(
@@ -1164,6 +963,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
+      // ========================================================
+      // CLAIM
+      // ========================================================
+
       if (task.canClaim) {
         await _social.claimReward(
           taskId: task.id,
@@ -1181,9 +984,28 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
+      // ========================================================
+      // START TASK
+      // ========================================================
+
       await _social.startTask(
         taskId: task.id,
       );
+
+      // ========================================================
+      // OPEN POST / SOCIAL URL
+      // ========================================================
+
+      if (task.url.trim().isEmpty) {
+        if (mounted) {
+          _message(
+            'Social task started. Complete the required action, then refresh to verify it.',
+          );
+        }
+
+        await _loadTasks();
+        return;
+      }
 
       final opened =
           await _social.openTaskUrl(
@@ -1193,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         if (opened) {
           _message(
-            'Complete the social task, then return to claim your reward.',
+            'Complete the task, then return here. The server will verify your action before you can claim ${_formatFan(task.rewardFan)} FAN.',
           );
         } else {
           _message(
@@ -1205,9 +1027,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _loadTasks();
     } catch (e) {
       if (mounted) {
-        _message(
-          _error(e),
-        );
+        _message(_error(e));
       }
     } finally {
       if (!mounted) return;
@@ -1215,6 +1035,608 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _busy = false;
       });
+    }
+  }
+
+  // ============================================================
+  // SOCIAL TASK CARD
+  // ============================================================
+
+  Widget _buildSocialCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _circleIcon(
+                Icons
+                    .assignment_turned_in_rounded,
+                background: successLight,
+                iconColor: successGreen,
+                size: 56,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SOCIAL TASKS',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            FontWeight.w900,
+                        color: deepPurple,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Complete any available task and earn FAN.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color:
+                            Color(0xFF66666F),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh tasks',
+                onPressed: _busy
+                    ? null
+                    : _loadTasks,
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: primaryPurple,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          if (_tasks.isEmpty)
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFFF7F5FC),
+                borderRadius:
+                    BorderRadius.circular(14),
+              ),
+              child: const Column(
+                children: [
+                  Icon(
+                    Icons
+                        .hourglass_empty_rounded,
+                    color: primaryPurple,
+                    size: 32,
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'No social task is available right now.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          FontWeight.w700,
+                      color: deepPurple,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ..._tasks.asMap().entries.map(
+              (entry) {
+                final index = entry.key;
+                final task = entry.value;
+
+                return Padding(
+                  padding:
+                      EdgeInsets.only(
+                    bottom:
+                        index == _tasks.length - 1
+                            ? 0
+                            : 10,
+                  ),
+                  child:
+                      _buildSingleSocialTask(
+                    task,
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SINGLE SOCIAL TASK
+  // ============================================================
+
+  Widget _buildSingleSocialTask(
+    DailySocialTask task,
+  ) {
+    final platform =
+        task.platform.trim().toLowerCase();
+
+    final platformLabel =
+        _platformName(task);
+
+    final platformIcon =
+        _platformIcon(platform);
+
+    final isClaimable =
+        task.canClaim &&
+        !task.claimed;
+
+    final isClaimed =
+        task.claimed;
+
+    final actionText =
+        isClaimed
+            ? 'CLAIMED'
+            : isClaimable
+                ? 'CLAIM ${_formatFan(task.rewardFan)} FAN'
+                : 'OPEN TASK';
+
+    final actionColor =
+        isClaimed
+            ? Colors.grey
+            : isClaimable
+                ? successGreen
+                : primaryPurple;
+
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(16),
+        border: Border.all(
+          color: isClaimable
+              ? successGreen
+                  .withValues(alpha: 0.35)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 45,
+                height: 45,
+                decoration: BoxDecoration(
+                  color: _platformColor(
+                    platform,
+                  ).withValues(
+                    alpha: 0.10,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    12,
+                  ),
+                ),
+                alignment:
+                    Alignment.center,
+                child: Icon(
+                  platformIcon,
+                  color:
+                      _platformColor(
+                    platform,
+                  ),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            platformLabel,
+                            maxLines: 1,
+                            overflow:
+                                TextOverflow
+                                    .ellipsis,
+                            style:
+                                const TextStyle(
+                              fontSize: 11,
+                              fontWeight:
+                                  FontWeight.w800,
+                              color:
+                                  primaryPurple,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 6,
+                        ),
+                        Container(
+                          padding:
+                              const EdgeInsets
+                                  .symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color:
+                                const Color(
+                              0xFFFFF7E0,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              7,
+                            ),
+                          ),
+                          child: Text(
+                            '+${_formatFan(task.rewardFan)} FAN',
+                            style:
+                                const TextStyle(
+                              fontSize: 9,
+                              fontWeight:
+                                  FontWeight.w900,
+                              color:
+                                  Color(
+                                0xFF9A6800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      task.title.isNotEmpty
+                          ? task.title
+                          : 'Complete this social task',
+                      maxLines: 2,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            FontWeight.w800,
+                      ),
+                    ),
+                    if (task.description
+                        .trim()
+                        .isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        task.description,
+                        maxLines: 2,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(
+                          fontSize: 10,
+                          height: 1.3,
+                          color:
+                              Color(0xFF66666F),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          // ======================================================
+          // REQUIRED ACTIONS
+          // ======================================================
+
+          _buildTaskActionsStatus(task),
+
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: double.infinity,
+            height: 43,
+            child: ElevatedButton.icon(
+              onPressed:
+                  _busy || isClaimed
+                      ? null
+                      : () =>
+                          _socialAction(task),
+              icon: Icon(
+                isClaimed
+                    ? Icons.check_rounded
+                    : isClaimable
+                        ? Icons
+                            .card_giftcard_rounded
+                        : Icons
+                            .open_in_new_rounded,
+                size: 18,
+              ),
+              label: Text(
+                actionText,
+                maxLines: 1,
+                overflow:
+                    TextOverflow.ellipsis,
+              ),
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    actionColor,
+                foregroundColor:
+                    Colors.white,
+                disabledBackgroundColor:
+                    actionColor.withValues(
+                  alpha: 0.45,
+                ),
+                disabledForegroundColor:
+                    Colors.white,
+                elevation: 0,
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    11,
+                  ),
+                ),
+                textStyle:
+                    const TextStyle(
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SOCIAL ACTION STATUS
+  // ============================================================
+
+  Widget _buildTaskActionsStatus(
+    DailySocialTask task,
+  ) {
+    final items =
+        <Widget>[];
+
+    if (task.requiresFollow) {
+      items.add(
+        _taskStatus(
+          'Follow',
+          task.followVerified,
+        ),
+      );
+    }
+
+    if (task.requiresLike) {
+      items.add(
+        _taskStatus(
+          'Like',
+          task.likeVerified,
+        ),
+      );
+    }
+
+    if (task.requiresComment) {
+      items.add(
+        _taskStatus(
+          'Comment',
+          task.commentVerified,
+        ),
+      );
+    }
+
+    if (task.requiresShare) {
+      items.add(
+        _taskStatus(
+          'Share',
+          task.shareVerified,
+        ),
+      );
+    }
+
+    if (task.requiresJoin) {
+      items.add(
+        _taskStatus(
+          'Join',
+          task.joinVerified,
+        ),
+      );
+    }
+
+    if (task.requiresSubscribe) {
+      items.add(
+        _taskStatus(
+          'Subscribe',
+          task.subscribeVerified,
+        ),
+      );
+    }
+
+    if (items.isEmpty) {
+      return const Text(
+        'Server verification required before reward claim.',
+        style: TextStyle(
+          fontSize: 10,
+          color: Color(0xFF777780),
+          fontWeight: FontWeight.w600,
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: items,
+    );
+  }
+
+  Widget _taskStatus(
+    String label,
+    bool verified,
+  ) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: verified
+            ? successLight
+            : const Color(0xFFF5F5F7),
+        borderRadius:
+            BorderRadius.circular(8),
+        border: Border.all(
+          color: verified
+              ? successGreen
+                  .withValues(alpha: 0.25)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Row(
+        mainAxisSize:
+            MainAxisSize.min,
+        children: [
+          Icon(
+            verified
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked,
+            size: 13,
+            color: verified
+                ? successGreen
+                : Colors.grey,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight:
+                  FontWeight.w800,
+              color: verified
+                  ? successGreen
+                  : const Color(
+                      0xFF777780,
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _platformName(
+    DailySocialTask task,
+  ) {
+    final value =
+        task.platform.trim().toLowerCase();
+
+    switch (value) {
+      case 'x':
+      case 'twitter':
+        return 'X / Twitter';
+
+      case 'instagram':
+        return 'Instagram';
+
+      case 'facebook':
+        return 'Facebook';
+
+      case 'tiktok':
+        return 'TikTok';
+
+      case 'youtube':
+        return 'YouTube';
+
+      case 'telegram':
+        return 'Telegram';
+
+      default:
+        return task.platform.isEmpty
+            ? 'Social Task'
+            : task.platform;
+    }
+  }
+
+  IconData _platformIcon(
+    String platform,
+  ) {
+    switch (platform) {
+      case 'telegram':
+        return Icons.send_rounded;
+
+      case 'youtube':
+        return Icons.play_circle_fill_rounded;
+
+      case 'instagram':
+        return Icons.camera_alt_rounded;
+
+      case 'facebook':
+        return Icons.facebook_rounded;
+
+      case 'tiktok':
+        return Icons.music_note_rounded;
+
+      case 'x':
+      case 'twitter':
+        return Icons.close_rounded;
+
+      default:
+        return Icons.public_rounded;
+    }
+  }
+
+  Color _platformColor(
+    String platform,
+  ) {
+    switch (platform) {
+      case 'telegram':
+        return const Color(0xFF229ED9);
+
+      case 'youtube':
+        return Colors.red;
+
+      case 'instagram':
+        return const Color(0xFFE1306C);
+
+      case 'facebook':
+        return const Color(0xFF1877F2);
+
+      case 'tiktok':
+        return Colors.black;
+
+      case 'x':
+      case 'twitter':
+        return Colors.black;
+
+      default:
+        return primaryPurple;
     }
   }
 
@@ -1246,9 +1668,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    unawaited(
-      _loadKyc(),
-    );
+    unawaited(_loadKyc());
   }
 
   // ============================================================
@@ -1265,7 +1685,8 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _load,
           child: _loading
               ? const Center(
-                  child: CircularProgressIndicator(
+                  child:
+                      CircularProgressIndicator(
                     color: primaryPurple,
                   ),
                 )
@@ -1379,7 +1800,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // BALANCE
+  // BALANCE CARD
   // ============================================================
 
   Widget _buildBalanceCard() {
@@ -1405,7 +1826,8 @@ class _HomeScreenState extends State<HomeScreen> {
             BorderRadius.circular(23),
         boxShadow: [
           BoxShadow(
-            color: primaryPurple.withValues(
+            color:
+                primaryPurple.withValues(
               alpha: 0.18,
             ),
             blurRadius: 14,
@@ -1464,7 +1886,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                      alignment: Alignment.center,
+                      alignment:
+                          Alignment.center,
                       child: Container(
                         width: 46,
                         height: 46,
@@ -1582,10 +2005,8 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 _circleIcon(
                   Icons.check_circle_rounded,
-                  background:
-                      successLight,
-                  iconColor:
-                      successGreen,
+                  background: successLight,
+                  iconColor: successGreen,
                   size: 62,
                 ),
                 const SizedBox(width: 13),
@@ -1918,146 +2339,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // SOCIAL CARD
-  // ============================================================
-
-  Widget _buildSocialCard() {
-    final task =
-        _tasks.isNotEmpty
-            ? _tasks.first
-            : null;
-
-    final reward =
-        task?.rewardFan ?? 10.0;
-
-    final taskLabel =
-        task == null
-            ? 'Follow us on social media'
-            : task.title.isNotEmpty
-                ? task.title
-                : 'Complete today’s social task';
-
-    return _card(
-      child: Row(
-        children: [
-          _circleIcon(
-            Icons.assignment_turned_in_rounded,
-            background:
-                successLight,
-            iconColor:
-                Colors.green.shade700,
-            size: 56,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'DAILY TASK',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  taskLabel,
-                  maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color:
-                        Color(0xFF55555F),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Reward: ${_formatFan(reward)} FAN',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color:
-                        Color(0xFF55555F),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 7),
-          Column(
-            children: [
-              Row(
-                mainAxisSize:
-                    MainAxisSize.min,
-                children: [
-                  _socialIcon('X'),
-                  const SizedBox(width: 4),
-                  _socialIcon('➤'),
-                  const SizedBox(width: 4),
-                  _socialIcon('◎'),
-                  const SizedBox(width: 4),
-                  _socialIcon('▶'),
-                ],
-              ),
-              const SizedBox(height: 7),
-              SizedBox(
-                height: 40,
-                child:
-                    OutlinedButton.icon(
-                  onPressed:
-                      _busy
-                          ? null
-                          : _socialAction,
-                  icon: const Icon(
-                    Icons
-                        .card_giftcard_rounded,
-                    size: 16,
-                  ),
-                  label: Text(
-                    task?.canClaim == true
-                        ? 'CLAIM ${_formatFan(reward)}'
-                        : 'FOLLOW & EARN',
-                  ),
-                  style:
-                      OutlinedButton.styleFrom(
-                    foregroundColor:
-                        deepPurple,
-                    side:
-                        const BorderSide(
-                      color: primaryPurple,
-                    ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        10,
-                      ),
-                    ),
-                    textStyle:
-                        const TextStyle(
-                      fontSize: 9,
-                      fontWeight:
-                          FontWeight.w800,
-                    ),
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      horizontal: 9,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
   // KYC CARD
   // ============================================================
 
@@ -2274,34 +2555,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _socialIcon(String text) {
-    return Container(
-      width: 30,
-      height: 30,
-      decoration:
-          BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(8),
-        border: Border.all(
-          color:
-              Colors.grey.shade200,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        text,
-        style:
-            const TextStyle(
-          fontSize: 13,
-          fontWeight:
-              FontWeight.w900,
-          color: Colors.black,
-        ),
-      ),
-    );
-  }
-
   // ============================================================
   // DURATION
   // ============================================================
@@ -2412,9 +2665,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _error(Object error) {
     final text = error.toString();
 
-    if (text.startsWith(
-      'Exception: ',
-    )) {
+    if (text.startsWith('Exception: ')) {
       return text.substring(11);
     }
 
