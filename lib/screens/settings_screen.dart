@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../localization/app_localizations.dart';
 import '../services/auth_service.dart';
 import '../services/kyc_service.dart';
 import 'profile_screen.dart';
@@ -381,17 +380,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8F8FC),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: const Color(0xFFF8F8FC),
         foregroundColor: const Color(0xFF241064),
-        title: Text(
-          l10n.settings,
-          style: const TextStyle(
+        title: const Text(
+          'Settings',
+          style: TextStyle(
             fontWeight: FontWeight.bold,
           ),
         ),
