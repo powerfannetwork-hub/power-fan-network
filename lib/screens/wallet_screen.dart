@@ -362,7 +362,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Wallet connection and token transactions '
+                  'Wallet connection and \$AFAM transactions '
                   'will be available soon.',
                   style: TextStyle(
                     color: Colors.black54,
@@ -410,13 +410,6 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          _actionTile(
-            icon: Icons.send_rounded,
-            title: 'Withdraw FAN',
-            subtitle: 'Withdrawals will be available soon.',
-            onTap: () => _showComingSoon('FAN withdrawal'),
-          ),
-          const Divider(height: 1),
           _actionTile(
             icon: Icons.swap_horiz_rounded,
             title: 'Transactions',
