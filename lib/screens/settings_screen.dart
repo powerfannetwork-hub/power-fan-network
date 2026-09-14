@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../l10n/app_localizations.dart';
+import '../localization/app_localizations.dart';
 import '../services/auth_service.dart';
 import '../services/kyc_service.dart';
 import 'profile_screen.dart';
@@ -15,7 +15,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
-  final KycService _kycService = KycService.instance;
+  final KycService _kycService = KycService();
 
   Map<String, dynamic>? _profile;
   KycStatus? _kycStatus;
@@ -40,28 +40,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (user == null) {
         if (!mounted) return;
+
         setState(() {
           _profile = null;
           _kycStatus = null;
           _loading = false;
         });
+
         return;
       }
 
-      final results = await Future.wait([
-        _supabase
-            .from('profiles')
-            .select()
-            .eq('id', user.id)
-            .maybeSingle(),
-        _kycService.getProgress(),
-      ]);
+      final profileFuture = _supabase
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final kycFuture = _kycService.getProgress();
+
+      final Map<String, dynamic>? profile = await profileFuture;
+      final KycStatus kycStatus = await kycFuture;
 
       if (!mounted) return;
 
       setState(() {
-        _profile = results[0] as Map<String, dynamic>?;
-        _kycStatus = results[1] as KycStatus?;
+        _profile = profile;
+        _kycStatus = kycStatus;
         _loading = false;
       });
     } catch (_) {
@@ -91,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     for (final key in keys) {
       final value = _profileValue(key);
+
       if (value.isNotEmpty) {
         return value;
       }
@@ -101,12 +106,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String get _name {
     final name = _profileValue('name');
-    if (name.isNotEmpty) return name;
+
+    if (name.isNotEmpty) {
+      return name;
+    }
 
     final username = _profileValue('username');
-    if (username.isNotEmpty) return username;
+
+    if (username.isNotEmpty) {
+      return username;
+    }
 
     final user = _supabase.auth.currentUser;
+
     return user?.userMetadata?['name']?.toString() ?? 'User';
   }
 
@@ -173,7 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      await AuthService.instance.signOut();
+      await AuthService.instance.logout();
     } catch (_) {
       if (!mounted) return;
 
@@ -194,15 +206,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _initials() {
     final name = _name.trim();
 
-    if (name.isEmpty) return 'U';
+    if (name.isEmpty) {
+      return 'U';
+    }
 
     final parts = name.split(RegExp(r'\s+'));
 
     if (parts.length == 1) {
-      return parts.first.substring(
-        0,
-        parts.first.length >= 2 ? 2 : 1,
-      ).toUpperCase();
+      return parts.first
+          .substring(
+            0,
+            parts.first.length >= 2 ? 2 : 1,
+          )
+          .toUpperCase();
     }
 
     return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
@@ -233,7 +249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 64,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
               ),
               clipBehavior: Clip.antiAlias,
               child: imageUrl.isNotEmpty
@@ -285,7 +301,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.75),
+                      color: Colors.white.withValues(alpha: 0.75),
                       fontSize: 13,
                     ),
                   ),
@@ -318,6 +334,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     Color? iconColor,
   }) {
+    final color = iconColor ?? const Color(0xFF3B159B);
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
         horizontal: 4,
@@ -327,12 +345,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: (iconColor ?? const Color(0xFF3B159B)).withOpacity(0.10),
+          color: color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
           icon,
-          color: iconColor ?? const Color(0xFF3B159B),
+          color: color,
         ),
       ),
       title: Text(
