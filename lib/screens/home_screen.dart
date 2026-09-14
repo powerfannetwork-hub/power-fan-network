@@ -58,6 +58,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   KycStatus _kycStatus = KycStatus.initial();
 
+  // ============================================================
+  // OFFICIAL POWER FAN NETWORK SOCIAL LINKS
+  // ============================================================
+
+  static const Map<String, String> _officialSocialLinks = {
+    'facebook': 'https://www.facebook.com/share/18ipQKYcCV/',
+    'instagram': 'https://www.instagram.com/powerfannetwok/',
+    'x': 'https://x.com/Powerfannetwork',
+    'tiktok': 'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
+    'youtube': 'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
+    'telegram': 'https://t.me/PowerFannetwork',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -986,6 +999,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ============================================================
+  // SOCIAL ACTION
+  // ============================================================
+
   Future<void> _socialAction(
     DailySocialTask task,
   ) async {
@@ -1003,10 +1020,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // ========================================================
-      // CLAIM
-      // ========================================================
-
       if (task.canClaim) {
         await _social.claimReward(
           taskId: task.id,
@@ -1024,19 +1037,13 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      // ========================================================
-      // START TASK
-      // ========================================================
-
       await _social.startTask(
         taskId: task.id,
       );
 
-      // ========================================================
-      // OPEN POST / SOCIAL URL
-      // ========================================================
+      final url = _taskUrl(task);
 
-      if (task.url.trim().isEmpty) {
+      if (url.isEmpty) {
         if (mounted) {
           _message(
             'Social task started. Complete the required action, then refresh to verify it.',
@@ -1048,9 +1055,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final opened =
-          await _social.openTaskUrl(
-        task.url,
-      );
+          await _social.openTaskUrl(url);
 
       if (mounted) {
         if (opened) {
@@ -1079,10 +1084,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
+  // TASK URL
+  // ============================================================
+
+  String _taskUrl(DailySocialTask task) {
+    final databaseUrl = task.url.trim();
+
+    if (databaseUrl.isNotEmpty) {
+      return databaseUrl;
+    }
+
+    final platform =
+        task.platform.trim().toLowerCase();
+
+    return _officialSocialLinks[platform] ?? '';
+  }
+
+  // ============================================================
   // SOCIAL TASK CARD
   // ============================================================
 
   Widget _buildSocialCard() {
+    final displayTasks =
+        _tasks.isNotEmpty
+            ? _tasks
+            : _buildFallbackSocialTasks();
+
     return _card(
       child: Column(
         crossAxisAlignment:
@@ -1113,7 +1140,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Complete any available task and earn FAN.',
+                      'Choose a social platform and complete the task to earn FAN.',
                       style: TextStyle(
                         fontSize: 11,
                         color:
@@ -1136,61 +1163,124 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          if (_tasks.isEmpty)
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color:
-                    const Color(0xFFF7F5FC),
-                borderRadius:
-                    BorderRadius.circular(14),
-              ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.hourglass_empty_rounded,
-                    color: primaryPurple,
-                    size: 32,
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'No social task is available right now.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight:
-                          FontWeight.w700,
-                      color: deepPurple,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            ..._tasks.asMap().entries.map(
-              (entry) {
-                final index = entry.key;
-                final task = entry.value;
+          ...displayTasks.asMap().entries.map(
+            (entry) {
+              final index = entry.key;
+              final task = entry.value;
 
-                return Padding(
-                  padding:
-                      EdgeInsets.only(
-                    bottom:
-                        index == _tasks.length - 1
-                            ? 0
-                            : 10,
-                  ),
-                  child:
-                      _buildSingleSocialTask(
-                    task,
-                  ),
-                );
-              },
-            ),
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom:
+                      index == displayTasks.length - 1
+                          ? 0
+                          : 10,
+                ),
+                child:
+                    _buildSingleSocialTask(
+                  task,
+                ),
+              );
+            },
+          ),
         ],
       ),
+    );
+  }
+
+  // ============================================================
+  // FALLBACK PLATFORM TASKS
+  // ============================================================
+
+  List<DailySocialTask>
+      _buildFallbackSocialTasks() {
+    return [
+      _fallbackTask(
+        id: 'official-facebook',
+        platform: 'facebook',
+        title: 'Follow Power Fan Network on Facebook',
+        description:
+            'Open the official Power Fan Network Facebook page and follow it.',
+        requiresFollow: true,
+      ),
+      _fallbackTask(
+        id: 'official-instagram',
+        platform: 'instagram',
+        title: 'Follow Power Fan Network on Instagram',
+        description:
+            'Open the official Power Fan Network Instagram page and follow it.',
+        requiresFollow: true,
+      ),
+      _fallbackTask(
+        id: 'official-x',
+        platform: 'x',
+        title: 'Follow Power Fan Network on X',
+        description:
+            'Open the official Power Fan Network X account and follow it.',
+        requiresFollow: true,
+      ),
+      _fallbackTask(
+        id: 'official-tiktok',
+        platform: 'tiktok',
+        title: 'Follow Power Fan Network on TikTok',
+        description:
+            'Open the official Power Fan Network TikTok account and follow it.',
+        requiresFollow: true,
+      ),
+      _fallbackTask(
+        id: 'official-youtube',
+        platform: 'youtube',
+        title: 'Subscribe to Power Fan Network on YouTube',
+        description:
+            'Open the official Power Fan Network YouTube channel and subscribe.',
+        requiresSubscribe: true,
+      ),
+      _fallbackTask(
+        id: 'official-telegram',
+        platform: 'telegram',
+        title: 'Join Power Fan Network on Telegram',
+        description:
+            'Open the official Power Fan Network Telegram channel and join it.',
+        requiresJoin: true,
+      ),
+    ];
+  }
+
+  DailySocialTask _fallbackTask({
+    required String id,
+    required String platform,
+    required String title,
+    required String description,
+    bool requiresFollow = false,
+    bool requiresLike = false,
+    bool requiresComment = false,
+    bool requiresShare = false,
+    bool requiresJoin = false,
+    bool requiresSubscribe = false,
+  }) {
+    return DailySocialTask(
+      id: id,
+      title: title,
+      description: description,
+      url: _officialSocialLinks[platform] ?? '',
+      platform: platform,
+      rewardFan: 10.0,
+      claimed: false,
+      canClaim: false,
+      followVerified: false,
+      likeVerified: false,
+      commentVerified: false,
+      shareVerified: false,
+      joinVerified: false,
+      subscribeVerified: false,
+      requiresFollow: requiresFollow,
+      requiresLike: requiresLike,
+      requiresComment: requiresComment,
+      requiresShare: requiresShare,
+      requiresJoin: requiresJoin,
+      requiresSubscribe: requiresSubscribe,
+      taskDate: null,
+      postExternalId: null,
+      postPublishedAt: null,
     );
   }
 
@@ -1210,9 +1300,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final platformIcon =
         _platformIcon(platform);
 
+    final isFallback =
+        task.id.startsWith('official-');
+
     final isClaimable =
         task.canClaim &&
-        !task.claimed;
+        !task.claimed &&
+        !isFallback;
 
     final isClaimed =
         task.claimed;
@@ -1222,7 +1316,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ? 'CLAIMED'
             : isClaimable
                 ? 'CLAIM ${_formatFan(task.rewardFan)} FAN'
-                : 'OPEN TASK';
+                : 'OPEN ${platformLabel.toUpperCase()}';
 
     final actionColor =
         isClaimed
@@ -1256,8 +1350,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 CrossAxisAlignment.start,
             children: [
               Container(
-                width: 45,
-                height: 45,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: _platformColor(
                     platform,
@@ -1266,7 +1360,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   borderRadius:
                       BorderRadius.circular(
-                    12,
+                    13,
                   ),
                 ),
                 alignment:
@@ -1277,10 +1371,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       _platformColor(
                     platform,
                   ),
-                  size: 24,
+                  size: 27,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment:
@@ -1296,9 +1390,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 TextOverflow.ellipsis,
                             style:
                                 const TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight:
-                                  FontWeight.w800,
+                                  FontWeight.w900,
                               color:
                                   primaryPurple,
                             ),
@@ -1357,24 +1451,22 @@ class _HomeScreenState extends State<HomeScreen> {
                             FontWeight.w800,
                       ),
                     ),
-                    if (task.description
-                        .trim()
-                        .isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        task.description,
-                        maxLines: 2,
-                        overflow:
-                            TextOverflow.ellipsis,
-                        style:
-                            const TextStyle(
-                          fontSize: 10,
-                          height: 1.3,
-                          color:
-                              Color(0xFF66666F),
-                        ),
+                    const SizedBox(height: 4),
+                    Text(
+                      task.description.isNotEmpty
+                          ? task.description
+                          : 'Open the official social page and complete the required action.',
+                      maxLines: 2,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(
+                        fontSize: 10,
+                        height: 1.3,
+                        color:
+                            Color(0xFF66666F),
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -1505,7 +1597,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (items.isEmpty) {
       return const Text(
-        'Server verification required before reward claim.',
+        'Complete the task and return here for server verification.',
         style: TextStyle(
           fontSize: 10,
           color: Color(0xFF777780),
