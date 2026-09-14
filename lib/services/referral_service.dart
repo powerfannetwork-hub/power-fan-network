@@ -9,6 +9,7 @@ class ReferralInfo {
   final double totalInviterRewards;
   final double miningBonus;
   final double miningBonusPerActiveReferral;
+  final bool hasAppliedReferral;
 
   const ReferralInfo({
     required this.referralCode,
@@ -17,6 +18,7 @@ class ReferralInfo {
     required this.totalInviterRewards,
     required this.miningBonus,
     required this.miningBonusPerActiveReferral,
+    required this.hasAppliedReferral,
   });
 
   factory ReferralInfo.empty() {
@@ -24,9 +26,10 @@ class ReferralInfo {
       referralCode: '',
       activeReferrals: 0,
       totalReferrals: 0,
-      totalInviterRewards: 0,
-      miningBonus: 0.0,
+      totalInviterRewards: 0.0,
+      miningBonus: 0.02,
       miningBonusPerActiveReferral: 0.02,
+      hasAppliedReferral: false,
     );
   }
 
@@ -37,6 +40,7 @@ class ReferralInfo {
     double? totalInviterRewards,
     double? miningBonus,
     double? miningBonusPerActiveReferral,
+    bool? hasAppliedReferral,
   }) {
     return ReferralInfo(
       referralCode: referralCode ?? this.referralCode,
@@ -51,6 +55,9 @@ class ReferralInfo {
       miningBonusPerActiveReferral:
           miningBonusPerActiveReferral ??
               this.miningBonusPerActiveReferral,
+      hasAppliedReferral:
+          hasAppliedReferral ??
+              this.hasAppliedReferral,
     );
   }
 }
@@ -86,10 +93,6 @@ class ReferralService {
   SupabaseClient get _client =>
       SupabaseService.client;
 
-  // ============================================================
-  // CURRENT USER
-  // ============================================================
-
   String get _userId {
     final user = _client.auth.currentUser;
 
@@ -99,10 +102,6 @@ class ReferralService {
 
     return user.id;
   }
-
-  // ============================================================
-  // REFERRAL INFORMATION
-  // ============================================================
 
   Future<ReferralInfo> getReferralInfo() async {
     return SupabaseService.safeCall(() async {
@@ -150,6 +149,9 @@ class ReferralService {
                 miningBonusPerActiveReferral,
       );
 
+      final hasAppliedReferral =
+          _readReferralAppliedStatus(data);
+
       return ReferralInfo(
         referralCode: referralCode,
         activeReferrals: activeReferrals,
@@ -159,13 +161,11 @@ class ReferralService {
         miningBonus: miningBonus,
         miningBonusPerActiveReferral:
             miningBonusPerActiveReferral,
+        hasAppliedReferral:
+            hasAppliedReferral,
       );
     });
   }
-
-  // ============================================================
-  // APPLY REFERRAL CODE
-  // ============================================================
 
   Future<ReferralResult> applyReferralCode(
     String code,
@@ -205,10 +205,6 @@ class ReferralService {
     });
   }
 
-  // ============================================================
-  // ACTIVE REFERRALS
-  // ============================================================
-
   Future<int> getActiveReferrals() async {
     final userId = _userId;
 
@@ -223,10 +219,6 @@ class ReferralService {
       return _toInt(result);
     });
   }
-
-  // ============================================================
-  // MINING BONUS
-  // ============================================================
 
   Future<double> getMiningBonus() async {
     final userId = _userId;
@@ -243,9 +235,63 @@ class ReferralService {
     });
   }
 
-  // ============================================================
-  // RPC RESPONSE PARSER
-  // ============================================================
+  bool _readReferralAppliedStatus(
+    Map<String, dynamic> data,
+  ) {
+    const boolKeys = [
+      'has_applied_referral',
+      'referral_applied',
+      'has_referral',
+      'referral_used',
+      'has_used_referral',
+    ];
+
+    for (final key in boolKeys) {
+      if (data.containsKey(key)) {
+        return _toBool(data[key]);
+      }
+    }
+
+    const idKeys = [
+      'referred_by',
+      'referred_by_id',
+      'referrer_id',
+      'invited_by',
+      'inviter_id',
+    ];
+
+    for (final key in idKeys) {
+      final value = data[key];
+
+      if (value != null &&
+          value.toString().trim().isNotEmpty) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool _toBool(dynamic value) {
+    if (value == null) {
+      return false;
+    }
+
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    final text =
+        value.toString().trim().toLowerCase();
+
+    return text == 'true' ||
+        text == '1' ||
+        text == 'yes';
+  }
 
   Map<String, dynamic> _mapFromRpcResult(
     dynamic result,
@@ -279,10 +325,6 @@ class ReferralService {
     );
   }
 
-  // ============================================================
-  // INTEGER PARSER
-  // ============================================================
-
   int _toInt(dynamic value) {
     if (value == null) {
       return 0;
@@ -301,10 +343,6 @@ class ReferralService {
         ) ??
         0;
   }
-
-  // ============================================================
-  // DOUBLE PARSER
-  // ============================================================
 
   double _toDouble(
     dynamic value, {
