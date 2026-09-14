@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 class ProfileScreen extends StatelessWidget {
   final String? name;
   final String? email;
+  final String? profileImageUrl;
   final double fanBalance;
   final double afamBalance;
   final int activeReferrals;
 
-  // New KYC progress
   final int checkInDays;
   final int boostDays;
   final bool faceVerificationUnlocked;
@@ -17,6 +17,7 @@ class ProfileScreen extends StatelessWidget {
     super.key,
     this.name,
     this.email,
+    this.profileImageUrl,
     this.fanBalance = 0.0,
     this.afamBalance = 0.0,
     this.activeReferrals = 0,
@@ -25,6 +26,10 @@ class ProfileScreen extends StatelessWidget {
     this.faceVerificationUnlocked = false,
     this.faceVerified = false,
   });
+
+  static const Color primaryPurple = Color(0xFF3B159B);
+  static const Color deepPurple = Color(0xFF241064);
+  static const Color successGreen = Color(0xFF159B61);
 
   String get displayName {
     final value = name?.trim() ?? '';
@@ -36,12 +41,20 @@ class ProfileScreen extends StatelessWidget {
     return value.isEmpty ? 'No email available' : value;
   }
 
+  bool get requirementsComplete {
+    return checkInProgress >= 30 && boostProgress >= 30;
+  }
+
+  bool get effectiveFaceVerificationUnlocked {
+    return faceVerificationUnlocked || requirementsComplete;
+  }
+
   String get kycStatus {
     if (faceVerified) {
       return 'Face Verified';
     }
 
-    if (faceVerificationUnlocked) {
+    if (effectiveFaceVerificationUnlocked) {
       return 'Ready for Face Verification';
     }
 
@@ -50,11 +63,11 @@ class ProfileScreen extends StatelessWidget {
 
   Color get kycStatusColor {
     if (faceVerified) {
-      return const Color(0xFF159B61);
+      return successGreen;
     }
 
-    if (faceVerificationUnlocked) {
-      return const Color(0xFF3B159B);
+    if (effectiveFaceVerificationUnlocked) {
+      return primaryPurple;
     }
 
     return Colors.orange;
@@ -76,6 +89,11 @@ class ProfileScreen extends StatelessWidget {
     return activeReferrals * 0.02;
   }
 
+  bool get hasProfileImage {
+    final url = profileImageUrl?.trim() ?? '';
+    return url.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -89,15 +107,13 @@ class ProfileScreen extends StatelessWidget {
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF241064),
+        foregroundColor: deepPurple,
         elevation: 0,
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          color: const Color(0xFF3B159B),
+          color: primaryPurple,
           onRefresh: () async {
-            // Profile data is supplied by the parent.
-            // Refresh can be connected later if needed.
             await Future<void>.delayed(
               const Duration(milliseconds: 300),
             );
@@ -135,8 +151,8 @@ class ProfileScreen extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
-            Color(0xFF3B159B),
-            Color(0xFF241064),
+            primaryPurple,
+            deepPurple,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -145,27 +161,7 @@ class ProfileScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            width: 76,
-            height: 76,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.30),
-                width: 2,
-              ),
-            ),
-            child: Text(
-              _initials(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+          _buildProfilePhoto(),
           const SizedBox(height: 12),
           Text(
             displayName,
@@ -216,6 +212,77 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProfilePhoto() {
+    return Container(
+      width: 104,
+      height: 104,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.45),
+          width: 2,
+        ),
+      ),
+      child: ClipOval(
+        child: hasProfileImage
+            ? Image.network(
+                profileImageUrl!.trim(),
+                width: 98,
+                height: 98,
+                fit: BoxFit.cover,
+                errorBuilder: (
+                  context,
+                  error,
+                  stackTrace,
+                ) {
+                  return _buildInitialAvatar();
+                },
+                loadingBuilder: (
+                  context,
+                  child,
+                  loadingProgress,
+                ) {
+                  if (loadingProgress == null) {
+                    return child;
+                  }
+
+                  return Container(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    alignment: Alignment.center,
+                    child: const SizedBox(
+                      width: 25,
+                      height: 25,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    ),
+                  );
+                },
+              )
+            : _buildInitialAvatar(),
+      ),
+    );
+  }
+
+  Widget _buildInitialAvatar() {
+    return Container(
+      width: 98,
+      height: 98,
+      alignment: Alignment.center,
+      color: Colors.white.withValues(alpha: 0.15),
+      child: Text(
+        _initials(),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 30,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }
@@ -288,7 +355,7 @@ class ProfileScreen extends StatelessWidget {
           Icon(
             icon,
             size: 21,
-            color: const Color(0xFF3B159B),
+            color: primaryPurple,
           ),
           const SizedBox(height: 9),
           Text(
@@ -312,7 +379,7 @@ class ProfileScreen extends StatelessWidget {
             style: const TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF3B159B),
+              color: primaryPurple,
             ),
           ),
         ],
@@ -339,7 +406,7 @@ class ProfileScreen extends StatelessWidget {
           icon: Icons.shield_outlined,
           title: 'Account Status',
           value: 'Active',
-          valueColor: const Color(0xFF159B61),
+          valueColor: successGreen,
         ),
       ],
     );
@@ -348,6 +415,8 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildKycSection() {
     final checkInComplete = checkInProgress >= 30;
     final boostComplete = boostProgress >= 30;
+    final requirementsComplete =
+        checkInComplete && boostComplete;
 
     return _buildSection(
       title: 'KYC Face Verification',
@@ -378,14 +447,16 @@ class ProfileScreen extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF3B159B).withValues(alpha: 0.05),
+            color: primaryPurple.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Text(
-            'KYC Face Verification becomes available after '
-            '30 consecutive daily check-ins and at least one '
-            'boost every day for 30 days.',
-            style: TextStyle(
+          child: Text(
+            requirementsComplete
+                ? 'KYC requirements completed. Face Verification is now unlocked.'
+                : 'KYC Face Verification becomes available after '
+                    '30 consecutive daily check-ins and at least one '
+                    'boost every day for 30 days.',
+            style: const TextStyle(
               fontSize: 11,
               color: Colors.black54,
               height: 1.4,
@@ -432,7 +503,7 @@ class ProfileScreen extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: completed
-                      ? const Color(0xFF159B61)
+                      ? successGreen
                       : Colors.black87,
                 ),
               ),
@@ -441,7 +512,7 @@ class ProfileScreen extends StatelessWidget {
                 const Icon(
                   Icons.check_circle,
                   size: 16,
-                  color: Color(0xFF159B61),
+                  color: successGreen,
                 ),
               ],
             ],
@@ -455,8 +526,8 @@ class ProfileScreen extends StatelessWidget {
               backgroundColor: Colors.grey.shade200,
               valueColor: AlwaysStoppedAnimation<Color>(
                 completed
-                    ? const Color(0xFF159B61)
-                    : const Color(0xFF3B159B),
+                    ? successGreen
+                    : primaryPurple,
               ),
             ),
           ),
@@ -480,7 +551,7 @@ class ProfileScreen extends StatelessWidget {
           title: 'Mining Bonus',
           value:
               '+${referralMiningBonus.toStringAsFixed(2)} FAN/H',
-          valueColor: const Color(0xFF159B61),
+          valueColor: successGreen,
         ),
         _buildInfoRow(
           icon: Icons.card_giftcard,
@@ -513,12 +584,12 @@ class ProfileScreen extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFF3B159B).withValues(alpha: 0.08),
+              color: primaryPurple.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.swap_horiz,
-              color: Color(0xFF3B159B),
+              color: primaryPurple,
             ),
           ),
           const SizedBox(width: 12),
@@ -547,7 +618,7 @@ class ProfileScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF3B159B),
+                    color: primaryPurple,
                   ),
                 ),
                 SizedBox(height: 3),
@@ -567,7 +638,7 @@ class ProfileScreen extends StatelessWidget {
               vertical: 6,
             ),
             decoration: BoxDecoration(
-              color: const Color(0xFF3B159B).withValues(alpha: 0.08),
+              color: primaryPurple.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
@@ -575,7 +646,7 @@ class ProfileScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 8,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF3B159B),
+                color: primaryPurple,
               ),
             ),
           ),
@@ -600,7 +671,7 @@ class ProfileScreen extends StatelessWidget {
         children: [
           Icon(
             Icons.security,
-            color: Color(0xFF159B61),
+            color: successGreen,
             size: 22,
           ),
           SizedBox(width: 10),
@@ -657,7 +728,7 @@ class ProfileScreen extends StatelessWidget {
               Icon(
                 icon,
                 size: 20,
-                color: const Color(0xFF3B159B),
+                color: primaryPurple,
               ),
               const SizedBox(width: 8),
               Expanded(
