@@ -173,7 +173,7 @@ class _LoginPageState extends State<LoginPage> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding:
-              const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              const EdgeInsets.fromLTRB(24, 16, 24, 24),
           child: Form(
             key: _formKey,
             child: Column(
@@ -187,7 +187,7 @@ class _LoginPageState extends State<LoginPage> {
                         ? null
                         : _showLanguageSelector,
                     icon:
-                        const Icon(Icons.language, size: 20),
+                        const Icon(Icons.language, size: 19),
                     label:
                         Text(t.translate('language')),
                     style: OutlinedButton.styleFrom(
@@ -196,78 +196,71 @@ class _LoginPageState extends State<LoginPage> {
                       side: const BorderSide(
                         color: Color(0xFF3B159B),
                       ),
+                      minimumSize:
+                          const Size(0, 46),
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 16,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.circular(12),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 34),
-                Container(
-                  width: 82,
-                  height: 82,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3B159B),
-                    borderRadius:
-                        BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF3B159B)
-                            .withValues(alpha: 0.18),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'PF',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1,
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 22),
+
+                const SizedBox(height: 38),
+
+                // BRAND
                 Text(
                   t.translate('brandName'),
                   style: const TextStyle(
                     color: Color(0xFF241064),
-                    fontSize: 30,
+                    fontSize: 25,
                     fontWeight: FontWeight.w900,
+                    letterSpacing: -0.4,
                   ),
                 ),
-                const SizedBox(height: 6),
+
+                const SizedBox(height: 3),
+
                 Text(
                   t.translate('powerFanNetwork'),
                   style: TextStyle(
                     color: Colors.grey.shade600,
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 42),
+
+                const SizedBox(height: 34),
+
                 Text(
                   t.translate('welcomeBack'),
                   style: const TextStyle(
                     color: Color(0xFF241064),
-                    fontSize: 27,
+                    fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(height: 5),
+
                 Text(
                   t.translate('loginToContinue'),
                   style: TextStyle(
                     color: Colors.grey.shade600,
-                    fontSize: 15,
+                    fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 28),
+
+                const SizedBox(height: 22),
+
                 TextFormField(
                   controller: _emailController,
                   keyboardType:
@@ -280,7 +273,15 @@ class _LoginPageState extends State<LoginPage> {
                     hintText:
                         t.translate('enterEmail'),
                     prefixIcon:
-                        const Icon(Icons.email_outlined),
+                        const Icon(
+                      Icons.email_outlined,
+                      size: 21,
+                    ),
+                    contentPadding:
+                        const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 14,
+                    ),
                   ),
                   validator: (value) {
                     final email = value?.trim() ?? '';
@@ -294,7 +295,9 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(height: 13),
+
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -308,7 +311,10 @@ class _LoginPageState extends State<LoginPage> {
                     hintText:
                         t.translate('enterPassword'),
                     prefixIcon:
-                        const Icon(Icons.lock_outline),
+                        const Icon(
+                      Icons.lock_outline,
+                      size: 21,
+                    ),
                     suffixIcon: IconButton(
                       onPressed: () {
                         setState(() {
@@ -320,7 +326,13 @@ class _LoginPageState extends State<LoginPage> {
                         _obscurePassword
                             ? Icons.visibility_outlined
                             : Icons.visibility_off_outlined,
+                        size: 21,
                       ),
+                    ),
+                    contentPadding:
+                        const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 14,
                     ),
                   ),
                   validator: (value) {
@@ -333,26 +345,41 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
+
+                const SizedBox(height: 6),
+
                 Align(
                   alignment:
                       Alignment.centerRight,
                   child: TextButton(
                     onPressed:
                         _loading ? null : _resetPassword,
+                    style: TextButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 6,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize:
+                          MaterialTapTargetSize.shrinkWrap,
+                    ),
                     child: Text(
                       t.translate('forgotPassword'),
                       style: const TextStyle(
                         color: Color(0xFF3B159B),
+                        fontSize: 14,
                         fontWeight:
                             FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+
+                const SizedBox(height: 10),
+
                 SizedBox(
-                  height: 54,
+                  height: 52,
                   child: FilledButton(
                     onPressed:
                         _loading ? null : _login,
@@ -362,13 +389,13 @@ class _LoginPageState extends State<LoginPage> {
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius:
-                            BorderRadius.circular(15),
+                            BorderRadius.circular(14),
                       ),
                     ),
                     child: _loading
                         ? const SizedBox(
-                            width: 23,
-                            height: 23,
+                            width: 22,
+                            height: 22,
                             child:
                                 CircularProgressIndicator(
                               strokeWidth: 2.5,
@@ -379,14 +406,16 @@ class _LoginPageState extends State<LoginPage> {
                             t.translate('signIn'),
                             style:
                                 const TextStyle(
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight:
                                   FontWeight.bold,
                             ),
                           ),
                   ),
                 ),
-                const SizedBox(height: 22),
+
+                const SizedBox(height: 16),
+
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.center,
@@ -398,18 +427,29 @@ class _LoginPageState extends State<LoginPage> {
                       style: TextStyle(
                         color:
                             Colors.grey.shade700,
+                        fontSize: 14,
                       ),
                     ),
                     TextButton(
                       onPressed: _loading
                           ? null
                           : _openRegisterPage,
+                      style: TextButton.styleFrom(
+                        padding:
+                            const EdgeInsets.symmetric(
+                          horizontal: 6,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                      ),
                       child: Text(
                         t.translate('register'),
                         style:
                             const TextStyle(
                           color:
                               Color(0xFF3B159B),
+                          fontSize: 14,
                           fontWeight:
                               FontWeight.bold,
                         ),
@@ -417,16 +457,18 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+
+                const SizedBox(height: 12),
+
                 Text(
                   'POWER FAN NETWORK',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.grey.shade500,
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight:
                         FontWeight.w600,
-                    letterSpacing: 0.8,
+                    letterSpacing: 0.7,
                   ),
                 ),
               ],
