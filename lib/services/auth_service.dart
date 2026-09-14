@@ -2,6 +2,8 @@
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'referral_service.dart';
+
 class AuthService {
   AuthService._();
 
@@ -75,9 +77,6 @@ class AuthService {
       final Map<String, dynamic> metadata =
           <String, dynamic>{
         'username': cleanUsername,
-
-        // This records that the registration flow
-        // contains the one-person-one-account notice.
         'registration_notice_presented': true,
       };
 
@@ -96,17 +95,22 @@ class AuthService {
       // ----------------------------------------------------------
       // ACCEPT REGISTRATION NOTICE
       // ----------------------------------------------------------
-      //
-      // If Supabase returns an active session immediately,
-      // save the acceptance now.
-      //
-      // If email confirmation is enabled, there may be no
-      // session yet. In that case the login() method below
-      // will save the acceptance after the user confirms email.
-      // ----------------------------------------------------------
 
       if (response.session != null) {
         await acceptRegistrationNotice();
+
+        // --------------------------------------------------------
+        // APPLY REGISTRATION REFERRAL
+        // --------------------------------------------------------
+        //
+        // When a session is available immediately, apply the
+        // referral code directly after registration.
+        //
+        // The referral code is already stored in the user's
+        // Supabase auth metadata by signUp().
+        // --------------------------------------------------------
+
+        await _applyPendingReferral(response.user);
       }
 
       return response;
@@ -156,14 +160,6 @@ class AuthService {
       // ----------------------------------------------------------
       // REGISTRATION NOTICE
       // ----------------------------------------------------------
-      //
-      // This also handles users who registered while email
-      // confirmation was enabled and therefore had no session
-      // immediately after signUp().
-      //
-      // Existing accounts are safe because schema.plus.sql
-      // already backfills old profiles as accepted.
-      // ----------------------------------------------------------
 
       if (response.session != null) {
         try {
@@ -172,6 +168,23 @@ class AuthService {
           // Do not block a valid login if saving the notice
           // temporarily fails.
         }
+      }
+
+      // ----------------------------------------------------------
+      // PENDING REGISTRATION REFERRAL
+      // ----------------------------------------------------------
+      //
+      // If email confirmation was enabled during registration,
+      // signUp() may have returned no session.
+      //
+      // The referral code remains in auth metadata.
+      //
+      // After the user confirms the email and logs in, apply
+      // the referral automatically here.
+      // ----------------------------------------------------------
+
+      if (response.session != null) {
+        await _applyPendingReferral(response.user);
       }
 
       return response;
@@ -183,6 +196,99 @@ class AuthService {
       }
 
       throw Exception(e.toString());
+    }
+  }
+
+  // ============================================================
+  // APPLY PENDING REGISTRATION REFERRAL
+  // ============================================================
+
+  Future<void> _applyPendingReferral(
+    User? user,
+  ) async {
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final metadata = user.userMetadata;
+
+      if (metadata == null) {
+        return;
+      }
+
+      final rawReferralCode =
+          metadata['referral_code'];
+
+      if (rawReferralCode == null) {
+        return;
+      }
+
+      final referralCode =
+          rawReferralCode.toString().trim().toUpperCase();
+
+      if (referralCode.isEmpty) {
+        return;
+      }
+
+      // ----------------------------------------------------------
+      // CHECK CURRENT PROFILE
+      // ----------------------------------------------------------
+      //
+      // If referred_by is already set, the referral has already
+      // been applied. Never try to apply another referral.
+      // ----------------------------------------------------------
+
+      final profile =
+          await _supabase
+              .from('profiles')
+              .select('referred_by')
+              .eq('id', user.id)
+              .maybeSingle();
+
+      if (profile == null) {
+        return;
+      }
+
+      final existingReferredBy =
+          profile['referred_by'];
+
+      if (existingReferredBy != null &&
+          existingReferredBy.toString().trim().isNotEmpty) {
+        return;
+      }
+
+      // ----------------------------------------------------------
+      // APPLY REFERRAL
+      // ----------------------------------------------------------
+
+      final result =
+          await ReferralService.instance
+              .applyReferralCode(referralCode);
+
+      // ----------------------------------------------------------
+      // SUCCESS
+      // ----------------------------------------------------------
+      //
+      // No UI is required here.
+      //
+      // The referral service is responsible for:
+      // - validating the referral code
+      // - setting referred_by
+      // - creating referral relationship/reward data
+      // - updating referral statistics
+      //
+      // The user simply continues into the app.
+      // ----------------------------------------------------------
+
+      if (!result.success) {
+        return;
+      }
+    } catch (_) {
+      // Referral failure must not destroy a valid account login.
+      //
+      // The registration/login itself remains successful.
+      // The referral is only applied when the server accepts it.
     }
   }
 
