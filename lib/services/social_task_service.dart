@@ -57,6 +57,8 @@ class DailySocialTask {
   });
 
   factory DailySocialTask.fromMap(Map<String, dynamic> map) {
+    final reward = _toDouble(map['reward_fan']);
+
     return DailySocialTask(
       id: (map['id'] ?? '').toString(),
       title: (map['title'] ?? '').toString(),
@@ -64,11 +66,9 @@ class DailySocialTask {
       url: (map['task_url'] ?? map['url'] ?? '').toString(),
       platform: (map['platform'] ?? '').toString().toLowerCase().trim(),
 
-      // Each social task is intended to be 10 FAN.
-      // If Supabase returns another valid value, use the server value.
-      rewardFan: _toDouble(map['reward_fan']) > 0
-          ? _toDouble(map['reward_fan'])
-          : 10.0,
+      // Default reward is 10 FAN.
+      // If Supabase sends a valid reward, use the server value.
+      rewardFan: reward > 0 ? reward : 10.0,
 
       claimed: _toBool(map['claimed']),
       canClaim: _toBool(map['can_claim']),
@@ -88,20 +88,36 @@ class DailySocialTask {
       requiresSubscribe: _toBool(map['requires_subscribe']),
 
       taskDate: _toDate(map['task_date']),
-      postExternalId: _toNullableString(map['post_external_id']),
-      postPublishedAt: _toDate(map['post_published_at']),
+      postExternalId: _toNullableString(
+        map['post_external_id'],
+      ),
+      postPublishedAt: _toDate(
+        map['post_published_at'],
+      ),
     );
   }
 
   static double _toDouble(dynamic value) {
     if (value == null) return 0.0;
-    if (value is num) return value.toDouble();
-    return double.tryParse(value.toString()) ?? 0.0;
+
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        0.0;
   }
 
   static bool _toBool(dynamic value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
 
     final text = value?.toString().toLowerCase().trim();
 
@@ -109,21 +125,29 @@ class DailySocialTask {
   }
 
   static DateTime? _toDate(dynamic value) {
-    if (value == null) return null;
+    if (value == null) {
+      return null;
+    }
 
     final text = value.toString().trim();
 
-    if (text.isEmpty) return null;
+    if (text.isEmpty) {
+      return null;
+    }
 
     return DateTime.tryParse(text);
   }
 
   static String? _toNullableString(dynamic value) {
-    if (value == null) return null;
+    if (value == null) {
+      return null;
+    }
 
     final text = value.toString().trim();
 
-    if (text.isEmpty) return null;
+    if (text.isEmpty) {
+      return null;
+    }
 
     return text;
   }
@@ -133,19 +157,37 @@ class DailySocialTask {
         postExternalId!.trim().isNotEmpty;
   }
 
-  /// Only actions required by the SERVER are considered.
+  /// True only when every action required by the
+  /// server has been verified.
   bool get allRequiredActionsVerified {
-    if (requiresFollow && !followVerified) return false;
-    if (requiresLike && !likeVerified) return false;
-    if (requiresComment && !commentVerified) return false;
-    if (requiresShare && !shareVerified) return false;
-    if (requiresJoin && !joinVerified) return false;
-    if (requiresSubscribe && !subscribeVerified) return false;
+    if (requiresFollow && !followVerified) {
+      return false;
+    }
+
+    if (requiresLike && !likeVerified) {
+      return false;
+    }
+
+    if (requiresComment && !commentVerified) {
+      return false;
+    }
+
+    if (requiresShare && !shareVerified) {
+      return false;
+    }
+
+    if (requiresJoin && !joinVerified) {
+      return false;
+    }
+
+    if (requiresSubscribe && !subscribeVerified) {
+      return false;
+    }
 
     return true;
   }
 
-  /// Kept for compatibility with existing HomeScreen code.
+  /// Kept so existing HomeScreen code does not break.
   bool get postActionsVerified {
     return allRequiredActionsVerified;
   }
@@ -153,12 +195,29 @@ class DailySocialTask {
   List<String> get requiredActions {
     final actions = <String>[];
 
-    if (requiresFollow) actions.add('Follow');
-    if (requiresLike) actions.add('Like');
-    if (requiresComment) actions.add('Comment');
-    if (requiresShare) actions.add('Share');
-    if (requiresJoin) actions.add('Join');
-    if (requiresSubscribe) actions.add('Subscribe');
+    if (requiresFollow) {
+      actions.add('Follow');
+    }
+
+    if (requiresLike) {
+      actions.add('Like');
+    }
+
+    if (requiresComment) {
+      actions.add('Comment');
+    }
+
+    if (requiresShare) {
+      actions.add('Share');
+    }
+
+    if (requiresJoin) {
+      actions.add('Join');
+    }
+
+    if (requiresSubscribe) {
+      actions.add('Subscribe');
+    }
 
     return actions;
   }
@@ -166,12 +225,29 @@ class DailySocialTask {
   List<String> get verifiedActions {
     final actions = <String>[];
 
-    if (followVerified) actions.add('Follow');
-    if (likeVerified) actions.add('Like');
-    if (commentVerified) actions.add('Comment');
-    if (shareVerified) actions.add('Share');
-    if (joinVerified) actions.add('Join');
-    if (subscribeVerified) actions.add('Subscribe');
+    if (followVerified) {
+      actions.add('Follow');
+    }
+
+    if (likeVerified) {
+      actions.add('Like');
+    }
+
+    if (commentVerified) {
+      actions.add('Comment');
+    }
+
+    if (shareVerified) {
+      actions.add('Share');
+    }
+
+    if (joinVerified) {
+      actions.add('Join');
+    }
+
+    if (subscribeVerified) {
+      actions.add('Subscribe');
+    }
 
     return actions;
   }
@@ -185,21 +261,52 @@ class DailySocialTask {
   }
 
   String get platformName {
-    if (platform == 'facebook') return 'Facebook';
-    if (platform == 'instagram') return 'Instagram';
-    if (platform == 'twitter' || platform == 'x') return 'X';
-    if (platform == 'tiktok') return 'TikTok';
-    if (platform == 'youtube') return 'YouTube';
-    if (platform == 'telegram') return 'Telegram';
+    switch (platform) {
+      case 'facebook':
+        return 'Facebook';
 
-    return platform.isEmpty ? 'Social' : platform;
+      case 'instagram':
+        return 'Instagram';
+
+      case 'twitter':
+      case 'x':
+        return 'X';
+
+      case 'tiktok':
+        return 'TikTok';
+
+      case 'youtube':
+        return 'YouTube';
+
+      case 'telegram':
+        return 'Telegram';
+
+      default:
+        if (platform.isEmpty) {
+          return 'Social';
+        }
+
+        return platform;
+    }
   }
 }
 
 class SocialTaskService {
-  final SupabaseClient _client = Supabase.instance.client;
+  final SupabaseClient _client =
+      Supabase.instance.client;
 
-  Future<List<DailySocialTask>> getDailyTasksForCard() async {
+  /// Loads all currently available social tasks
+  /// from the server.
+  ///
+  /// The server decides:
+  /// - which post is active
+  /// - which platform is active
+  /// - required actions
+  /// - verification state
+  /// - whether the task can be claimed
+  /// - reward amount
+  Future<List<DailySocialTask>>
+      getDailyTasksForCard() async {
     try {
       final response = await _client.rpc(
         'get_daily_social_tasks',
@@ -215,15 +322,23 @@ class SocialTaskService {
         );
       }
 
-      final tasks = response
-          .whereType<Map>()
-          .map(
-            (item) => DailySocialTask.fromMap(
-              Map<String, dynamic>.from(item),
-            ),
-          )
-          .where((task) => task.id.isNotEmpty)
-          .toList();
+      final tasks = <DailySocialTask>[];
+
+      for (final item in response) {
+        if (item is! Map) {
+          continue;
+        }
+
+        final task = DailySocialTask.fromMap(
+          Map<String, dynamic>.from(item),
+        );
+
+        if (task.id.isEmpty) {
+          continue;
+        }
+
+        tasks.add(task);
+      }
 
       return tasks;
     } on PostgrestException catch (e) {
@@ -237,6 +352,7 @@ class SocialTaskService {
     }
   }
 
+  /// Starts a specific social task on the server.
   Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
@@ -268,7 +384,9 @@ class SocialTaskService {
         );
       }
 
-      return Map<String, dynamic>.from(response);
+      return Map<String, dynamic>.from(
+        response,
+      );
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to start social task: ${e.message}',
@@ -280,7 +398,10 @@ class SocialTaskService {
     }
   }
 
-  Future<bool> openTaskUrl(String url) async {
+  /// Opens the actual social post/task.
+  Future<bool> openTaskUrl(
+    String url,
+  ) async {
     final cleanUrl = url.trim();
 
     if (cleanUrl.isEmpty) {
@@ -295,9 +416,12 @@ class SocialTaskService {
       return false;
     }
 
-    if (!uri.hasScheme ||
-        (uri.scheme != 'http' &&
-            uri.scheme != 'https')) {
+    if (!uri.hasScheme) {
+      return false;
+    }
+
+    if (uri.scheme != 'http' &&
+        uri.scheme != 'https') {
       return false;
     }
 
@@ -311,7 +435,9 @@ class SocialTaskService {
     }
   }
 
-  Future<Map<String, dynamic>> verifyAndClaim({
+  /// Compatibility method.
+  Future<Map<String, dynamic>>
+      verifyAndClaim({
     required String taskId,
   }) async {
     return claimReward(
@@ -319,7 +445,15 @@ class SocialTaskService {
     );
   }
 
-  Future<Map<String, dynamic>> claimReward({
+  /// Claims the reward.
+  ///
+  /// IMPORTANT:
+  /// Flutter does NOT decide whether the user
+  /// completed Follow/Like/Comment/Share/etc.
+  ///
+  /// Supabase/server verification decides that.
+  Future<Map<String, dynamic>>
+      claimReward({
     required String taskId,
   }) async {
     final cleanTaskId = taskId.trim();
@@ -350,7 +484,9 @@ class SocialTaskService {
         );
       }
 
-      return Map<String, dynamic>.from(response);
+      return Map<String, dynamic>.from(
+        response,
+      );
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to claim social reward: ${e.message}',
@@ -362,7 +498,9 @@ class SocialTaskService {
     }
   }
 
-  Future<List<DailySocialTask>> refreshTasks() {
+  /// Reloads the current social tasks.
+  Future<List<DailySocialTask>>
+      refreshTasks() async {
     return getDailyTasksForCard();
   }
 }
