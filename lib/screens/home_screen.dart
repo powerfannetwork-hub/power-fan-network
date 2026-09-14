@@ -26,15 +26,20 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration miningDuration = Duration(hours: 24);
   static const int maxAds = 7;
 
+  static const Duration socialTaskRefreshInterval =
+      Duration(seconds: 20);
+
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
   final KycService _kyc = KycService();
   final LevelPlayAdsService _ads = LevelPlayAdsService.instance;
 
   Timer? _timer;
+  Timer? _socialTaskTimer;
 
   bool _loading = true;
   bool _busy = false;
+  bool _loadingTasks = false;
 
   bool _isMining = false;
   bool _canClaim = false;
@@ -59,11 +64,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     unawaited(_loadInitial());
     unawaited(_initializeAds());
+
+    _startSocialTaskPolling();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _socialTaskTimer?.cancel();
     super.dispose();
   }
 
@@ -125,6 +133,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
     unawaited(_loadTasks());
     unawaited(_loadKyc());
+  }
+
+  // ============================================================
+  // SOCIAL TASK AUTO REFRESH
+  // ============================================================
+
+  void _startSocialTaskPolling() {
+    _socialTaskTimer?.cancel();
+
+    _socialTaskTimer = Timer.periodic(
+      socialTaskRefreshInterval,
+      (_) {
+        if (!mounted) return;
+
+        unawaited(
+          _refreshSocialTasksSilently(),
+        );
+      },
+    );
+  }
+
+  Future<void> _refreshSocialTasksSilently() async {
+    if (!mounted || _loadingTasks) {
+      return;
+    }
+
+    try {
+      await _loadTasks(
+        silent: true,
+      );
+    } catch (_) {}
   }
 
   // ============================================================
@@ -914,20 +953,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ============================================================
   // SOCIAL TASKS
-  //
-  // IMPORTANT:
-  //
-  // Each task is handled independently.
-  //
-  // We DO NOT use _tasks.first for every action.
-  //
-  // Every button sends its own task.id to:
-  //
-  // start_social_task
-  // claim_daily_social_reward
   // ============================================================
 
-  Future<void> _loadTasks() async {
+  Future<void> _loadTasks({
+    bool silent = false,
+  }) async {
+    if (_loadingTasks) {
+      return;
+    }
+
+    _loadingTasks = true;
+
     try {
       final tasks =
           await _social.getDailyTasksForCard();
@@ -940,9 +976,13 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       if (!mounted) return;
 
-      setState(() {
-        _tasks = [];
-      });
+      if (!silent) {
+        setState(() {
+          _tasks = [];
+        });
+      }
+    } finally {
+      _loadingTasks = false;
     }
   }
 
@@ -1051,8 +1091,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               _circleIcon(
-                Icons
-                    .assignment_turned_in_rounded,
+                Icons.assignment_turned_in_rounded,
                 background: successLight,
                 iconColor: successGreen,
                 size: 56,
@@ -1086,9 +1125,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               IconButton(
                 tooltip: 'Refresh tasks',
-                onPressed: _busy
+                onPressed: _busy || _loadingTasks
                     ? null
-                    : _loadTasks,
+                    : () => _loadTasks(),
                 icon: const Icon(
                   Icons.refresh_rounded,
                   color: primaryPurple,
@@ -1096,9 +1135,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
           if (_tasks.isEmpty)
             Container(
               width: double.infinity,
@@ -1113,8 +1150,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Column(
                 children: [
                   Icon(
-                    Icons
-                        .hourglass_empty_rounded,
+                    Icons.hourglass_empty_rounded,
                     color: primaryPurple,
                     size: 32,
                   ),
@@ -1205,8 +1241,9 @@ class _HomeScreenState extends State<HomeScreen> {
             BorderRadius.circular(16),
         border: Border.all(
           color: isClaimable
-              ? successGreen
-                  .withValues(alpha: 0.35)
+              ? successGreen.withValues(
+                  alpha: 0.35,
+                )
               : Colors.grey.shade200,
         ),
       ),
@@ -1256,8 +1293,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             platformLabel,
                             maxLines: 1,
                             overflow:
-                                TextOverflow
-                                    .ellipsis,
+                                TextOverflow.ellipsis,
                             style:
                                 const TextStyle(
                               fontSize: 11,
@@ -1344,17 +1380,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 10),
-
-          // ======================================================
-          // REQUIRED ACTIONS
-          // ======================================================
-
           _buildTaskActionsStatus(task),
-
           const SizedBox(height: 10),
-
           SizedBox(
             width: double.infinity,
             height: 43,
@@ -1368,10 +1396,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 isClaimed
                     ? Icons.check_rounded
                     : isClaimable
-                        ? Icons
-                            .card_giftcard_rounded
-                        : Icons
-                            .open_in_new_rounded,
+                        ? Icons.card_giftcard_rounded
+                        : Icons.open_in_new_rounded,
                 size: 18,
               ),
               label: Text(
@@ -1421,8 +1447,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildTaskActionsStatus(
     DailySocialTask task,
   ) {
-    final items =
-        <Widget>[];
+    final items = <Widget>[];
 
     if (task.requiresFollow) {
       items.add(
@@ -1514,8 +1539,9 @@ class _HomeScreenState extends State<HomeScreen> {
             BorderRadius.circular(8),
         border: Border.all(
           color: verified
-              ? successGreen
-                  .withValues(alpha: 0.25)
+              ? successGreen.withValues(
+                  alpha: 0.25,
+                )
               : Colors.grey.shade200,
         ),
       ),
@@ -1992,10 +2018,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 : _isMining
                     ? Icons.timer_rounded
                     : _busy
-                        ? Icons
-                            .ondemand_video_rounded
-                        : Icons
-                            .construction_rounded;
+                        ? Icons.ondemand_video_rounded
+                        : Icons.construction_rounded;
 
     return _card(
       child: Column(
@@ -2097,12 +2121,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     Colors.white,
                 disabledBackgroundColor:
                     isReadyToClaim
-                        ? successGreen
-                            .withValues(
+                        ? successGreen.withValues(
                             alpha: 0.70,
                           )
-                        : primaryPurple
-                            .withValues(
+                        : primaryPurple.withValues(
                             alpha: 0.70,
                           ),
                 disabledForegroundColor:
@@ -2224,8 +2246,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _watchAd
                       : null,
                   icon: const Icon(
-                    Icons
-                        .ondemand_video_rounded,
+                    Icons.ondemand_video_rounded,
                     size: 18,
                   ),
                   label: const Text(
@@ -2433,8 +2454,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 3),
                 const Icon(
-                  Icons
-                      .chevron_right_rounded,
+                  Icons.chevron_right_rounded,
                   size: 18,
                 ),
               ],
@@ -2462,8 +2482,7 @@ class _HomeScreenState extends State<HomeScreen> {
             BorderRadius.circular(21),
         boxShadow: [
           BoxShadow(
-            color: Colors.black
-                .withValues(
+            color: Colors.black.withValues(
               alpha: 0.045,
             ),
             blurRadius: 11,
