@@ -65,6 +65,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _logout() async {
+    if (_loggingOut) return;
+
+    setState(() {
+      _loggingOut = true;
+    });
+
+    try {
+      await AuthService.instance.logout();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/login',
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loggingOut = false;
+        });
+      }
+    }
+  }
+
   String _profileValue(String key) {
     final value = _profile?[key];
     return value?.toString().trim() ?? '';
@@ -773,7 +808,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _buildProfileCard(),
                   const SizedBox(height: 22),
-
                   const Text(
                     'App',
                     style: TextStyle(
@@ -783,30 +817,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-
                   _buildSettingTile(
                     icon: Icons.notifications_none,
                     title: 'Notifications',
                     subtitle: 'Manage app notifications',
                     onTap: _openNotifications,
                   ),
-
                   _buildSettingTile(
                     icon: Icons.security_outlined,
                     title: 'Security',
-                    subtitle: 'Protect your account and network activity',
+                    subtitle:
+                        'Protect your account and network activity',
                     onTap: _openSecurity,
                   ),
-
                   _buildSettingTile(
                     icon: Icons.info_outline,
                     title: 'About Power Fan Network',
-                    subtitle: 'Learn more about Power Fan Network',
+                    subtitle:
+                        'Learn more about Power Fan Network',
                     onTap: _openAbout,
                   ),
-
                   const SizedBox(height: 18),
-
                   _buildSettingTile(
                     icon: Icons.logout,
                     title: 'Sign Out',
