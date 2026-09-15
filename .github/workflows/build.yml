@@ -9,10 +9,10 @@ on:
 
 permissions:
   contents: read
-  
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  
+
 jobs:
   build:
     name: Build Release APK
@@ -20,21 +20,12 @@ jobs:
 
     env:
       FLUTTER_VERSION: "3.27.4"
-      GRADLE_VERSION: "8.13"
       JAVA_VERSION: "17"
 
     steps:
-
-      # ============================================================
-      # 1. Checkout repository
-      # ============================================================
       - name: Checkout repository
         uses: actions/checkout@v7
 
-
-      # ============================================================
-      # 2. Setup Java 17
-      # ============================================================
       - name: Setup Java 17
         uses: actions/setup-java@v6
         with:
@@ -42,10 +33,6 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: gradle
 
-
-      # ============================================================
-      # 3. Setup Flutter
-      # ============================================================
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -53,79 +40,27 @@ jobs:
           channel: stable
           cache: true
 
-
-      # ============================================================
-      # 4. Setup Gradle 8.13
-      # ============================================================
-      - name: Setup Gradle 8.13
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
-
-
-      # ============================================================
-      # 5. Check build environment
-      # ============================================================
       - name: Check build environment
         shell: bash
         run: |
           set -e
-
-          echo "=== Java ==="
           java -version
-
-          echo "=== Flutter ==="
           flutter --version
-
-          echo "=== Dart ==="
           dart --version
 
-          echo "=== Gradle ==="
-          gradle --version
-
-
-      # ============================================================
-      # 6. Flutter Doctor
-      # ============================================================
       - name: Flutter Doctor
         shell: bash
         run: |
           set -e
           flutter doctor -v
 
-
-      # ============================================================
-      # 7. Clean and Pub Get
-      # ============================================================
       - name: Flutter Clean and Pub Get
         shell: bash
         run: |
           set -e
-
           flutter clean
           flutter pub get
 
-
-      # ============================================================
-      # 8. Prepare Gradle Wrapper
-      # ============================================================
-      - name: Prepare Gradle Wrapper
-        shell: bash
-        working-directory: android
-        run: |
-          set -e
-
-          gradle wrapper \
-            --gradle-version "${GRADLE_VERSION}" \
-            --distribution-type bin \
-            --no-validate-url
-
-          chmod +x gradlew
-
-
-      # ============================================================
-      # 9. Configure Gradle for CI
-      # ============================================================
       - name: Configure Gradle for CI
         shell: bash
         run: |
@@ -139,10 +74,6 @@ jobs:
             echo "org.gradle.vfs.watch=false" >> android/gradle.properties
           fi
 
-
-      # ============================================================
-      # 10. Configure Release Keystore
-      # ============================================================
       - name: Configure Release Keystore
         shell: bash
         env:
@@ -152,8 +83,6 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -e
-
-          echo "Checking Android release signing secrets..."
 
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "ERROR: ANDROID_KEYSTORE_BASE64 secret is missing."
@@ -175,43 +104,27 @@ jobs:
             exit 1
           fi
 
-          echo "Creating release keystore..."
-
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/powerfan-release.jks
 
-          if [ ! -s android/app/powerfan-release.jks ]; then
-            echo "ERROR: Release keystore file was not created."
-            exit 1
-          fi
-
-          echo "Creating android/key.properties..."
+          test -s android/app/powerfan-release.jks
 
           cat > android/key.properties <<EOF
-          storePassword=$ANDROID_KEYSTORE_PASSWORD
-          keyPassword=$ANDROID_KEY_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          storeFile=powerfan-release.jks
-          EOF
+storePassword=$ANDROID_KEYSTORE_PASSWORD
+keyPassword=$ANDROID_KEY_PASSWORD
+keyAlias=$ANDROID_KEY_ALIAS
+storeFile=powerfan-release.jks
+EOF
 
-          echo "Release signing configuration created successfully."
-
-          echo "Checking signing files..."
-
-          test -s android/app/powerfan-release.jks
           test -s android/key.properties
 
-          echo "Keystore and key.properties are ready."
+          echo "Release signing configuration is ready."
 
-
-      # ============================================================
-      # 11. Verify Android configuration
-      # ============================================================
       - name: Verify Android configuration
         shell: bash
         run: |
           set -e
 
-          echo "=== Android app configuration ==="
+          echo "=== Android configuration ==="
 
           grep -n "namespace" android/app/build.gradle.kts || true
           grep -n "applicationId" android/app/build.gradle.kts || true
@@ -219,56 +132,41 @@ jobs:
           grep -n "targetSdk" android/app/build.gradle.kts || true
           grep -n "minSdk" android/app/build.gradle.kts || true
 
-          echo "=== Release signing configuration ==="
+          echo "=== Gradle wrapper ==="
 
-          grep -n "signingConfigs" android/app/build.gradle.kts || true
-          grep -n "signingConfig" android/app/build.gradle.kts || true
+          cat android/gradle/wrapper/gradle-wrapper.properties
 
-          echo "=== Keystore file ==="
+          echo "=== Signing files ==="
 
           ls -lh android/app/powerfan-release.jks
-
-          echo "=== key.properties exists ==="
-
           ls -lh android/key.properties
 
-
-      # ============================================================
-      # 12. Flutter Analyze
-      # ============================================================
       - name: Flutter Analyze
         shell: bash
         run: |
           set -e
           flutter analyze
 
-
-      # ============================================================
-      # 13. Build Release APK
-      # ============================================================
       - name: Build Release APK
         shell: bash
         run: |
           set -e
 
-          flutter build apk \
-            --release \
-            --android-skip-build-dependency-validation
+          flutter build apk --release
 
-
-      # ============================================================
-      # 14. Verify APK
-      # ============================================================
       - name: Verify APK
         shell: bash
         run: |
           set -e
 
-          APK_COUNT=$(find build/app/outputs/flutter-apk \
-            -maxdepth 1 \
-            -type f \
-            -name "*.apk" \
-            | wc -l)
+          APK_DIR="build/app/outputs/flutter-apk"
+
+          if [ ! -d "$APK_DIR" ]; then
+            echo "ERROR: APK output directory does not exist."
+            exit 1
+          fi
+
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" | wc -l)
 
           if [ "$APK_COUNT" -eq 0 ]; then
             echo "ERROR: No APK was generated."
@@ -279,19 +177,13 @@ jobs:
           echo "APK BUILD SUCCESSFUL"
           echo "======================================"
 
-          echo "APK files generated:"
-
-          find build/app/outputs/flutter-apk \
+          find "$APK_DIR" \
             -maxdepth 1 \
             -type f \
             -name "*.apk" \
             -print \
             -exec ls -lh {} \;
 
-
-      # ============================================================
-      # 15. Upload APK
-      # ============================================================
       - name: Upload Release APK
         uses: actions/upload-artifact@v7
         with:
