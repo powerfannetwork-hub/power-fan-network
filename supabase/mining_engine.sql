@@ -54,13 +54,15 @@ where last_mining_at is not null;
 -- ============================================================
 -- 2. LEVELPLAY EVENT TRACKING
 -- ============================================================
+--
+-- NORMAL BOOST ADS ARE STORED IN public.ad_boosts.
+--
+-- event_id uniquely identifies the LevelPlay S2S event.
+-- ============================================================
 
-alter table public.ad_rewards
-add column if not exists levelplay_event_id text;
-
-create unique index if not exists idx_ad_rewards_levelplay_event_id
-on public.ad_rewards(levelplay_event_id)
-where levelplay_event_id is not null;
+create unique index if not exists idx_ad_boosts_event_id
+on public.ad_boosts(event_id)
+where event_id is not null;
 
 
 -- ============================================================
@@ -171,6 +173,17 @@ $$;
 -- It does NOT apply from 10:00.
 --
 -- Maximum 7 ads.
+--
+-- NORMAL BOOST ADS ARE READ FROM public.ad_boosts.
+--
+-- public.ad_boosts DOES NOT USE session_id.
+-- The current mining session is determined by:
+--
+--   user_id
+--   watched_at >= session start
+--   watched_at < session end
+--   reward_verified = true
+--
 -- ============================================================
 
 create or replace function public.calculate_ad_bonus_reward(
@@ -195,7 +208,7 @@ begin
                     epoch from (
                         p_ends_at -
                         greatest(
-                            ar.watched_at,
+                            ab.watched_at,
                             p_started_at
                         )
                     )
@@ -204,7 +217,7 @@ begin
             *
             greatest(
                 least(
-                    coalesce(ar.reward_amount, 0.10),
+                    coalesce(ab.boost_amount, 0.10),
                     0.10
                 ),
                 0
@@ -215,18 +228,12 @@ begin
     into v_reward
     from (
         select
-            reward_amount,
+            boost_amount,
             watched_at
-        from public.ad_rewards
+        from public.ad_boosts
         where user_id = p_user_id
 
-          and session_id in (
-              select id
-              from public.mining_sessions
-              where user_id = p_user_id
-                and started_at = p_started_at
-                and ends_at = p_ends_at
-          )
+          and reward_verified = true
 
           and watched_at >= p_started_at
           and watched_at < p_ends_at
@@ -234,7 +241,7 @@ begin
         order by watched_at asc
 
         limit 7
-    ) ar;
+    ) ab;
 
 
     return round(
@@ -585,11 +592,11 @@ begin
         select count(*)::integer
         into v_ads
 
-        from public.ad_rewards
+        from public.ad_boosts
 
         where user_id = v_user_id
 
-          and session_id = v_session.id
+          and reward_verified = true
 
           and watched_at >= v_session.started_at
 
@@ -788,11 +795,11 @@ begin
 
             into v_ads
 
-            from public.ad_rewards
+            from public.ad_boosts
 
             where user_id = v_user_id
 
-              and session_id = v_existing.id
+              and reward_verified = true
 
               and watched_at >= v_existing.started_at
 
@@ -1319,11 +1326,11 @@ begin
 
     into v_ads
 
-    from public.ad_rewards
+    from public.ad_boosts
 
     where user_id = v_user_id
 
-      and session_id = v_session.id
+      and reward_verified = true
 
       and watched_at >= v_session.started_at
 
@@ -2038,6 +2045,10 @@ $function$;
 --
 -- watched_at:
 --   exact SERVER time the reward is recorded.
+--
+-- NORMAL BOOST ADS ARE STORED IN public.ad_boosts.
+--
+-- public.ad_boosts DOES NOT USE session_id.
 -- ============================================================
 
 create or replace function public.record_levelplay_reward(
@@ -2056,7 +2067,7 @@ declare
         public.mining_sessions%rowtype;
 
     v_existing
-        public.ad_rewards%rowtype;
+        public.ad_boosts%rowtype;
 
     v_ads integer;
 
@@ -2107,9 +2118,9 @@ begin
 
     into v_existing
 
-    from public.ad_rewards
+    from public.ad_boosts
 
-    where levelplay_event_id = p_event_id
+    where event_id = p_event_id
 
     limit 1;
 
@@ -2128,22 +2139,100 @@ begin
                 v_existing.id,
 
             'session_id',
-                v_existing.session_id,
+                null,
 
             'ad_number',
-                v_existing.ad_number,
+                (
+                    select count(*)::integer
+                    from public.ad_boosts ab2
+                    where ab2.user_id = v_existing.user_id
+                      and ab2.reward_verified = true
+                      and ab2.watched_at >= (
+                          select ms.started_at
+                          from public.mining_sessions ms
+                          where ms.user_id = v_existing.user_id
+                            and ms.claimed = false
+                            and ms.started_at <= v_existing.watched_at
+                            and ms.ends_at > v_existing.watched_at
+                          order by ms.started_at desc
+                          limit 1
+                      )
+                      and ab2.watched_at < (
+                          select ms.ends_at
+                          from public.mining_sessions ms
+                          where ms.user_id = v_existing.user_id
+                            and ms.claimed = false
+                            and ms.started_at <= v_existing.watched_at
+                            and ms.ends_at > v_existing.watched_at
+                          order by ms.started_at desc
+                          limit 1
+                      )
+                ),
 
             'reward_rate',
                 0.10,
 
             'ads_watched',
-                v_existing.ad_number,
+                (
+                    select least(
+                        count(*)::integer,
+                        7
+                    )
+                    from public.ad_boosts ab2
+                    where ab2.user_id = v_existing.user_id
+                      and ab2.reward_verified = true
+                      and ab2.watched_at >= (
+                          select ms.started_at
+                          from public.mining_sessions ms
+                          where ms.user_id = v_existing.user_id
+                            and ms.claimed = false
+                            and ms.started_at <= v_existing.watched_at
+                            and ms.ends_at > v_existing.watched_at
+                          order by ms.started_at desc
+                          limit 1
+                      )
+                      and ab2.watched_at < (
+                          select ms.ends_at
+                          from public.mining_sessions ms
+                          where ms.user_id = v_existing.user_id
+                            and ms.claimed = false
+                            and ms.started_at <= v_existing.watched_at
+                            and ms.ends_at > v_existing.watched_at
+                          order by ms.started_at desc
+                          limit 1
+                      )
+                ),
 
             'ad_boost',
                 round(
                     least(
                         greatest(
-                            v_existing.ad_number,
+                            (
+                                select count(*)::integer
+                                from public.ad_boosts ab2
+                                where ab2.user_id = v_existing.user_id
+                                  and ab2.reward_verified = true
+                                  and ab2.watched_at >= (
+                                      select ms.started_at
+                                      from public.mining_sessions ms
+                                      where ms.user_id = v_existing.user_id
+                                        and ms.claimed = false
+                                        and ms.started_at <= v_existing.watched_at
+                                        and ms.ends_at > v_existing.watched_at
+                                      order by ms.started_at desc
+                                      limit 1
+                                  )
+                                  and ab2.watched_at < (
+                                      select ms.ends_at
+                                      from public.mining_sessions ms
+                                      where ms.user_id = v_existing.user_id
+                                        and ms.claimed = false
+                                        and ms.started_at <= v_existing.watched_at
+                                        and ms.ends_at > v_existing.watched_at
+                                      order by ms.started_at desc
+                                      limit 1
+                                  )
+                            ),
                             0
                         ),
                         7
@@ -2153,7 +2242,7 @@ begin
                 ),
 
             'levelplay_event_id',
-                v_existing.levelplay_event_id
+                v_existing.event_id
 
         );
 
@@ -2201,11 +2290,11 @@ begin
 
     into v_ads
 
-    from public.ad_rewards
+    from public.ad_boosts
 
     where user_id = p_user_id
 
-      and session_id = v_session.id
+      and reward_verified = true
 
       and watched_at >= v_session.started_at
 
@@ -2242,19 +2331,19 @@ begin
     -- RECORD VERIFIED AD
     -- ========================================================
 
-    insert into public.ad_rewards (
+    insert into public.ad_boosts (
 
         user_id,
 
-        session_id,
-
-        ad_number,
-
         watched_at,
 
-        reward_amount,
+        boost_amount,
 
-        levelplay_event_id
+        ad_network,
+
+        reward_verified,
+
+        event_id
 
     )
 
@@ -2262,13 +2351,13 @@ begin
 
         p_user_id,
 
-        v_session.id,
-
-        v_next_ad,
-
         v_now,
 
         0.10,
+
+        'levelplay',
+
+        true,
 
         p_event_id
 
@@ -2303,6 +2392,22 @@ begin
 
             4
         );
+
+
+    -- ========================================================
+    -- SYNCHRONIZE MINING SESSION
+    -- ========================================================
+
+    update public.mining_sessions
+
+    set
+
+        mining_rate =
+            v_rate
+
+    where id = v_session.id
+
+      and claimed = false;
 
 
     -- ========================================================
