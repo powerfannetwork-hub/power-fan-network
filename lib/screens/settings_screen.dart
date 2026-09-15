@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,10 +18,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   bool _loggingOut = false;
 
+  bool _notificationsEnabled = false;
+  bool _notificationLoading = false;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadNotificationStatus();
   }
 
   Future<void> _loadData() async {
@@ -62,6 +67,101 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadNotificationStatus() async {
+    try {
+      final enabled =
+          await NotificationService.instance.areNotificationsEnabled();
+
+      if (!mounted) return;
+
+      setState(() {
+        _notificationsEnabled = enabled;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _notificationsEnabled = false;
+      });
+    }
+  }
+
+  Future<void> _enableNotifications() async {
+    if (_notificationLoading) return;
+
+    setState(() {
+      _notificationLoading = true;
+    });
+
+    try {
+      final granted =
+          await NotificationService.instance.requestPermission();
+
+      final enabled =
+          await NotificationService.instance.areNotificationsEnabled();
+
+      if (!mounted) return;
+
+      setState(() {
+        _notificationsEnabled = enabled || granted;
+      });
+
+      if (!enabled && !granted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Notifications are currently disabled. '
+              'Please allow notifications for POWER FAN NETWORK.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notificationLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshNotificationStatus() async {
+    if (_notificationLoading) return;
+
+    setState(() {
+      _notificationLoading = true;
+    });
+
+    try {
+      final enabled =
+          await NotificationService.instance.areNotificationsEnabled();
+
+      if (!mounted) return;
+
+      setState(() {
+        _notificationsEnabled = enabled;
+      });
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _notificationLoading = false;
+        });
+      }
     }
   }
 
@@ -312,107 +412,297 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(24),
         ),
       ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              28,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3B159B)
-                            .withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.notifications_none,
-                        color: Color(0xFF3B159B),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> handleEnable() async {
+              if (_notificationLoading) return;
+
+              setSheetState(() {
+                _notificationLoading = true;
+              });
+
+              try {
+                await NotificationService.instance.requestPermission();
+
+                final enabled = await NotificationService.instance
+                    .areNotificationsEnabled();
+
+                if (!mounted) return;
+
+                setState(() {
+                  _notificationsEnabled = enabled;
+                });
+
+                setSheetState(() {
+                  _notificationLoading = false;
+                });
+
+                if (!enabled) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Notifications are currently disabled. '
+                        'Please allow notifications for POWER FAN NETWORK.',
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Notifications',
-                        style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF241064),
+                  );
+                }
+              } catch (e) {
+                if (!mounted) return;
+
+                setSheetState(() {
+                  _notificationLoading = false;
+                });
+
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      e.toString().replaceFirst('Exception: ', ''),
+                    ),
+                  ),
+                );
+              }
+            }
+
+            Future<void> handleRefresh() async {
+              if (_notificationLoading) return;
+
+              setSheetState(() {
+                _notificationLoading = true;
+              });
+
+              try {
+                final enabled = await NotificationService.instance
+                    .areNotificationsEnabled();
+
+                if (!mounted) return;
+
+                setState(() {
+                  _notificationsEnabled = enabled;
+                });
+
+                setSheetState(() {
+                  _notificationLoading = false;
+                });
+              } catch (_) {
+                if (!mounted) return;
+
+                setSheetState(() {
+                  _notificationLoading = false;
+                });
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  28,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B159B)
+                                .withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.notifications_none,
+                            color: Color(0xFF3B159B),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Notifications',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF241064),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Manage app notifications',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Mining reminders, reward updates, social tasks, '
+                      'and other important Power Fan Network notifications '
+                      'will appear here.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F8FC),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _notificationsEnabled
+                              ? const Color(0xFF3B159B)
+                                  .withValues(alpha: 0.15)
+                              : const Color(0xFFE5E5EC),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _notificationsEnabled
+                                  ? const Color(0xFF3B159B)
+                                      .withValues(alpha: 0.10)
+                                  : Colors.grey.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              _notificationsEnabled
+                                  ? Icons.notifications_active
+                                  : Icons.notifications_off_outlined,
+                              color: _notificationsEnabled
+                                  ? const Color(0xFF3B159B)
+                                  : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _notificationsEnabled
+                                      ? 'Notifications enabled'
+                                      : 'Notifications disabled',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF241064),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _notificationsEnabled
+                                      ? 'POWER FAN NETWORK can send important app notifications.'
+                                      : 'Allow notifications to receive important app updates.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF666666),
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            _notificationLoading ? null : handleEnable,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3B159B),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: _notificationLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Icon(
+                                _notificationsEnabled
+                                    ? Icons.refresh
+                                    : Icons.notifications_active_outlined,
+                              ),
+                        label: Text(
+                          _notificationsEnabled
+                              ? 'Refresh Notification Status'
+                              : 'Enable Notifications',
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.close),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            _notificationLoading ? null : handleRefresh,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF3B159B),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 13,
+                          ),
+                          side: BorderSide(
+                            color: const Color(0xFF3B159B)
+                                .withValues(alpha: 0.25),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.sync,
+                          size: 20,
+                        ),
+                        label: const Text(
+                          'Check Current Status',
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Manage app notifications',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Mining reminders, reward updates, social tasks, '
-                  'and other important Power Fan Network notifications '
-                  'will appear here.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F8FC),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.notifications_active_outlined,
-                        color: Color(0xFF3B159B),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Notification controls will be available soon.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF555555),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -820,7 +1110,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSettingTile(
                     icon: Icons.notifications_none,
                     title: 'Notifications',
-                    subtitle: 'Manage app notifications',
+                    subtitle: _notificationsEnabled
+                        ? 'Notifications are enabled'
+                        : 'Notifications are disabled',
                     onTap: _openNotifications,
                   ),
                   _buildSettingTile(
