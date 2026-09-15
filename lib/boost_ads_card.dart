@@ -27,11 +27,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   static const double defaultMiningRate = 0.20;
   static const double boostPerAd = 0.10;
 
-  final LevelPlayAdsService _ads =
-      LevelPlayAdsService.instance;
+  final LevelPlayAdsService _ads = LevelPlayAdsService.instance;
 
-  final MiningService _mining =
-      MiningService.instance;
+  final MiningService _mining = MiningService.instance;
 
   bool _loading = true;
   bool _watching = false;
@@ -69,9 +67,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
       await _refresh();
 
-      // Load rewarded ad in the background.
-      // Do not block the whole Boost card waiting for the ad.
-      _prepareRewardedAd();
+      if (!mounted) return;
+
+      await _prepareRewardedAd();
     } catch (e) {
       debugPrint(
         'Boost Ads initialization error: $e',
@@ -81,14 +79,22 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
       setState(() {
         _loading = false;
+        _adReady = false;
       });
     }
   }
 
   Future<void> _prepareRewardedAd() async {
     try {
-      final ready =
-          await _ads.isRewardedAdReady();
+      if (!_ads.isInitialized) {
+        await _ads.initialize();
+      }
+
+      if (!_ads.isInitialized) {
+        return;
+      }
+
+      final ready = await _ads.isRewardedAdReady();
 
       if (ready) {
         if (!mounted) return;
@@ -104,7 +110,13 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
         'Boost Ads: rewarded ad is not ready. Loading...',
       );
 
-      await _ads.loadRewardedAd();
+      final loaded = await _ads.loadRewardedAd();
+
+      if (!loaded) {
+        debugPrint(
+          'Boost Ads: rewarded ad load request did not complete.',
+        );
+      }
 
       if (!mounted) return;
 
@@ -200,34 +212,37 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
     });
 
     try {
-      /*
-       * If HomeScreen supplied its own ad callback,
-       * use it. This prevents this card from creating
-       * a second competing ad flow.
-       */
       if (widget.onWatchAd != null) {
+        final previousCount = _adsWatched;
+
         await widget.onWatchAd!();
 
         if (!mounted) return;
 
-        await _waitForRewardToBeRecorded();
+        await _waitForRewardToBeRecorded(
+          previousCount: previousCount,
+        );
 
         if (!mounted) return;
 
         widget.onRewarded?.call();
 
+        await _prepareRewardedAd();
+
+        if (!mounted) return;
+
+        setState(() {
+          _watching = false;
+        });
+
         return;
       }
 
-      /*
-       * Otherwise use LevelPlayAdsService directly.
-       */
+      final previousCount = _adsWatched;
 
-      // First try to use an already loaded ad.
       bool ready =
           await _ads.isRewardedAdReady();
 
-      // If not ready, explicitly load it now.
       if (!ready) {
         debugPrint(
           'Boost Ads: ad not ready, loading before show...',
@@ -244,42 +259,69 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       if (!ready) {
         if (!mounted) return;
 
+        setState(() {
+          _watching = false;
+          _adReady = false;
+        });
+
         _showMessage(
           'Rewarded Ad is not available yet. Please try again.',
         );
+
+        await _prepareRewardedAd();
 
         return;
       }
 
       if (!mounted) return;
 
-      bool rewarded = false;
+      bool rewardCallbackReceived = false;
+      bool rewardRecorded = false;
 
-      final shown =
-          await _ads.showRewardedAd(
+      final shown = await _ads.showRewardedAd(
         onRewarded: () async {
-          rewarded = true;
+          rewardCallbackReceived = true;
 
           debugPrint(
             'Boost Ads: LevelPlay reward callback received.',
           );
 
-          // Give the backend/S2S flow a little time
-          // to record the ad reward.
-          await _waitForRewardToBeRecorded();
+          await _waitForRewardToBeRecorded(
+            previousCount: previousCount,
+          );
+
+          rewardRecorded = _adsWatched > previousCount;
 
           if (!mounted) return;
 
-          widget.onRewarded?.call();
+          if (rewardRecorded) {
+            widget.onRewarded?.call();
+          }
         },
         onAdClosed: () async {
           debugPrint(
             'Boost Ads: rewarded ad closed.',
           );
 
+          if (!mounted) return;
+
+          setState(() {
+            _adReady = false;
+          });
+
           await _refresh();
 
           if (!mounted) return;
+
+          await _prepareRewardedAd();
+
+          if (!mounted) return;
+
+          if (!rewardCallbackReceived) {
+            debugPrint(
+              'Boost Ads: ad closed before LevelPlay reward callback.',
+            );
+          }
 
           setState(() {
             _watching = false;
@@ -292,9 +334,14 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       if (!shown) {
         setState(() {
           _watching = false;
+          _adReady = false;
         });
 
         await _refresh();
+
+        if (!mounted) return;
+
+        await _prepareRewardedAd();
 
         if (!mounted) return;
 
@@ -305,22 +352,21 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
         return;
       }
 
-      /*
-       * Some LevelPlay/S2S flows deliver the reward
-       * shortly after the ad has closed.
-       *
-       * If the callback already fired, _waitForRewardToBeRecorded()
-       * above has handled it.
-       */
-      if (!rewarded) {
-        await _waitForRewardToBeRecorded();
+      if (!rewardCallbackReceived) {
+        await _waitForRewardToBeRecorded(
+          previousCount: previousCount,
+        );
+
+        if (!mounted) return;
+
+        rewardRecorded = _adsWatched > previousCount;
+
+        if (rewardRecorded) {
+          widget.onRewarded?.call();
+        }
       }
 
       if (!mounted) return;
-
-      setState(() {
-        _watching = false;
-      });
 
       await _refresh();
 
@@ -340,7 +386,16 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
       setState(() {
         _watching = false;
+        _adReady = false;
       });
+
+      await _refresh();
+
+      if (!mounted) return;
+
+      await _prepareRewardedAd();
+
+      if (!mounted) return;
 
       _showMessage(
         'Unable to show the rewarded ad. Please try again.',
@@ -348,9 +403,9 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
     }
   }
 
-  Future<void> _waitForRewardToBeRecorded() async {
-    int previousCount = _adsWatched;
-
+  Future<void> _waitForRewardToBeRecorded({
+    required int previousCount,
+  }) async {
     for (int i = 0; i < 15; i++) {
       await Future<void>.delayed(
         const Duration(milliseconds: 700),
@@ -388,14 +443,13 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
             _adReady = false;
           });
 
-          // Load the next ad for the next click.
-          _prepareRewardedAd();
-
           debugPrint(
             'Boost Ads: reward recorded successfully. '
             'Ads watched = $_adsWatched, '
             'rate = $_miningRate',
           );
+
+          await _prepareRewardedAd();
 
           return;
         }
@@ -416,8 +470,15 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       }
     }
 
-    // Final refresh even if S2S took longer than expected.
+    if (!mounted) return;
+
     await _refresh();
+
+    if (!mounted) return;
+
+    debugPrint(
+      'Boost Ads: reward was not recorded within the polling window.',
+    );
   }
 
   void _showMessage(String message) {
@@ -439,15 +500,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
         (maxAdsPerSession - _adsWatched)
             .clamp(0, maxAdsPerSession);
 
-    /*
-     * IMPORTANT:
-     *
-     * _adReady is intentionally NOT required here.
-     *
-     * The user must be able to press Watch Ad even
-     * while LevelPlay is loading. _watchAd() will
-     * attempt to load the ad.
-     */
     final canWatch =
         widget.isMining &&
         !_watching &&
@@ -462,8 +514,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       buttonText = 'START MINING FIRST';
     } else if (_adsWatched >= maxAdsPerSession) {
       buttonText = '7/7 ADS COMPLETED';
-    } else if (_adReady) {
-      buttonText = 'WATCH AD +0.10 FAN/H';
     } else {
       buttonText = 'WATCH AD +0.10 FAN/H';
     }
@@ -549,9 +599,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
               ),
             ],
           ),
-
           const SizedBox(height: 15),
-
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
@@ -596,9 +644,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
               ],
             ),
           ),
-
           const SizedBox(height: 11),
-
           Text(
             '$remaining Boost Ads remaining this session',
             style: TextStyle(
@@ -607,9 +653,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
               fontWeight: FontWeight.w600,
             ),
           ),
-
           const SizedBox(height: 12),
-
           SizedBox(
             width: double.infinity,
             height: 46,
@@ -678,9 +722,7 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
               ),
             ),
           ),
-
           const SizedBox(height: 8),
-
           const Text(
             'Each completed rewarded ad increases your mining rate by +0.10 FAN/H. Maximum 7 ads per mining session.',
             style: TextStyle(
