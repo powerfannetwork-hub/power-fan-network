@@ -241,6 +241,10 @@ class DailySocialTask {
       actions.add('Share');
     }
 
+    if (joinVerified) {
+      actions.add('Join');
+    }
+
     if (subscribeVerified) {
       actions.add('Subscribe');
     }
@@ -365,9 +369,31 @@ class SocialTaskService {
     }
   }
 
-  Future<Map<String, dynamic>> startTask({
-    required String taskId,
-  }) async {
+  bool _isUuid(String value) {
+    return RegExp(
+      r'^[0-9a-fA-F]{8}-'
+      r'[0-9a-fA-F]{4}-'
+      r'[1-5][0-9a-fA-F]{3}-'
+      r'[89abAB][0-9a-fA-F]{3}-'
+      r'[0-9a-fA-F]{12}$',
+    ).hasMatch(value);
+  }
+
+  String _platformFromLegacyId(String value) {
+    final cleanValue = value.toLowerCase().trim();
+
+    const prefix = 'official-';
+
+    if (!cleanValue.startsWith(prefix)) {
+      return '';
+    }
+
+    return cleanValue.substring(prefix.length);
+  }
+
+  Future<String> _resolveTaskId(
+    String taskId,
+  ) async {
     final cleanTaskId = taskId.trim();
 
     if (cleanTaskId.isEmpty) {
@@ -375,6 +401,69 @@ class SocialTaskService {
         'Invalid social task ID.',
       );
     }
+
+    if (_isUuid(cleanTaskId)) {
+      return cleanTaskId;
+    }
+
+    final legacyPlatform =
+        _platformFromLegacyId(cleanTaskId);
+
+    if (legacyPlatform.isEmpty) {
+      throw Exception(
+        'Invalid social task ID.',
+      );
+    }
+
+    final tasks = await getDailyTasksForCard();
+
+    final matchingTasks = tasks.where((task) {
+      final taskPlatform =
+          task.platform.toLowerCase().trim();
+
+      if (legacyPlatform == 'x') {
+        return taskPlatform == 'x' ||
+            taskPlatform == 'twitter';
+      }
+
+      if (legacyPlatform == 'twitter') {
+        return taskPlatform == 'twitter' ||
+            taskPlatform == 'x';
+      }
+
+      return taskPlatform == legacyPlatform;
+    }).toList();
+
+    if (matchingTasks.isEmpty) {
+      throw Exception(
+        'Social task not found.',
+      );
+    }
+
+    if (matchingTasks.length > 1) {
+      throw Exception(
+        'Multiple social tasks found for this platform.',
+      );
+    }
+
+    final resolvedId =
+        matchingTasks.first.id.trim();
+
+    if (!_isUuid(resolvedId)) {
+      throw Exception(
+        'Social task returned an invalid UUID.',
+      );
+    }
+
+    return resolvedId;
+  }
+
+  Future<Map<String, dynamic>> startTask({
+    required String taskId,
+  }) async {
+    final cleanTaskId = await _resolveTaskId(
+      taskId,
+    );
 
     try {
       final response = await _client.rpc(
@@ -470,13 +559,9 @@ class SocialTaskService {
   Future<Map<String, dynamic>> claimReward({
     required String taskId,
   }) async {
-    final cleanTaskId = taskId.trim();
-
-    if (cleanTaskId.isEmpty) {
-      throw Exception(
-        'Invalid social task ID.',
-      );
-    }
+    final cleanTaskId = await _resolveTaskId(
+      taskId,
+    );
 
     try {
       final response = await _client.rpc(
@@ -530,3 +615,4 @@ class SocialTaskService {
     return getDailyTasksForCard();
   }
 }
+```0
