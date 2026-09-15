@@ -20,6 +20,7 @@ jobs:
 
     env:
       FLUTTER_VERSION: "3.27.4"
+      GRADLE_VERSION: "8.13"
       JAVA_VERSION: "17"
 
     steps:
@@ -40,6 +41,11 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
       - name: Check build environment
         shell: bash
         run: |
@@ -54,11 +60,8 @@ jobs:
           echo "=== Dart ==="
           dart --version
 
-          echo "=== Gradle Wrapper ==="
-          chmod +x android/gradlew
-
-          cd android
-          ./gradlew --version
+          echo "=== Gradle ==="
+          gradle --version
 
       - name: Flutter Doctor
         shell: bash
@@ -72,6 +75,66 @@ jobs:
           set -e
           flutter clean
           flutter pub get
+
+      - name: Create Gradle Wrapper
+        shell: bash
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "CREATING GRADLE WRAPPER"
+          echo "======================================"
+
+          TEMP_GRADLE_DIR="$RUNNER_TEMP/gradle-wrapper-project"
+
+          rm -rf "$TEMP_GRADLE_DIR"
+          mkdir -p "$TEMP_GRADLE_DIR"
+
+          cd "$TEMP_GRADLE_DIR"
+
+          printf '%s\n' \
+            "plugins {" \
+            "    id 'base'" \
+            "}" \
+            > build.gradle
+
+          gradle wrapper \
+            --gradle-version "${GRADLE_VERSION}" \
+            --distribution-type bin \
+            --no-validate-url \
+            --no-daemon
+
+          cd "$GITHUB_WORKSPACE"
+
+          mkdir -p android/gradle/wrapper
+
+          cp "$TEMP_GRADLE_DIR/gradlew" android/gradlew
+          cp "$TEMP_GRADLE_DIR/gradlew.bat" android/gradlew.bat
+          cp "$TEMP_GRADLE_DIR/gradle/wrapper/gradle-wrapper.jar" \
+            android/gradle/wrapper/gradle-wrapper.jar
+          cp "$TEMP_GRADLE_DIR/gradle/wrapper/gradle-wrapper.properties" \
+            android/gradle/wrapper/gradle-wrapper.properties
+
+          chmod +x android/gradlew
+
+          echo "Gradle wrapper created successfully."
+
+          echo "=== Wrapper files ==="
+          ls -lh android/gradlew
+          ls -lh android/gradlew.bat
+          ls -lh android/gradle/wrapper/
+
+      - name: Verify Gradle Wrapper
+        shell: bash
+        working-directory: android
+        run: |
+          set -e
+
+          echo "======================================"
+          echo "VERIFYING GRADLE WRAPPER"
+          echo "======================================"
+
+          ./gradlew --version
 
       - name: Configure Gradle for CI
         shell: bash
@@ -120,14 +183,13 @@ jobs:
 
           echo "Creating release keystore..."
 
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/powerfan-release.jks
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode \
+            > android/app/powerfan-release.jks
 
           if [ ! -s android/app/powerfan-release.jks ]; then
             echo "ERROR: Release keystore file was not created."
             exit 1
           fi
-
-          echo "Creating android/key.properties..."
 
           printf '%s\n' \
             "storePassword=$ANDROID_KEYSTORE_PASSWORD" \
@@ -143,12 +205,14 @@ jobs:
 
           echo "Release signing configuration created successfully."
 
-      - name: Verify Android configuration
+      - name: Verify Android Configuration
         shell: bash
         run: |
           set -e
 
-          echo "=== Android app configuration ==="
+          echo "======================================"
+          echo "ANDROID CONFIGURATION"
+          echo "======================================"
 
           grep -n "namespace" android/app/build.gradle.kts || true
           grep -n "applicationId" android/app/build.gradle.kts || true
@@ -156,16 +220,18 @@ jobs:
           grep -n "targetSdk" android/app/build.gradle.kts || true
           grep -n "minSdk" android/app/build.gradle.kts || true
 
-          echo "=== Release signing configuration ==="
-
-          grep -n "signingConfigs" android/app/build.gradle.kts || true
-          grep -n "signingConfig" android/app/build.gradle.kts || true
-
-          echo "=== Gradle wrapper ==="
+          echo "======================================"
+          echo "GRADLE WRAPPER"
+          echo "======================================"
 
           cat android/gradle/wrapper/gradle-wrapper.properties
 
-          echo "=== Signing files ==="
+          echo "======================================"
+          echo "SIGNING FILES"
+          echo "======================================"
+
+          test -s android/app/powerfan-release.jks
+          test -s android/key.properties
 
           ls -lh android/app/powerfan-release.jks
           ls -lh android/key.properties
@@ -199,7 +265,11 @@ jobs:
             exit 1
           fi
 
-          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -type f -name "*.apk" | wc -l)
+          APK_COUNT=$(find "$APK_DIR" \
+            -maxdepth 1 \
+            -type f \
+            -name "*.apk" \
+            | wc -l)
 
           if [ "$APK_COUNT" -eq 0 ]; then
             echo "ERROR: No APK was generated."
@@ -209,8 +279,6 @@ jobs:
           echo "======================================"
           echo "APK BUILD SUCCESSFUL"
           echo "======================================"
-
-          echo "APK files generated:"
 
           find "$APK_DIR" \
             -maxdepth 1 \
