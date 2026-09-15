@@ -58,16 +58,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   KycStatus _kycStatus = KycStatus.initial();
 
-  // ============================================================
-  // OFFICIAL POWER FAN NETWORK SOCIAL LINKS
-  // ============================================================
-
   static const Map<String, String> _officialSocialLinks = {
     'facebook': 'https://www.facebook.com/share/18ipQKYcCV/',
     'instagram': 'https://www.instagram.com/powerfannetwok/',
     'x': 'https://x.com/Powerfannetwork',
-    'tiktok': 'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
-    'youtube': 'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
+    'tiktok':
+        'https://www.tiktok.com/@power.fan.network?_r=1&_t=ZP-98wsX6qxjV0',
+    'youtube':
+        'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
     'telegram': 'https://t.me/PowerFannetwork',
   };
 
@@ -986,7 +984,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _tasks = tasks;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
 
       if (!silent) {
@@ -1015,6 +1013,70 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    final taskId = task.id.trim();
+    final isFallback =
+        taskId.toLowerCase().startsWith('official-');
+
+    /*
+     * Fallback cards are only display/open links.
+     *
+     * They do not have a real database UUID, so they must NEVER
+     * be sent to start_social_task() or claim_social_task().
+     */
+    if (isFallback) {
+      final url = _taskUrl(task);
+
+      if (url.isEmpty) {
+        _message(
+          'The social task link is unavailable.',
+        );
+        return;
+      }
+
+      setState(() {
+        _busy = true;
+      });
+
+      try {
+        final opened =
+            await _social.openTaskUrl(url);
+
+        if (!mounted) return;
+
+        if (opened) {
+          _message(
+            'Complete the official social task, then return here and refresh.',
+          );
+        } else {
+          _message(
+            'Unable to open the social task.',
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          _message(_error(e));
+        }
+      } finally {
+        if (!mounted) return;
+
+        setState(() {
+          _busy = false;
+        });
+      }
+
+      return;
+    }
+
+    /*
+     * Only real UUID task IDs are allowed to reach the database.
+     */
+    if (!_isUuid(taskId)) {
+      _message(
+        'This social task is unavailable. Please refresh the tasks.',
+      );
+      return;
+    }
+
     setState(() {
       _busy = true;
     });
@@ -1022,7 +1084,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       if (task.canClaim) {
         await _social.claimReward(
-          taskId: task.id,
+          taskId: taskId,
         );
 
         await _loadProfile();
@@ -1038,7 +1100,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       await _social.startTask(
-        taskId: task.id,
+        taskId: taskId,
       );
 
       final url = _taskUrl(task);
@@ -1081,6 +1143,20 @@ class _HomeScreenState extends State<HomeScreen> {
         _busy = false;
       });
     }
+  }
+
+  bool _isUuid(String value) {
+    final text = value.trim();
+
+    final regex = RegExp(
+      r'^[0-9a-fA-F]{8}-'
+      r'[0-9a-fA-F]{4}-'
+      r'[1-5][0-9a-fA-F]{3}-'
+      r'[89abAB][0-9a-fA-F]{3}-'
+      r'[0-9a-fA-F]{12}$',
+    );
+
+    return regex.hasMatch(text);
   }
 
   // ============================================================
@@ -1301,7 +1377,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _platformIcon(platform);
 
     final isFallback =
-        task.id.startsWith('official-');
+        task.id.trim().toLowerCase().startsWith('official-');
 
     final isClaimable =
         task.canClaim &&
