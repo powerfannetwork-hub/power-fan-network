@@ -62,7 +62,7 @@ class DailySocialTask {
     final reward = _toDouble(map['reward_fan']);
 
     return DailySocialTask(
-      id: (map['id'] ?? '').toString(),
+      id: (map['id'] ?? '').toString().trim(),
       title: (map['title'] ?? '').toString(),
       description: (map['description'] ?? '').toString(),
       url: (map['task_url'] ?? map['url'] ?? '').toString(),
@@ -241,10 +241,6 @@ class DailySocialTask {
       actions.add('Share');
     }
 
-    if (joinVerified) {
-      actions.add('Join');
-    }
-
     if (subscribeVerified) {
       actions.add('Subscribe');
     }
@@ -306,15 +302,42 @@ class SocialTaskService {
         return [];
       }
 
-      if (response is! List) {
+      if (response is! Map) {
         throw Exception(
           'Invalid social tasks response.',
         );
       }
 
+      final data = Map<String, dynamic>.from(
+        response,
+      );
+
+      final success = data['success'];
+
+      if (success is bool && !success) {
+        throw Exception(
+          (data['message'] ??
+                  data['error'] ??
+                  'Unable to load social tasks.')
+              .toString(),
+        );
+      }
+
+      final rawTasks = data['tasks'];
+
+      if (rawTasks == null) {
+        return [];
+      }
+
+      if (rawTasks is! List) {
+        throw Exception(
+          'Invalid social tasks list.',
+        );
+      }
+
       final tasks = <DailySocialTask>[];
 
-      for (final item in response) {
+      for (final item in rawTasks) {
         if (item is! Map) {
           continue;
         }
