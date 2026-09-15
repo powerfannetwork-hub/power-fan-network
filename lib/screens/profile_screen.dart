@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/supabase_service.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final String? name;
   final String? email;
   final String? profileImageUrl;
@@ -27,30 +28,197 @@ class ProfileScreen extends StatelessWidget {
     this.faceVerified = false,
   });
 
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color successGreen = Color(0xFF159B61);
 
+  late int _checkInDays;
+  late int _boostDays;
+  late bool _faceVerificationUnlocked;
+  late bool _faceVerified;
+
+  bool _checkedInToday = false;
+  bool _boostedToday = false;
+  bool _loadingKyc = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _checkInDays = _clampDays(widget.checkInDays);
+    _boostDays = _clampDays(widget.boostDays);
+    _faceVerificationUnlocked =
+        widget.faceVerificationUnlocked;
+    _faceVerified = widget.faceVerified;
+
+    _loadKycProgress();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.checkInDays != widget.checkInDays ||
+        oldWidget.boostDays != widget.boostDays ||
+        oldWidget.faceVerificationUnlocked !=
+            widget.faceVerificationUnlocked ||
+        oldWidget.faceVerified != widget.faceVerified) {
+      setState(() {
+        _checkInDays = _clampDays(widget.checkInDays);
+        _boostDays = _clampDays(widget.boostDays);
+        _faceVerificationUnlocked =
+            widget.faceVerificationUnlocked;
+        _faceVerified = widget.faceVerified;
+      });
+
+      _loadKycProgress();
+    }
+  }
+
+  int _clampDays(int value) {
+    if (value < 0) return 0;
+    if (value > 30) return 30;
+    return value;
+  }
+
+  Future<void> _loadKycProgress() async {
+    if (_loadingKyc) return;
+
+    setState(() {
+      _loadingKyc = true;
+    });
+
+    try {
+      final response = await SupabaseService.client.rpc(
+        'get_kyc_progress',
+      );
+
+      if (!mounted) return;
+
+      if (response is Map) {
+        final map = Map<String, dynamic>.from(response);
+
+        final checkInValue =
+            map['kyc_checkin_days'] ??
+            map['checkin_days'] ??
+            0;
+
+        final boostValue =
+            map['kyc_boost_days'] ??
+            map['boost_days'] ??
+            0;
+
+        final checkedTodayValue =
+            map['checked_in_today'] ??
+            map['checkedInToday'] ??
+            false;
+
+        final boostedTodayValue =
+            map['boosted_today'] ??
+            map['boostedToday'] ??
+            false;
+
+        final unlockedValue =
+            map['face_verification_unlocked'] ??
+            false;
+
+        final verifiedValue =
+            map['face_verified'] ??
+            false;
+
+        setState(() {
+          _checkInDays = _clampDays(
+            _toInt(checkInValue),
+          );
+
+          _boostDays = _clampDays(
+            _toInt(boostValue),
+          );
+
+          _checkedInToday = _toBool(
+            checkedTodayValue,
+          );
+
+          _boostedToday = _toBool(
+            boostedTodayValue,
+          );
+
+          _faceVerificationUnlocked =
+              _toBool(unlockedValue);
+
+          _faceVerified =
+              _toBool(verifiedValue);
+
+          _loadingKyc = false;
+        });
+      } else {
+        setState(() {
+          _loadingKyc = false;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingKyc = false;
+      });
+    }
+  }
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  bool _toBool(dynamic value) {
+    if (value is bool) return value;
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    final text = value?.toString().trim().toLowerCase();
+
+    return text == 'true' ||
+        text == '1' ||
+        text == 'yes';
+  }
+
   String get displayName {
-    final value = name?.trim() ?? '';
+    final value = widget.name?.trim() ?? '';
     return value.isEmpty ? 'POWER FAN User' : value;
   }
 
   String get displayEmail {
-    final value = email?.trim() ?? '';
+    final value = widget.email?.trim() ?? '';
     return value.isEmpty ? 'No email available' : value;
   }
 
   bool get requirementsComplete {
-    return checkInProgress >= 30 && boostProgress >= 30;
+    return _checkInDays >= 30 &&
+        _boostDays >= 30;
   }
 
   bool get effectiveFaceVerificationUnlocked {
-    return faceVerificationUnlocked || requirementsComplete;
+    return _faceVerificationUnlocked ||
+        requirementsComplete;
   }
 
   String get kycStatus {
-    if (faceVerified) {
+    if (_faceVerified) {
       return 'Face Verified';
     }
 
@@ -62,7 +230,7 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Color get kycStatusColor {
-    if (faceVerified) {
+    if (_faceVerified) {
       return successGreen;
     }
 
@@ -73,24 +241,14 @@ class ProfileScreen extends StatelessWidget {
     return Colors.orange;
   }
 
-  int get checkInProgress {
-    if (checkInDays < 0) return 0;
-    if (checkInDays > 30) return 30;
-    return checkInDays;
-  }
-
-  int get boostProgress {
-    if (boostDays < 0) return 0;
-    if (boostDays > 30) return 30;
-    return boostDays;
-  }
-
   double get referralMiningBonus {
-    return activeReferrals * 0.02;
+    return widget.activeReferrals * 0.02;
   }
 
   bool get hasProfileImage {
-    final url = profileImageUrl?.trim() ?? '';
+    final url =
+        widget.profileImageUrl?.trim() ?? '';
+
     return url.isNotEmpty;
   }
 
@@ -113,13 +271,10 @@ class ProfileScreen extends StatelessWidget {
       body: SafeArea(
         child: RefreshIndicator(
           color: primaryPurple,
-          onRefresh: () async {
-            await Future<void>.delayed(
-              const Duration(milliseconds: 300),
-            );
-          },
+          onRefresh: _loadKycProgress,
           child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
+            physics:
+                const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
@@ -177,7 +332,8 @@ class ProfileScreen extends StatelessWidget {
             displayEmail,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.80),
+              color:
+                  Colors.white.withValues(alpha: 0.80),
               fontSize: 12,
             ),
           ),
@@ -188,7 +344,8 @@ class ProfileScreen extends StatelessWidget {
               vertical: 6,
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
+              color:
+                  Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Row(
@@ -224,14 +381,15 @@ class ProfileScreen extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.45),
+          color:
+              Colors.white.withValues(alpha: 0.45),
           width: 2,
         ),
       ),
       child: ClipOval(
         child: hasProfileImage
             ? Image.network(
-                profileImageUrl!.trim(),
+                widget.profileImageUrl!.trim(),
                 width: 98,
                 height: 98,
                 fit: BoxFit.cover,
@@ -252,12 +410,16 @@ class ProfileScreen extends StatelessWidget {
                   }
 
                   return Container(
-                    color: Colors.white.withValues(alpha: 0.15),
+                    color: Colors.white.withValues(
+                      alpha: 0.15,
+                    ),
                     alignment: Alignment.center,
-                    child: const SizedBox(
+                    child:
+                        const SizedBox(
                       width: 25,
                       height: 25,
-                      child: CircularProgressIndicator(
+                      child:
+                          CircularProgressIndicator(
                         strokeWidth: 2.5,
                         color: Colors.white,
                       ),
@@ -275,7 +437,8 @@ class ProfileScreen extends StatelessWidget {
       width: 98,
       height: 98,
       alignment: Alignment.center,
-      color: Colors.white.withValues(alpha: 0.15),
+      color:
+          Colors.white.withValues(alpha: 0.15),
       child: Text(
         _initials(),
         style: const TextStyle(
@@ -294,7 +457,8 @@ class ProfileScreen extends StatelessWidget {
       return 'PF';
     }
 
-    final parts = value.split(RegExp(r'\s+'));
+    final parts =
+        value.split(RegExp(r'\s+'));
 
     if (parts.length == 1) {
       final text = parts.first;
@@ -302,12 +466,16 @@ class ProfileScreen extends StatelessWidget {
       return text
           .substring(
             0,
-            text.length > 2 ? 2 : text.length,
+            text.length > 2
+                ? 2
+                : text.length,
           )
           .toUpperCase();
     }
 
-    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    return '${parts.first[0]}'
+        '${parts.last[0]}'
+        .toUpperCase();
   }
 
   Widget _buildBalances() {
@@ -316,7 +484,8 @@ class ProfileScreen extends StatelessWidget {
         Expanded(
           child: _buildBalanceCard(
             title: 'FAN Balance',
-            value: fanBalance.toStringAsFixed(4),
+            value: widget.fanBalance
+                .toStringAsFixed(4),
             suffix: 'FAN',
             icon: Icons.bolt,
           ),
@@ -325,9 +494,11 @@ class ProfileScreen extends StatelessWidget {
         Expanded(
           child: _buildBalanceCard(
             title: 'AFAM Balance',
-            value: afamBalance.toStringAsFixed(4),
+            value: widget.afamBalance
+                .toStringAsFixed(4),
             suffix: 'AFAM',
-            icon: Icons.account_balance_wallet,
+            icon:
+                Icons.account_balance_wallet,
           ),
         ),
       ],
@@ -344,13 +515,15 @@ class ProfileScreen extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
@@ -413,49 +586,68 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildKycSection() {
-    final checkInComplete = checkInProgress >= 30;
-    final boostComplete = boostProgress >= 30;
+    final checkInComplete =
+        _checkInDays >= 30;
+
+    final boostComplete =
+        _boostDays >= 30;
+
     final requirementsComplete =
-        checkInComplete && boostComplete;
+        checkInComplete &&
+        boostComplete;
 
     return _buildSection(
       title: 'KYC Face Verification',
-      icon: Icons.face_retouching_natural,
+      icon:
+          Icons.face_retouching_natural,
       children: [
         _buildProgressRow(
           icon: Icons.calendar_month,
           title: 'Daily Check-in',
-          value: '$checkInProgress / 30 days',
-          progress: checkInProgress / 30,
-          completed: checkInComplete,
+          value:
+              '$_checkInDays / 30 days',
+          progress:
+              _checkInDays / 30,
+          completed:
+              checkInComplete,
+          todayCompleted:
+              _checkedInToday,
         ),
         _buildProgressRow(
           icon: Icons.bolt,
           title: 'Daily Boost',
-          value: '$boostProgress / 30 days',
-          progress: boostProgress / 30,
-          completed: boostComplete,
+          value:
+              '$_boostDays / 30 days',
+          progress:
+              _boostDays / 30,
+          completed:
+              boostComplete,
+          todayCompleted:
+              _boostedToday,
         ),
         _buildInfoRow(
           icon: Icons.face,
           title: 'Face Verification',
           value: kycStatus,
-          valueColor: kycStatusColor,
+          valueColor:
+              kycStatusColor,
         ),
         const SizedBox(height: 4),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
+          padding:
+              const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: primaryPurple.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(12),
+            color: primaryPurple.withValues(
+              alpha: 0.05,
+            ),
+            borderRadius:
+                BorderRadius.circular(12),
           ),
           child: Text(
             requirementsComplete
                 ? 'KYC requirements completed. Face Verification is now unlocked.'
-                : 'KYC Face Verification becomes available after '
-                    '30 consecutive daily check-ins and at least one '
-                    'boost every day for 30 days.',
+                : 'KYC Face Verification becomes available after 30 consecutive daily check-ins and at least one boost every day for 30 days.',
             style: const TextStyle(
               fontSize: 11,
               color: Colors.black54,
@@ -463,6 +655,13 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ),
+        if (_loadingKyc) ...[
+          const SizedBox(height: 12),
+          const LinearProgressIndicator(
+            minHeight: 2,
+            color: primaryPurple,
+          ),
+        ],
       ],
     );
   }
@@ -473,11 +672,14 @@ class ProfileScreen extends StatelessWidget {
     required String value,
     required double progress,
     required bool completed,
+    required bool todayCompleted,
   }) {
-    final safeProgress = progress.clamp(0.0, 1.0);
+    final safeProgress =
+        progress.clamp(0.0, 1.0);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding:
+          const EdgeInsets.only(bottom: 14),
       child: Column(
         children: [
           Row(
@@ -485,13 +687,15 @@ class ProfileScreen extends StatelessWidget {
               Icon(
                 icon,
                 size: 18,
-                color: Colors.grey.shade500,
+                color:
+                    Colors.grey.shade500,
               ),
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
                   ),
@@ -501,7 +705,8 @@ class ProfileScreen extends StatelessWidget {
                 value,
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontWeight:
+                      FontWeight.w600,
                   color: completed
                       ? successGreen
                       : Colors.black87,
@@ -519,16 +724,53 @@ class ProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 7),
           ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(
+            borderRadius:
+                BorderRadius.circular(20),
+            child:
+                LinearProgressIndicator(
               value: safeProgress,
               minHeight: 6,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: AlwaysStoppedAnimation<Color>(
+              backgroundColor:
+                  Colors.grey.shade200,
+              valueColor:
+                  AlwaysStoppedAnimation<
+                      Color>(
                 completed
                     ? successGreen
                     : primaryPurple,
               ),
+            ),
+          ),
+          const SizedBox(height: 5),
+          Align(
+            alignment:
+                Alignment.centerLeft,
+            child: Row(
+              children: [
+                Icon(
+                  todayCompleted
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  size: 13,
+                  color: todayCompleted
+                      ? successGreen
+                      : Colors.grey,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  todayCompleted
+                      ? 'Completed today'
+                      : 'Not completed today',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight:
+                        FontWeight.w500,
+                    color: todayCompleted
+                        ? successGreen
+                        : Colors.grey,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -544,7 +786,8 @@ class ProfileScreen extends StatelessWidget {
         _buildInfoRow(
           icon: Icons.people,
           title: 'Active Referrals',
-          value: '$activeReferrals',
+          value:
+              '${widget.activeReferrals}',
         ),
         _buildInfoRow(
           icon: Icons.bolt,
@@ -570,10 +813,12 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildMigrationInfo() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding:
+          const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -583,9 +828,14 @@ class ProfileScreen extends StatelessWidget {
           Container(
             width: 42,
             height: 42,
-            decoration: BoxDecoration(
-              color: primaryPurple.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
+            decoration:
+                BoxDecoration(
+              color:
+                  primaryPurple.withValues(
+                alpha: 0.08,
+              ),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.swap_horiz,
@@ -595,13 +845,15 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(width: 12),
           const Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Migration',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
                 SizedBox(height: 3),
@@ -617,7 +869,8 @@ class ProfileScreen extends StatelessWidget {
                   '100 FAN = 1 AFAM',
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight:
+                        FontWeight.w600,
                     color: primaryPurple,
                   ),
                 ),
@@ -633,19 +886,26 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(
+            padding:
+                const EdgeInsets.symmetric(
               horizontal: 8,
               vertical: 6,
             ),
-            decoration: BoxDecoration(
-              color: primaryPurple.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
+            decoration:
+                BoxDecoration(
+              color:
+                  primaryPurple.withValues(
+                alpha: 0.08,
+              ),
+              borderRadius:
+                  BorderRadius.circular(8),
             ),
             child: const Text(
               'COMING SOON',
               style: TextStyle(
                 fontSize: 8,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
                 color: primaryPurple,
               ),
             ),
@@ -658,16 +918,19 @@ class ProfileScreen extends StatelessWidget {
   Widget _buildSecurityInfo() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding:
+          const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
       ),
       child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.security,
@@ -677,20 +940,20 @@ class ProfileScreen extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   'Account Security',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
                 SizedBox(height: 5),
                 Text(
-                  'POWER FAN NETWORK uses one-device-per-account '
-                  'protection to help prevent multiple accounts '
-                  'from being used on the same device.',
+                  'POWER FAN NETWORK uses one-device-per-account protection to help prevent multiple accounts from being used on the same device.',
                   style: TextStyle(
                     fontSize: 11,
                     color: Colors.grey,
@@ -712,16 +975,19 @@ class ProfileScreen extends StatelessWidget {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding:
+          const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -734,9 +1000,11 @@ class ProfileScreen extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
               ),
@@ -756,19 +1024,22 @@ class ProfileScreen extends StatelessWidget {
     Color? valueColor,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
+      padding:
+          const EdgeInsets.only(bottom: 11),
       child: Row(
         children: [
           Icon(
             icon,
             size: 18,
-            color: Colors.grey.shade500,
+            color:
+                Colors.grey.shade500,
           ),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style:
+                  const TextStyle(
                 fontSize: 12,
                 color: Colors.grey,
               ),
@@ -777,12 +1048,17 @@ class ProfileScreen extends StatelessWidget {
           Flexible(
             child: Text(
               value,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
+              textAlign:
+                  TextAlign.right,
+              overflow:
+                  TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: valueColor ?? Colors.black87,
+                fontWeight:
+                    FontWeight.w600,
+                color:
+                    valueColor ??
+                        Colors.black87,
               ),
             ),
           ),
