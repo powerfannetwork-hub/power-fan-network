@@ -28,12 +28,10 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
   static const double boostPerAd = 0.10;
 
   final LevelPlayAdsService _ads = LevelPlayAdsService.instance;
-
   final MiningService _mining = MiningService.instance;
 
   bool _loading = true;
   bool _watching = false;
-  bool _adReady = false;
 
   int _adsWatched = 0;
   double _miningRate = defaultMiningRate;
@@ -79,7 +77,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
       setState(() {
         _loading = false;
-        _adReady = false;
       });
     }
   }
@@ -97,12 +94,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       final ready = await _ads.isRewardedAdReady();
 
       if (ready) {
-        if (!mounted) return;
-
-        setState(() {
-          _adReady = true;
-        });
-
         return;
       }
 
@@ -123,12 +114,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       final readyAfterLoad =
           await _ads.isRewardedAdReady();
 
-      if (!mounted) return;
-
-      setState(() {
-        _adReady = readyAfterLoad;
-      });
-
       debugPrint(
         'Boost Ads: rewarded ad ready = $readyAfterLoad',
       );
@@ -136,12 +121,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       debugPrint(
         'Boost Ads prepare error: $e',
       );
-
-      if (!mounted) return;
-
-      setState(() {
-        _adReady = false;
-      });
     }
   }
 
@@ -155,17 +134,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       final rate =
           await _mining.getUserMiningRate();
 
-      bool ready = false;
-
-      try {
-        ready =
-            await _ads.isRewardedAdReady();
-      } catch (e) {
-        debugPrint(
-          'Boost Ads readiness check error: $e',
-        );
-      }
-
       if (!mounted) return;
 
       setState(() {
@@ -176,8 +144,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
         _miningRate =
             rate > 0 ? rate : defaultMiningRate;
-
-        _adReady = ready;
       });
     } catch (e) {
       debugPrint(
@@ -261,7 +227,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
         setState(() {
           _watching = false;
-          _adReady = false;
         });
 
         _showMessage(
@@ -290,7 +255,8 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
             previousCount: previousCount,
           );
 
-          rewardRecorded = _adsWatched > previousCount;
+          rewardRecorded =
+              _adsWatched > previousCount;
 
           if (!mounted) return;
 
@@ -304,10 +270,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
           );
 
           if (!mounted) return;
-
-          setState(() {
-            _adReady = false;
-          });
 
           await _refresh();
 
@@ -334,7 +296,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
       if (!shown) {
         setState(() {
           _watching = false;
-          _adReady = false;
         });
 
         await _refresh();
@@ -359,7 +320,8 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
         if (!mounted) return;
 
-        rewardRecorded = _adsWatched > previousCount;
+        rewardRecorded =
+            _adsWatched > previousCount;
 
         if (rewardRecorded) {
           widget.onRewarded?.call();
@@ -386,7 +348,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
       setState(() {
         _watching = false;
-        _adReady = false;
       });
 
       await _refresh();
@@ -439,8 +400,6 @@ class _BoostAdsCardState extends State<BoostAdsCard> {
 
             _miningRate =
                 rate > 0 ? rate : defaultMiningRate;
-
-            _adReady = false;
           });
 
           debugPrint(
