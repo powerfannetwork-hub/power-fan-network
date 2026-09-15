@@ -565,7 +565,7 @@ class SocialTaskService {
 
     try {
       final response = await _client.rpc(
-        'claim_social_task',
+        'claim_daily_social_reward',
         params: {
           'p_task_id': cleanTaskId,
         },
@@ -615,4 +615,3 @@ class SocialTaskService {
     return getDailyTasksForCard();
   }
 }
-```0
