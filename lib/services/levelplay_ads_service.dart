@@ -7,8 +7,7 @@ import 'package:unity_levelplay_mediation/unity_levelplay_mediation.dart';
 class LevelPlayAdsService with LevelPlayInitListener {
   LevelPlayAdsService._();
 
-  static final LevelPlayAdsService instance =
-      LevelPlayAdsService._();
+  static final LevelPlayAdsService instance = LevelPlayAdsService._();
 
   static const String appKey = '27f58cf85';
   static const String rewardedAdUnitId = 'z69e4fg6emi98mbu';
@@ -68,10 +67,9 @@ class LevelPlayAdsService with LevelPlayInitListener {
         );
       }
 
-      final initRequest =
-          LevelPlayInitRequest.builder(appKey)
-              .withUserId(user.id)
-              .build();
+      final initRequest = LevelPlayInitRequest.builder(appKey)
+          .withUserId(user.id)
+          .build();
 
       await LevelPlay.init(
         initRequest: initRequest,
@@ -79,6 +77,8 @@ class LevelPlayAdsService with LevelPlayInitListener {
       );
 
       _initialized = true;
+
+      await _setDynamicUserId(user.id);
 
       _createRewardedAd();
 
@@ -95,6 +95,30 @@ class LevelPlayAdsService with LevelPlayInitListener {
     } finally {
       _initializing = false;
     }
+  }
+
+  Future<void> _setDynamicUserId(String userId) async {
+    final dynamicUserId = userId.replaceAll('-', '');
+
+    if (dynamicUserId.isEmpty) {
+      throw Exception(
+        'LevelPlay Dynamic User ID cannot be empty.',
+      );
+    }
+
+    if (dynamicUserId.length > 64) {
+      throw Exception(
+        'LevelPlay Dynamic User ID cannot exceed 64 characters.',
+      );
+    }
+
+    await LevelPlay.setDynamicUserId(
+      dynamicUserId,
+    );
+
+    debugPrint(
+      'LevelPlay Dynamic User ID configured.',
+    );
   }
 
   void _createRewardedAd() {
@@ -186,6 +210,17 @@ class LevelPlayAdsService with LevelPlayInitListener {
         );
         return false;
       }
+
+      final user = _supabase.auth.currentUser;
+
+      if (user == null) {
+        debugPrint(
+          'LevelPlay rewarded ad cannot show without an authenticated user.',
+        );
+        return false;
+      }
+
+      await _setDynamicUserId(user.id);
 
       if (_rewardedAd == null) {
         _createRewardedAd();
@@ -339,7 +374,6 @@ class LevelPlayAdsService with LevelPlayInitListener {
 
     final closedCallback = _onAdClosed;
 
-    _onRewarded = null;
     _onAdClosed = null;
 
     if (closedCallback != null) {
@@ -359,6 +393,8 @@ class LevelPlayAdsService with LevelPlayInitListener {
     );
 
     final rewardedCallback = _onRewarded;
+
+    _onRewarded = null;
 
     if (rewardedCallback != null) {
       unawaited(_runCallback(rewardedCallback));
@@ -493,3 +529,4 @@ class _RewardedAdListener with LevelPlayRewardedAdListener {
     _service._handleAdInfoChanged(adInfo);
   }
 }
+```0
