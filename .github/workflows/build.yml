@@ -44,9 +44,21 @@ jobs:
         shell: bash
         run: |
           set -e
+
+          echo "=== Java ==="
           java -version
+
+          echo "=== Flutter ==="
           flutter --version
+
+          echo "=== Dart ==="
           dart --version
+
+          echo "=== Gradle Wrapper ==="
+          chmod +x android/gradlew
+
+          cd android
+          ./gradlew --version
 
       - name: Flutter Doctor
         shell: bash
@@ -84,6 +96,8 @@ jobs:
         run: |
           set -e
 
+          echo "Checking Android release signing secrets..."
+
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "ERROR: ANDROID_KEYSTORE_BASE64 secret is missing."
             exit 1
@@ -104,33 +118,48 @@ jobs:
             exit 1
           fi
 
+          echo "Creating release keystore..."
+
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/powerfan-release.jks
 
-          test -s android/app/powerfan-release.jks
+          if [ ! -s android/app/powerfan-release.jks ]; then
+            echo "ERROR: Release keystore file was not created."
+            exit 1
+          fi
 
-          cat > android/key.properties <<EOF
-storePassword=$ANDROID_KEYSTORE_PASSWORD
-keyPassword=$ANDROID_KEY_PASSWORD
-keyAlias=$ANDROID_KEY_ALIAS
-storeFile=powerfan-release.jks
-EOF
+          echo "Creating android/key.properties..."
 
-          test -s android/key.properties
+          printf '%s\n' \
+            "storePassword=$ANDROID_KEYSTORE_PASSWORD" \
+            "keyPassword=$ANDROID_KEY_PASSWORD" \
+            "keyAlias=$ANDROID_KEY_ALIAS" \
+            "storeFile=powerfan-release.jks" \
+            > android/key.properties
 
-          echo "Release signing configuration is ready."
+          if [ ! -s android/key.properties ]; then
+            echo "ERROR: key.properties was not created."
+            exit 1
+          fi
+
+          echo "Release signing configuration created successfully."
 
       - name: Verify Android configuration
         shell: bash
         run: |
           set -e
 
-          echo "=== Android configuration ==="
+          echo "=== Android app configuration ==="
 
           grep -n "namespace" android/app/build.gradle.kts || true
           grep -n "applicationId" android/app/build.gradle.kts || true
           grep -n "compileSdk" android/app/build.gradle.kts || true
           grep -n "targetSdk" android/app/build.gradle.kts || true
           grep -n "minSdk" android/app/build.gradle.kts || true
+
+          echo "=== Release signing configuration ==="
+
+          grep -n "signingConfigs" android/app/build.gradle.kts || true
+          grep -n "signingConfig" android/app/build.gradle.kts || true
 
           echo "=== Gradle wrapper ==="
 
@@ -151,6 +180,10 @@ EOF
         shell: bash
         run: |
           set -e
+
+          echo "======================================"
+          echo "BUILDING RELEASE APK"
+          echo "======================================"
 
           flutter build apk --release
 
@@ -176,6 +209,8 @@ EOF
           echo "======================================"
           echo "APK BUILD SUCCESSFUL"
           echo "======================================"
+
+          echo "APK files generated:"
 
           find "$APK_DIR" \
             -maxdepth 1 \
