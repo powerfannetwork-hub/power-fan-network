@@ -74,22 +74,25 @@ class _KycPageState extends State<KycPage> {
     });
 
     try {
-      final updatedStatus = await _kycService.claimDailyCheckIn();
+      await _kycService.claimDailyCheckIn();
 
       if (!mounted) return;
 
       setState(() {
-        _status = updatedStatus;
         _checkingIn = false;
       });
 
+      // Reload the progress directly from the backend so the
+      // 30-day counter reflects the latest server-side value.
+      await _loadKyc();
+
+      if (!mounted) return;
+
       _showMessage(
-        updatedStatus.checkedInToday
+        _status.checkedInToday
             ? 'Daily Check-in completed successfully.'
             : 'Daily Check-in completed.',
       );
-
-      await _refreshMigrationStatus();
     } catch (error) {
       if (!mounted) return;
 
@@ -1174,7 +1177,7 @@ class _KycPageState extends State<KycPage> {
           ),
           const SizedBox(height: 13),
           Text(
-            'KYC progress is controlled by the Supabase backend. '
+            'KYC progress is controlled by the secure backend. '
             'Daily check-ins, boosts, face verification, and migration '
             'are protected by server-side checks.',
             style: TextStyle(
