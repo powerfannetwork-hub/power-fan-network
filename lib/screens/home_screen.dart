@@ -941,34 +941,26 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       if (updated) {
-        // --------------------------------------------------------
-        // KYC DAILY BOOST
+        // The ad has already been verified by the mining flow.
+        // Record this verified ad as today's KYC Daily Boost.
         //
-        // The mining boost has already been verified by the
-        // mining/ads flow above. Record exactly this verified ad
-        // as today's KYC boost activity.
-        //
-        // The backend remains responsible for enforcing:
-        // - one boost day per calendar day
-        // - consecutive-day streak logic
-        // - 30-day completion
-        // --------------------------------------------------------
+        // The backend is responsible for:
+        // - counting only one Boost day per calendar day
+        // - maintaining the consecutive streak
+        // - unlocking KYC at 30/30
         try {
           await _kyc.recordDailyBoost();
           await _loadKyc();
-
-          if (!mounted) return;
-
-          _message(
-            'Ad verified successfully. +0.10 FAN/H boost added.',
-          );
-        } catch (e) {
-          if (!mounted) return;
-
-          _message(
-            'Ad boost was applied, but KYC Daily Boost could not be synced: ${_error(e)}',
-          );
+        } catch (_) {
+          // Do not report the verified mining ad as failed
+          // just because the KYC refresh temporarily failed.
         }
+
+        if (!mounted) return;
+
+        _message(
+          'Ad verified successfully. +0.10 FAN/H boost added.',
+        );
       } else {
         _message(
           'Ad reward is still being verified. No boost was added yet.',
