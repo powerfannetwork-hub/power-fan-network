@@ -301,6 +301,60 @@ class LevelPlayAdsService with LevelPlayInitListener {
     return showRewardedAd();
   }
 
+  Future<bool> _recordAdRewardForKyc(
+    LevelPlayReward reward,
+  ) async {
+    try {
+      final user = _supabase.auth.currentUser;
+
+      if (user == null) {
+        debugPrint(
+          'KYC ad reward record skipped: user is not authenticated.',
+        );
+        return false;
+      }
+
+      final rawAmount = reward.amount;
+
+      final double amount =
+          rawAmount is num ? rawAmount.toDouble() : 0.10;
+
+      final response = await _supabase.rpc(
+        'record_ad_reward_for_kyc',
+        params: {
+          'p_reward_amount': amount,
+          'p_watched_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+
+      final data = response is Map
+          ? Map<String, dynamic>.from(response)
+          : <String, dynamic>{};
+
+      final success = data['success'] == true;
+
+      if (!success) {
+        debugPrint(
+          'KYC ad reward record failed: $data',
+        );
+        return false;
+      }
+
+      debugPrint(
+        'KYC ad reward recorded successfully.',
+      );
+
+      return true;
+    } catch (e, st) {
+      debugPrint(
+        'KYC ad reward record error: $e',
+      );
+      debugPrint('$st');
+
+      return false;
+    }
+  }
+
   void _handleAdLoaded(
     LevelPlayAdInfo adInfo,
   ) {
@@ -390,6 +444,32 @@ class LevelPlayAdsService with LevelPlayInitListener {
     debugPrint(
       'LevelPlay rewarded event received: '
       'amount=${reward.amount}, name=${reward.name}',
+    );
+
+    /*
+     * IMPORTANT:
+     *
+     * This record is created BEFORE the existing onRewarded callback.
+     * HomeScreen then calls KycService.recordDailyBoost().
+     *
+     * Therefore the chain becomes:
+     *
+     * LevelPlay reward
+     *      ↓
+     * ad_rewards
+     *      ↓
+     * record_daily_boost()
+     *      ↓
+     * KYC Daily Boost 1/30
+     */
+    unawaited(
+      _recordAdRewardForKyc(reward).then((recorded) {
+        if (!recorded) {
+          debugPrint(
+            'KYC ad reward was not recorded.',
+          );
+        }
+      }),
     );
 
     final rewardedCallback = _onRewarded;
@@ -529,4 +609,3 @@ class _RewardedAdListener with LevelPlayRewardedAdListener {
     _service._handleAdInfoChanged(adInfo);
   }
 }
-
