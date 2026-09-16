@@ -316,8 +316,7 @@ class LevelPlayAdsService with LevelPlayInitListener {
 
       final rawAmount = reward.amount;
 
-      final double amount =
-          rawAmount is num ? rawAmount.toDouble() : 0.10;
+      final double amount = rawAmount.toDouble();
 
       final response = await _supabase.rpc(
         'record_ad_reward_for_kyc',
