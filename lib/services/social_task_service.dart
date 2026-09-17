@@ -104,10 +104,7 @@ class DailySocialTask {
       return value.toDouble();
     }
 
-    return double.tryParse(
-          value.toString(),
-        ) ??
-        0.0;
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 
   static bool _toBool(dynamic value) {
@@ -461,9 +458,8 @@ class SocialTaskService {
   Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
-    final cleanTaskId = await _resolveTaskId(
-      taskId,
-    );
+    final cleanTaskId =
+        await _resolveTaskId(taskId);
 
     try {
       final response = await _client.rpc(
@@ -473,34 +469,13 @@ class SocialTaskService {
         },
       );
 
-      if (response == null) {
-        throw Exception(
-          'Unable to start social task.',
-        );
-      }
-
-      if (response is! Map) {
-        throw Exception(
-          'Invalid start social task response.',
-        );
-      }
-
-      final data = Map<String, dynamic>.from(
+      return _parseRpcResponse(
         response,
+        fallbackMessage:
+            'Unable to start social task.',
+        invalidMessage:
+            'Invalid start social task response.',
       );
-
-      final success = data['success'];
-
-      if (success is bool && !success) {
-        throw Exception(
-          (data['message'] ??
-                  data['error'] ??
-                  'Unable to start social task.')
-              .toString(),
-        );
-      }
-
-      return data;
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to start social task: ${e.message}',
@@ -548,20 +523,206 @@ class SocialTaskService {
     }
   }
 
+  // ------------------------------------------------------------
+  // NEW SOCIAL VERIFICATION FLOW
+  //
+  // Verify button:
+  // request_social_task_verification()
+  //
+  // Server:
+  // starts 60-second timer
+  //
+  // After timer:
+  // completeSocialTaskVerification()
+  // ------------------------------------------------------------
+
+  Future<Map<String, dynamic>>
+      startVerification({
+    required String taskId,
+    required String action,
+  }) async {
+    final cleanTaskId =
+        await _resolveTaskId(taskId);
+
+    final cleanAction =
+        action.trim().toLowerCase();
+
+    if (cleanAction.isEmpty) {
+      throw Exception(
+        'Invalid social action.',
+      );
+    }
+
+    const validActions = <String>{
+      'follow',
+      'like',
+      'comment',
+      'share',
+      'join',
+      'subscribe',
+    };
+
+    if (!validActions.contains(cleanAction)) {
+      throw Exception(
+        'Invalid social action.',
+      );
+    }
+
+    try {
+      final response = await _client.rpc(
+        'request_social_task_verification',
+        params: {
+          'p_task_id': cleanTaskId,
+          'p_action': cleanAction,
+        },
+      );
+
+      return _parseRpcResponse(
+        response,
+        fallbackMessage:
+            'Unable to start social verification.',
+        invalidMessage:
+            'Invalid social verification response.',
+      );
+    } on PostgrestException catch (e) {
+      throw Exception(
+        'Failed to start social verification: ${e.message}',
+      );
+    } catch (e) {
+      throw Exception(
+        'Failed to start social verification: $e',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>>
+      completeSocialTaskVerification({
+    required String taskId,
+  }) async {
+    final cleanTaskId =
+        await _resolveTaskId(taskId);
+
+    try {
+      final response = await _client.rpc(
+        'complete_social_task_verification',
+        params: {
+          'p_task_id': cleanTaskId,
+        },
+      );
+
+      return _parseRpcResponse(
+        response,
+        fallbackMessage:
+            'Unable to complete social verification.',
+        invalidMessage:
+            'Invalid social completion response.',
+      );
+    } on PostgrestException catch (e) {
+      throw Exception(
+        'Failed to complete social verification: ${e.message}',
+      );
+    } catch (e) {
+      throw Exception(
+        'Failed to complete social verification: $e',
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Compatibility method.
+  //
+  // IMPORTANT:
+  // This no longer directly claims the reward.
+  // It starts the server-side verification instead.
+  //
+  // The action is automatically selected when the task
+  // has exactly one required action.
+  // ------------------------------------------------------------
+
   Future<Map<String, dynamic>> verifyAndClaim({
     required String taskId,
   }) async {
-    return claimReward(
-      taskId: taskId,
+    final cleanTaskId =
+        await _resolveTaskId(taskId);
+
+    final tasks = await getDailyTasksForCard();
+
+    DailySocialTask? task;
+
+    for (final item in tasks) {
+      if (item.id.trim() == cleanTaskId) {
+        task = item;
+        break;
+      }
+    }
+
+    if (task == null) {
+      throw Exception(
+        'Social task not found.',
+      );
+    }
+
+    final required = <String>[];
+
+    if (task.requiresFollow) {
+      required.add('follow');
+    }
+
+    if (task.requiresLike) {
+      required.add('like');
+    }
+
+    if (task.requiresComment) {
+      required.add('comment');
+    }
+
+    if (task.requiresShare) {
+      required.add('share');
+    }
+
+    if (task.requiresJoin) {
+      required.add('join');
+    }
+
+    if (task.requiresSubscribe) {
+      required.add('subscribe');
+    }
+
+    if (required.isEmpty) {
+      throw Exception(
+        'No social action is required for this task.',
+      );
+    }
+
+    if (required.length > 1) {
+      throw Exception(
+        'This task requires multiple social actions. '
+        'Verify each required action separately.',
+      );
+    }
+
+    return startVerification(
+      taskId: cleanTaskId,
+      action: required.first,
     );
   }
+
+  // ------------------------------------------------------------
+  // Direct claim method kept for compatibility.
+  //
+  // The new UI should use:
+  // startVerification()
+  // then
+  // completeSocialTaskVerification()
+  //
+  // This method is NOT used by verifyAndClaim().
+  // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> claimReward({
     required String taskId,
   }) async {
-    final cleanTaskId = await _resolveTaskId(
-      taskId,
-    );
+    final cleanTaskId =
+        await _resolveTaskId(taskId);
 
     try {
       final response = await _client.rpc(
@@ -571,34 +732,13 @@ class SocialTaskService {
         },
       );
 
-      if (response == null) {
-        throw Exception(
-          'Unable to claim social reward.',
-        );
-      }
-
-      if (response is! Map) {
-        throw Exception(
-          'Invalid social reward response.',
-        );
-      }
-
-      final data = Map<String, dynamic>.from(
+      return _parseRpcResponse(
         response,
+        fallbackMessage:
+            'Unable to claim social reward.',
+        invalidMessage:
+            'Invalid social reward response.',
       );
-
-      final success = data['success'];
-
-      if (success is bool && !success) {
-        throw Exception(
-          (data['message'] ??
-                  data['error'] ??
-                  'Unable to claim social reward.')
-              .toString(),
-        );
-      }
-
-      return data;
     } on PostgrestException catch (e) {
       throw Exception(
         'Failed to claim social reward: ${e.message}',
@@ -613,5 +753,44 @@ class SocialTaskService {
   Future<List<DailySocialTask>>
       refreshTasks() async {
     return getDailyTasksForCard();
+  }
+
+  // ------------------------------------------------------------
+  // RPC response helper
+  // ------------------------------------------------------------
+
+  Map<String, dynamic> _parseRpcResponse(
+    dynamic response, {
+    required String fallbackMessage,
+    required String invalidMessage,
+  }) {
+    if (response == null) {
+      throw Exception(
+        fallbackMessage,
+      );
+    }
+
+    if (response is! Map) {
+      throw Exception(
+        invalidMessage,
+      );
+    }
+
+    final data = Map<String, dynamic>.from(
+      response,
+    );
+
+    final success = data['success'];
+
+    if (success is bool && !success) {
+      throw Exception(
+        (data['message'] ??
+                data['error'] ??
+                fallbackMessage)
+            .toString(),
+      );
+    }
+
+    return data;
   }
 }
