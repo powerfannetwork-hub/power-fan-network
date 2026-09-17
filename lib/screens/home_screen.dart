@@ -29,6 +29,9 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration socialTaskRefreshInterval =
       Duration(seconds: 20);
 
+  /// Total possible reward across the six social platforms.
+  static const double socialTotalReward = 60.0;
+
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
   final KycService _kyc = KycService();
@@ -63,6 +66,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _socialExpanded = false;
   String? _selectedSocialPlatform;
 
+  /// This is only UI state.
+  ///
+  /// The 60-second verification itself is controlled by Supabase.
+  /// Flutter does not decide when the reward becomes available.
+  String? _socialPendingTaskId;
+
+  /// Prevents duplicate Verify/Claim taps while the current
+  /// social request is being processed.
+  bool _socialProcessing = false;
+
   KycStatus _kycStatus = KycStatus.initial();
 
   static const Map<String, String> _officialSocialLinks = {
@@ -75,6 +88,16 @@ class _HomeScreenState extends State<HomeScreen> {
         'https://youtube.com/@powerfannetwork?si=yHAa0uXznTHB4SfN',
     'telegram': 'https://t.me/PowerFannetwork',
   };
+
+  /// Fixed order requested for the single Social Media card.
+  static const List<String> _socialPlatformOrder = [
+    'telegram',
+    'youtube',
+    'facebook',
+    'instagram',
+    'tiktok',
+    'x',
+  ];
 
   @override
   void initState() {
@@ -1009,7 +1032,9 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         if (!exists && tasks.isNotEmpty) {
-          _selectedSocialPlatform = null;
+          setState(() {
+            _selectedSocialPlatform = null;
+          });
         }
       }
     } catch (_) {
@@ -1026,13 +1051,50 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // SOCIAL ACTION
+  // SOCIAL PLATFORM SELECTION
   // ============================================================
 
-  Future<void> _socialAction(
+  void _selectSocialPlatform(
+    String platform,
+  ) {
+    if (_busy || _socialProcessing) {
+      return;
+    }
+
+    setState(() {
+      _socialExpanded = true;
+      _selectedSocialPlatform =
+          platform.trim().toLowerCase();
+    });
+  }
+
+  DailySocialTask? _taskForPlatform(
+    List<DailySocialTask> tasks,
+    String platform,
+  ) {
+    final normalized =
+        platform.trim().toLowerCase();
+
+    for (final task in tasks) {
+      if (task.platform.trim().toLowerCase() ==
+          normalized) {
+        return task;
+      }
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // OPEN SOCIAL TASK
+  // ============================================================
+
+  Future<void> _openSocialTask(
     DailySocialTask task,
   ) async {
-    if (_busy) return;
+    if (_busy || _socialProcessing) {
+      return;
+    }
 
     if (task.claimed) {
       _message(
@@ -1057,6 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
+        _socialProcessing = true;
         _busy = true;
       });
 
@@ -1068,7 +1131,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (opened) {
           _message(
-            'Complete the official social task, then return here and refresh.',
+            'Complete the task, then return here.',
           );
         } else {
           _message(
@@ -1083,6 +1146,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (!mounted) return;
 
         setState(() {
+          _socialProcessing = false;
           _busy = false;
         });
       }
@@ -1098,27 +1162,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
+      _socialProcessing = true;
       _busy = true;
     });
 
     try {
-      if (task.canClaim) {
-        await _social.claimReward(
-          taskId: taskId,
-        );
-
-        await _loadProfile();
-        await _loadTasks();
-
-        if (mounted) {
-          _message(
-            '+${_formatFan(task.rewardFan)} FAN reward claimed.',
-          );
-        }
-
-        return;
-      }
-
       await _social.startTask(
         taskId: taskId,
       );
@@ -1128,7 +1176,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (url.isEmpty) {
         if (mounted) {
           _message(
-            'Social task started. Complete the required action, then refresh to verify it.',
+            'Task started. Complete the required action, then press VERIFY.',
           );
         }
 
@@ -1142,7 +1190,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         if (opened) {
           _message(
-            'Complete the task, then return here. The server will verify your action before you can claim ${_formatFan(task.rewardFan)} FAN.',
+            'Complete the social action, then return here and press VERIFY.',
           );
         } else {
           _message(
@@ -1160,10 +1208,282 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       setState(() {
+        _socialProcessing = false;
         _busy = false;
       });
     }
   }
+
+  // ============================================================
+  // SOCIAL VERIFY
+  // ============================================================
+
+  Future<void> _verifySocialTask(
+    DailySocialTask task,
+  ) async {
+    if (_busy || _socialProcessing) {
+      return;
+    }
+
+    if (task.claimed) {
+      _message(
+        'This social reward has already been claimed.',
+      );
+      return;
+    }
+
+    final taskId = task.id.trim();
+
+    if (!_isUuid(taskId)) {
+      _message(
+        'This task does not have a valid server task ID yet.',
+      );
+      return;
+    }
+
+    final action =
+        _firstRequiredUnverifiedAction(task);
+
+    if (action == null) {
+      await _checkAndClaimSocialTask(task);
+      return;
+    }
+
+    setState(() {
+      _socialProcessing = true;
+      _busy = true;
+    });
+
+    try {
+      final response =
+          await _social.startVerification(
+        taskId,
+        action,
+      );
+
+      if (!mounted) return;
+
+      final message =
+          _socialResponseMessage(response);
+
+      setState(() {
+        _socialPendingTaskId = taskId;
+      });
+
+      _message(
+        message.isNotEmpty
+            ? message
+            : 'Server verification started. Wait 60 seconds, then check your reward.',
+      );
+
+      await _loadTasks(
+        silent: true,
+      );
+    } catch (e) {
+      if (mounted) {
+        _message(_error(e));
+      }
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        _socialProcessing = false;
+        _busy = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // CHECK SERVER TIMER + CLAIM
+  // ============================================================
+
+  Future<void> _checkAndClaimSocialTask(
+    DailySocialTask task,
+  ) async {
+    if (_busy || _socialProcessing) {
+      return;
+    }
+
+    if (task.claimed) {
+      _message(
+        'This social reward has already been claimed.',
+      );
+      return;
+    }
+
+    final taskId = task.id.trim();
+
+    if (!_isUuid(taskId)) {
+      _message(
+        'This task does not have a valid server task ID.',
+      );
+      return;
+    }
+
+    setState(() {
+      _socialProcessing = true;
+      _busy = true;
+    });
+
+    try {
+      final response =
+          await _social.completeSocialTaskVerification(
+        taskId,
+      );
+
+      if (!mounted) return;
+
+      final message =
+          _socialResponseMessage(response);
+
+      final reward =
+          _socialResponseReward(response);
+
+      setState(() {
+        _socialPendingTaskId = null;
+      });
+
+      await _loadProfile();
+      await _loadTasks(
+        silent: true,
+      );
+
+      if (!mounted) return;
+
+      if (reward > 0) {
+        _message(
+          '+${_formatFan(reward)} FAN reward claimed successfully.',
+        );
+      } else {
+        _message(
+          message.isNotEmpty
+              ? message
+              : 'Social reward claimed successfully.',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      final text =
+          _error(e).trim();
+
+      final lower =
+          text.toLowerCase();
+
+      if (lower.contains('60') ||
+          lower.contains('wait') ||
+          lower.contains('verification') ||
+          lower.contains('not available') ||
+          lower.contains('too early')) {
+        _message(
+          'Server verification is still active. Please wait until the 60 seconds are complete, then check again.',
+        );
+      } else {
+        _message(text);
+      }
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        _socialProcessing = false;
+        _busy = false;
+      });
+    }
+  }
+
+  // ============================================================
+  // FIRST REQUIRED ACTION
+  // ============================================================
+
+  String? _firstRequiredUnverifiedAction(
+    DailySocialTask task,
+  ) {
+    if (task.requiresFollow &&
+        !task.followVerified) {
+      return 'follow';
+    }
+
+    if (task.requiresLike &&
+        !task.likeVerified) {
+      return 'like';
+    }
+
+    if (task.requiresComment &&
+        !task.commentVerified) {
+      return 'comment';
+    }
+
+    if (task.requiresShare &&
+        !task.shareVerified) {
+      return 'share';
+    }
+
+    if (task.requiresJoin &&
+        !task.joinVerified) {
+      return 'join';
+    }
+
+    if (task.requiresSubscribe &&
+        !task.subscribeVerified) {
+      return 'subscribe';
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // SOCIAL RESPONSE HELPERS
+  // ============================================================
+
+  String _socialResponseMessage(
+    dynamic response,
+  ) {
+    if (response is Map) {
+      final value =
+          response['message'] ??
+              response['status_message'] ??
+              response['detail'];
+
+      if (value != null) {
+        return value.toString();
+      }
+    }
+
+    if (response is String) {
+      return response;
+    }
+
+    return '';
+  }
+
+  double _socialResponseReward(
+    dynamic response,
+  ) {
+    if (response is Map) {
+      return _toDouble(
+        response['reward'] ??
+            response['reward_amount'] ??
+            response['reward_fan'] ??
+            response['amount'],
+      );
+    }
+
+    return 0.0;
+  }
+
+  // ============================================================
+  // SOCIAL ACTION COMPATIBILITY
+  // ============================================================
+
+  Future<void> _socialAction(
+    DailySocialTask task,
+  ) async {
+    await _openSocialTask(task);
+  }
+
+  // ============================================================
+  // UUID
+  // ============================================================
 
   bool _isUuid(String value) {
     final text = value.trim();
@@ -1201,21 +1521,21 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildSocialCard() {
-    final displayTasks =
+    final sourceTasks =
         _tasks.isNotEmpty
             ? _tasks
             : _buildFallbackSocialTasks();
 
+    final displayTasks =
+        _orderedSocialTasks(sourceTasks);
+
     DailySocialTask? selectedTask;
 
     if (_selectedSocialPlatform != null) {
-      for (final task in displayTasks) {
-        if (task.platform.trim().toLowerCase() ==
-            _selectedSocialPlatform) {
-          selectedTask = task;
-          break;
-        }
-      }
+      selectedTask = _taskForPlatform(
+        displayTasks,
+        _selectedSocialPlatform!,
+      );
     }
 
     return _card(
@@ -1224,8 +1544,9 @@ class _HomeScreenState extends State<HomeScreen> {
             CrossAxisAlignment.start,
         children: [
           // ------------------------------------------------------
-          // DAILY TASK HEADER
+          // HERO
           // ------------------------------------------------------
+
           Row(
             crossAxisAlignment:
                 CrossAxisAlignment.center,
@@ -1277,56 +1598,71 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          const SizedBox(height: 13),
+          const SizedBox(height: 14),
 
           // ------------------------------------------------------
-          // TOP SOCIAL ICONS
+          // ALL SIX SOCIAL ICONS
           // ------------------------------------------------------
+
           Row(
             mainAxisAlignment:
-                MainAxisAlignment.spaceEvenly,
+                MainAxisAlignment.spaceBetween,
             children: [
-              _socialTopIcon(
-                platform: 'x',
-                icon: Icons.close_rounded,
-              ),
               _socialTopIcon(
                 platform: 'telegram',
                 icon: Icons.send_rounded,
               ),
               _socialTopIcon(
-                platform: 'instagram',
-                icon: Icons.camera_alt_rounded,
+                platform: 'youtube',
+                icon:
+                    Icons.play_arrow_rounded,
               ),
               _socialTopIcon(
-                platform: 'youtube',
-                icon: Icons.play_arrow_rounded,
+                platform: 'facebook',
+                icon:
+                    Icons.facebook_rounded,
+              ),
+              _socialTopIcon(
+                platform: 'instagram',
+                icon:
+                    Icons.camera_alt_rounded,
+              ),
+              _socialTopIcon(
+                platform: 'tiktok',
+                icon:
+                    Icons.music_note_rounded,
+              ),
+              _socialTopIcon(
+                platform: 'x',
+                icon: Icons.close_rounded,
               ),
             ],
           ),
 
-          const SizedBox(height: 13),
+          const SizedBox(height: 14),
 
           // ------------------------------------------------------
-          // FOLLOW & EARN 60 FAN
+          // EXPAND BUTTON
           // ------------------------------------------------------
+
           SizedBox(
             width: double.infinity,
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () {
-                      setState(() {
-                        _socialExpanded =
-                            !_socialExpanded;
+              onPressed:
+                  _busy || _socialProcessing
+                      ? null
+                      : () {
+                          setState(() {
+                            _socialExpanded =
+                                !_socialExpanded;
 
-                        if (!_socialExpanded) {
-                          _selectedSocialPlatform =
-                              null;
-                        }
-                      });
-                    },
+                            if (!_socialExpanded) {
+                              _selectedSocialPlatform =
+                                  null;
+                            }
+                          });
+                        },
               icon: Icon(
                 _socialExpanded
                     ? Icons
@@ -1364,9 +1700,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           // ------------------------------------------------------
-          // EXPANDED SOCIAL MEDIA
-          // SAME CARD
+          // EXPANDED CONTENT
+          // STILL ONE CARD
           // ------------------------------------------------------
+
           if (_socialExpanded) ...[
             const SizedBox(height: 15),
 
@@ -1395,6 +1732,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   // ------------------------------------------------
                   // SOCIAL MEDIA HEADER
                   // ------------------------------------------------
+
                   Row(
                     children: [
                       Container(
@@ -1436,7 +1774,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             SizedBox(height: 3),
                             Text(
-                              'Choose a platform and earn 10 FAN',
+                              'Choose a platform and complete its task',
                               style:
                                   TextStyle(
                                 fontSize: 10,
@@ -1455,8 +1793,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 12),
 
                   // ------------------------------------------------
-                  // ALL SIX PLATFORMS
+                  // SIX PLATFORMS IN THE SAME CARD
                   // ------------------------------------------------
+
                   ...displayTasks.asMap().entries.map(
                     (entry) {
                       final index =
@@ -1495,8 +1834,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
 
                   // ------------------------------------------------
-                  // SELECTED PLATFORM TASK
+                  // SELECTED TASK
                   // ------------------------------------------------
+
                   if (selectedTask != null) ...[
                     const SizedBox(height: 12),
                     _buildSelectedSocialTask(
@@ -1507,8 +1847,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 12),
 
                   // ------------------------------------------------
-                  // TOTAL REWARD
+                  // TOTAL 60 FAN
                   // ------------------------------------------------
+
                   Container(
                     width: double.infinity,
                     padding:
@@ -1571,6 +1912,44 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
+  // ORDER SIX PLATFORMS
+  // ============================================================
+
+  List<DailySocialTask> _orderedSocialTasks(
+    List<DailySocialTask> tasks,
+  ) {
+    final result =
+        <DailySocialTask>[];
+
+    for (final platform
+        in _socialPlatformOrder) {
+      final task =
+          _taskForPlatform(
+        tasks,
+        platform,
+      );
+
+      if (task != null) {
+        result.add(task);
+      }
+    }
+
+    // Keep any unexpected database platforms after
+    // the six official platforms.
+    for (final task in tasks) {
+      final platform =
+          task.platform.trim().toLowerCase();
+
+      if (!result.contains(task) &&
+          platform.isNotEmpty) {
+        result.add(task);
+      }
+    }
+
+    return result;
+  }
+
+  // ============================================================
   // TOP SOCIAL ICON
   // ============================================================
 
@@ -1578,8 +1957,12 @@ class _HomeScreenState extends State<HomeScreen> {
     required String platform,
     required IconData icon,
   }) {
+    final selected =
+        _selectedSocialPlatform ==
+            platform;
+
     return GestureDetector(
-      onTap: _busy
+      onTap: _busy || _socialProcessing
           ? null
           : () {
               setState(() {
@@ -1588,20 +1971,36 @@ class _HomeScreenState extends State<HomeScreen> {
                     platform;
               });
             },
-      child: Container(
-        width: 52,
-        height: 52,
+      child: AnimatedContainer(
+        duration:
+            const Duration(milliseconds: 160),
+        width: 43,
+        height: 43,
         decoration: BoxDecoration(
-          color:
-              _platformColor(platform),
+          color: selected
+              ? primaryPurple
+              : _platformColor(platform),
           borderRadius:
-              BorderRadius.circular(14),
+              BorderRadius.circular(12),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color:
+                        primaryPurple.withValues(
+                      alpha: 0.18,
+                    ),
+                    blurRadius: 7,
+                    offset:
+                        const Offset(0, 3),
+                  ),
+                ]
+              : null,
         ),
         alignment: Alignment.center,
         child: Icon(
           icon,
           color: Colors.white,
-          size: 28,
+          size: 23,
         ),
       ),
     );
@@ -1622,10 +2021,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final completed = task.claimed;
 
+    final pending =
+        _socialPendingTaskId ==
+            task.id.trim();
+
     return InkWell(
       borderRadius:
           BorderRadius.circular(13),
-      onTap: _busy
+      onTap: _busy || _socialProcessing
           ? null
           : () {
               setState(() {
@@ -1706,16 +2109,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(
                     completed
                         ? 'Completed'
-                        : 'Complete task',
+                        : pending
+                            ? 'Server verification active'
+                            : 'Complete task',
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight:
                           FontWeight.w600,
                       color: completed
                           ? successGreen
-                          : const Color(
-                              0xFF777780,
-                            ),
+                          : pending
+                              ? primaryPurple
+                              : const Color(
+                                  0xFF777780,
+                                ),
                     ),
                   ),
                 ],
@@ -1731,21 +2141,29 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 color: completed
                     ? successLight
-                    : const Color(
-                        0xFFEAF8F0,
-                      ),
+                    : pending
+                        ? const Color(
+                            0xFFF0EEFA,
+                          )
+                        : successLight,
                 borderRadius:
                     BorderRadius.circular(8),
               ),
               child: Text(
                 completed
                     ? 'DONE'
-                    : '+10 FAN',
-                style: const TextStyle(
+                    : pending
+                        ? 'VERIFY'
+                        : '+10 FAN',
+                style: TextStyle(
                   fontSize: 9,
                   fontWeight:
                       FontWeight.w900,
-                  color: successGreen,
+                  color: completed
+                      ? successGreen
+                      : pending
+                          ? primaryPurple
+                          : successGreen,
                 ),
               ),
             ),
@@ -1778,6 +2196,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final completed = task.claimed;
 
+    final taskId = task.id.trim();
+
+    final isFallback =
+        taskId
+            .toLowerCase()
+            .startsWith('official-');
+
+    final pending =
+        _socialPendingTaskId == taskId;
+
+    final requiredAction =
+        _firstRequiredUnverifiedAction(task);
+
+    final allVerified =
+        requiredAction == null;
+
     return Container(
       width: double.infinity,
       padding:
@@ -1797,15 +2231,36 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
+          // ------------------------------------------------------
+          // TASK HEADER
+          // ------------------------------------------------------
+
           Row(
             children: [
-              Icon(
-                _platformIcon(platform),
-                color:
-                    _platformColor(platform),
-                size: 23,
+              Container(
+                width: 39,
+                height: 39,
+                decoration: BoxDecoration(
+                  color:
+                      _platformColor(platform)
+                          .withValues(
+                    alpha: 0.10,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    11,
+                  ),
+                ),
+                alignment:
+                    Alignment.center,
+                child: Icon(
+                  _platformIcon(platform),
+                  color:
+                      _platformColor(platform),
+                  size: 22,
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 9),
               Expanded(
                 child: Text(
                   _platformName(task),
@@ -1830,7 +2285,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 9),
+
+          // ------------------------------------------------------
+          // TITLE
+          // ------------------------------------------------------
 
           Text(
             task.title.isNotEmpty
@@ -1858,67 +2317,398 @@ class _HomeScreenState extends State<HomeScreen> {
 
           const SizedBox(height: 10),
 
+          // ------------------------------------------------------
+          // REQUIRED ACTIONS
+          // ------------------------------------------------------
+
           _buildTaskActionsStatus(task),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 11),
 
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              onPressed:
-                  _busy || completed
-                      ? null
-                      : () =>
-                          _socialAction(task),
-              icon: Icon(
-                completed
-                    ? Icons.check_rounded
-                    : Icons.open_in_new_rounded,
-                size: 18,
+          // ------------------------------------------------------
+          // COMPLETED
+          // ------------------------------------------------------
+
+          if (completed)
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 11,
               ),
-              label: Text(
-                completed
-                    ? 'COMPLETED'
-                    : 'OPEN & COMPLETE TASK',
-                style:
-                    const TextStyle(
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w900,
+              decoration: BoxDecoration(
+                color: successLight,
+                borderRadius:
+                    BorderRadius.circular(
+                  11,
                 ),
               ),
-              style:
-                  ElevatedButton.styleFrom(
-                backgroundColor:
-                    completed
-                        ? successGreen
-                        : primaryPurple,
-                foregroundColor:
-                    Colors.white,
-                disabledBackgroundColor:
-                    completed
-                        ? successGreen
-                            .withValues(
-                            alpha: 0.45,
-                          )
-                        : primaryPurple
-                            .withValues(
-                            alpha: 0.45,
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons
+                        .check_circle_rounded,
+                    color: successGreen,
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'COMPLETED — reward has been claimed.',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight:
+                            FontWeight.w800,
+                        color:
+                            successGreen,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (isFallback)
+            // ----------------------------------------------------
+            // FALLBACK
+            // ----------------------------------------------------
+            Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child:
+                      ElevatedButton.icon(
+                    onPressed:
+                        _busy ||
+                                _socialProcessing
+                            ? null
+                            : () =>
+                                _openSocialTask(
+                                  task,
+                                ),
+                    icon: const Icon(
+                      Icons
+                          .open_in_new_rounded,
+                      size: 18,
+                    ),
+                    label: const Text(
+                      'OPEN SOCIAL TASK',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          primaryPurple,
+                      foregroundColor:
+                          Colors.white,
+                      disabledBackgroundColor:
+                          primaryPurple
+                              .withValues(
+                        alpha: 0.45,
+                      ),
+                      disabledForegroundColor:
+                          Colors.white,
+                      elevation: 0,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                const Text(
+                  'Temporary fallback: complete the action and return to refresh.',
+                  textAlign:
+                      TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color:
+                        Color(0xFF777780),
+                  ),
+                ),
+              ],
+            )
+          else if (pending)
+            // ----------------------------------------------------
+            // SERVER VERIFICATION PENDING
+            // ----------------------------------------------------
+            Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets
+                          .symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        const Color(
+                      0xFFF0EEFA,
+                    ),
+                    borderRadius:
+                        BorderRadius
+                            .circular(
+                      11,
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      SizedBox(
+                        width: 17,
+                        height: 17,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color:
+                              primaryPurple,
+                        ),
+                      ),
+                      SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'Server verification is active. The reward will become available after 60 seconds.',
+                          style:
+                              TextStyle(
+                            fontSize: 10,
+                            height: 1.3,
+                            fontWeight:
+                                FontWeight.w700,
+                            color:
+                                primaryPurple,
                           ),
-                disabledForegroundColor:
-                    Colors.white,
-                elevation: 0,
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 9),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child:
+                      ElevatedButton.icon(
+                    onPressed:
+                        _busy ||
+                                _socialProcessing
+                            ? null
+                            : () =>
+                                _checkAndClaimSocialTask(
+                                  task,
+                                ),
+                    icon: const Icon(
+                      Icons
+                          .verified_rounded,
+                      size: 18,
+                    ),
+                    label: const Text(
+                      'CHECK & CLAIM 10 FAN',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          successGreen,
+                      foregroundColor:
+                          Colors.white,
+                      disabledBackgroundColor:
+                          successGreen
+                              .withValues(
+                        alpha: 0.45,
+                      ),
+                      disabledForegroundColor:
+                          Colors.white,
+                      elevation: 0,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (allVerified)
+            // ----------------------------------------------------
+            // ALL REQUIRED ACTIONS VERIFIED
+            // ----------------------------------------------------
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child:
+                  ElevatedButton.icon(
+                onPressed:
+                    _busy ||
+                            _socialProcessing
+                        ? null
+                        : () =>
+                            _checkAndClaimSocialTask(
+                              task,
+                            ),
+                icon: const Icon(
+                  Icons
+                      .card_giftcard_rounded,
+                  size: 18,
+                ),
+                label: const Text(
+                  'CLAIM 10 FAN',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+                style:
+                    ElevatedButton.styleFrom(
+                  backgroundColor:
+                      successGreen,
+                  foregroundColor:
+                      Colors.white,
+                  disabledBackgroundColor:
+                      successGreen.withValues(
+                    alpha: 0.45,
+                  ),
+                  disabledForegroundColor:
+                      Colors.white,
+                  elevation: 0,
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                      11,
+                    ),
                   ),
                 ),
               ),
+            )
+          else
+            // ----------------------------------------------------
+            // OPEN → VERIFY
+            // ----------------------------------------------------
+            Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child:
+                      ElevatedButton.icon(
+                    onPressed:
+                        _busy ||
+                                _socialProcessing
+                            ? null
+                            : () =>
+                                _openSocialTask(
+                                  task,
+                                ),
+                    icon: const Icon(
+                      Icons
+                          .open_in_new_rounded,
+                      size: 18,
+                    ),
+                    label: const Text(
+                      'OPEN & COMPLETE TASK',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          primaryPurple,
+                      foregroundColor:
+                          Colors.white,
+                      disabledBackgroundColor:
+                          primaryPurple
+                              .withValues(
+                        alpha: 0.45,
+                      ),
+                      disabledForegroundColor:
+                          Colors.white,
+                      elevation: 0,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 7),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child:
+                      OutlinedButton.icon(
+                    onPressed:
+                        _busy ||
+                                _socialProcessing
+                            ? null
+                            : () =>
+                                _verifySocialTask(
+                                  task,
+                                ),
+                    icon: const Icon(
+                      Icons
+                          .verified_outlined,
+                      size: 18,
+                    ),
+                    label: const Text(
+                      'VERIFY',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+                    style:
+                        OutlinedButton.styleFrom(
+                      foregroundColor:
+                          primaryPurple,
+                      side:
+                          const BorderSide(
+                        color:
+                            primaryPurple,
+                      ),
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
         ],
       ),
     );
