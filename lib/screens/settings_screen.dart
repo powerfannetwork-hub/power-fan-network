@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../localization/app_localizations.dart';
+import '../localization/language_controller.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,6 +23,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _notificationsEnabled = false;
   bool _notificationLoading = false;
+
+  final LanguageController _languageController =
+      LanguageController.instance;
 
   @override
   void initState() {
@@ -329,6 +335,243 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: Colors.grey,
             ),
       onTap: onTap,
+    );
+  }
+
+  String get _currentLanguageName {
+    final code = _languageController.languageCode;
+
+    for (final language in AppLocalizations.languages) {
+      if (language.code == code) {
+        return language.nativeName;
+      }
+    }
+
+    return 'English';
+  }
+
+  Future<void> _openLanguageSelector() async {
+    await _languageController.loadSavedLanguage();
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              final currentCode =
+                  _languageController.languageCode;
+
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  28,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3B159B)
+                                .withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.language,
+                            color: Color(0xFF3B159B),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Languages',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF241064),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                          },
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Choose your preferred app language.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF666666),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount:
+                            AppLocalizations.languages.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 6),
+                        itemBuilder: (_, index) {
+                          final language =
+                              AppLocalizations.languages[index];
+                          final selected =
+                              language.code == currentCode;
+
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                              onTap: () async {
+                                await _languageController
+                                    .setLanguage(language.code);
+
+                                if (!mounted) return;
+
+                                setSheetState(() {});
+                                setState(() {});
+
+                                if (Navigator.of(sheetContext)
+                                    .canPop()) {
+                                  Navigator.of(sheetContext).pop();
+                                }
+
+                                if (!mounted) return;
+
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '${language.nativeName} selected',
+                                    ),
+                                    duration:
+                                        const Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 13,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? const Color(0xFF3B159B)
+                                          .withValues(alpha: 0.07)
+                                      : const Color(0xFFF8F8FC),
+                                  borderRadius:
+                                      BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: selected
+                                        ? const Color(0xFF3B159B)
+                                            .withValues(alpha: 0.25)
+                                        : const Color(0xFFE7E7EE),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? const Color(0xFF3B159B)
+                                                .withValues(alpha: 0.10)
+                                            : Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        language.nativeName
+                                                .isNotEmpty
+                                            ? language.nativeName
+                                                .characters
+                                                .first
+                                            : language.code
+                                                .toUpperCase(),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF3B159B),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            language.nativeName,
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight:
+                                                  FontWeight.w700,
+                                              color: selected
+                                                  ? const Color(
+                                                      0xFF241064)
+                                                  : const Color(
+                                                      0xFF333333),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            language.name,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Color(0xFF777777),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      selected
+                                          ? Icons.check_circle
+                                          : Icons.chevron_right,
+                                      color: selected
+                                          ? const Color(0xFF3B159B)
+                                          : Colors.grey,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -1031,6 +1274,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+
+                  _buildSettingTile(
+                    icon: Icons.language,
+                    title: 'Languages',
+                    subtitle: _currentLanguageName,
+                    onTap: _openLanguageSelector,
+                  ),
+
                   _buildSettingTile(
                     icon: Icons.notifications_none,
                     title: 'Notifications',
@@ -1066,3 +1317,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
