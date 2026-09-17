@@ -72,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Flutter does not decide when the reward becomes available.
   String? _socialPendingTaskId;
 
+  /// Local UI state only: remembers that this task was opened
+  /// before Verify is allowed. The server remains authoritative.
+  String? _socialOpenedTaskId;
+
   /// Prevents duplicate Verify/Claim taps while the current
   /// social request is being processed.
   bool _socialProcessing = false;
@@ -1023,7 +1027,10 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       if (_selectedSocialPlatform != null) {
-        final exists = tasks.any(
+        final displayTasks =
+            _socialTasksForDisplay(tasks);
+
+        final exists = displayTasks.any(
           (task) =>
               task.platform
                   .trim()
@@ -1031,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _selectedSocialPlatform,
         );
 
-        if (!exists && tasks.isNotEmpty) {
+        if (!exists) {
           setState(() {
             _selectedSocialPlatform = null;
           });
@@ -1130,6 +1137,11 @@ class _HomeScreenState extends State<HomeScreen> {
         if (!mounted) return;
 
         if (opened) {
+          if (mounted) {
+            setState(() {
+              _socialOpenedTaskId = taskId;
+            });
+          }
           _message(
             'Complete the task, then return here.',
           );
@@ -1189,6 +1201,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         if (opened) {
+          setState(() {
+            _socialOpenedTaskId = taskId;
+          });
           _message(
             'Complete the social action, then return here and press VERIFY.',
           );
@@ -1237,6 +1252,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_isUuid(taskId)) {
       _message(
         'This task does not have a valid server task ID yet.',
+      );
+      return;
+    }
+
+    if (_socialOpenedTaskId != taskId) {
+      _message(
+        'Open the social task first, complete the action, then press VERIFY.',
       );
       return;
     }
@@ -1341,6 +1363,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _socialPendingTaskId = null;
+        _socialOpenedTaskId = null;
       });
 
       await _loadProfile();
@@ -1521,13 +1544,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // ============================================================
 
   Widget _buildSocialCard() {
-    final sourceTasks =
-        _tasks.isNotEmpty
-            ? _tasks
-            : _buildFallbackSocialTasks();
-
     final displayTasks =
-        _orderedSocialTasks(sourceTasks);
+        _socialTasksForDisplay(_tasks);
 
     DailySocialTask? selectedTask;
 
@@ -1660,6 +1678,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             if (!_socialExpanded) {
                               _selectedSocialPlatform =
                                   null;
+                              _socialOpenedTaskId = null;
                             }
                           });
                         },
@@ -1909,6 +1928,53 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  // ============================================================
+  // BUILD THE SINGLE CARD'S SIX PLATFORM LIST
+  // ============================================================
+
+  List<DailySocialTask> _socialTasksForDisplay(
+    List<DailySocialTask> tasks,
+  ) {
+    final result = <DailySocialTask>[];
+    final fallbackTasks =
+        _buildFallbackSocialTasks();
+
+    for (final platform in _socialPlatformOrder) {
+      final realTask =
+          _taskForPlatform(tasks, platform);
+
+      if (realTask != null) {
+        result.add(realTask);
+        continue;
+      }
+
+      final fallbackTask =
+          _taskForPlatform(fallbackTasks, platform);
+
+      if (fallbackTask != null) {
+        result.add(fallbackTask);
+      }
+    }
+
+    // Keep unexpected real database tasks after the
+    // six official platforms.
+    for (final task in tasks) {
+      final platform =
+          task.platform.trim().toLowerCase();
+
+      if (platform.isNotEmpty &&
+          !result.any(
+            (item) =>
+                item.platform.trim().toLowerCase() ==
+                platform,
+          )) {
+        result.add(task);
+      }
+    }
+
+    return result;
   }
 
   // ============================================================
@@ -2626,7 +2692,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       size: 18,
                     ),
                     label: const Text(
-                      'OPEN & COMPLETE TASK',
+                      'OPEN TASK',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight:
@@ -4133,3 +4199,4 @@ class _HomeScreenState extends State<HomeScreen> {
       );
   }
 }
+
