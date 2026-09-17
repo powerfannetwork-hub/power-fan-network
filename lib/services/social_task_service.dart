@@ -524,16 +524,19 @@ class SocialTaskService {
   }
 
   // ------------------------------------------------------------
-  // NEW SOCIAL VERIFICATION FLOW
+  // SERVER-SIDE SOCIAL VERIFICATION
   //
-  // Verify button:
-  // request_social_task_verification()
+  // User performs the required social action.
   //
-  // Server:
-  // starts 60-second timer
+  // Flutter calls startVerification().
   //
-  // After timer:
-  // completeSocialTaskVerification()
+  // Supabase starts the 60-second server timer.
+  //
+  // Flutter can then call
+  // completeSocialTaskVerification().
+  //
+  // The server remains the authority over
+  // the 60-second waiting period.
   // ------------------------------------------------------------
 
   Future<Map<String, dynamic>>
@@ -629,14 +632,47 @@ class SocialTaskService {
   }
 
   // ------------------------------------------------------------
+  // Verify one specific required action.
+  //
+  // This is the preferred method for the UI.
+  //
+  // Example:
+  // verifyAction(taskId: id, action: 'follow')
+  //
+  // It does NOT wait for 60 seconds in Flutter.
+  // The server starts and controls the timer.
+  // ------------------------------------------------------------
+
+  Future<Map<String, dynamic>> verifyAction({
+    required String taskId,
+    required String action,
+  }) async {
+    final cleanAction =
+        action.trim().toLowerCase();
+
+    if (cleanAction.isEmpty) {
+      throw Exception(
+        'Invalid social action.',
+      );
+    }
+
+    return startVerification(
+      taskId: taskId,
+      action: cleanAction,
+    );
+  }
+
+  // ------------------------------------------------------------
   // Compatibility method.
   //
-  // IMPORTANT:
-  // This no longer directly claims the reward.
-  // It starts the server-side verification instead.
+  // It no longer directly claims the reward.
   //
-  // The action is automatically selected when the task
-  // has exactly one required action.
+  // It finds the first required action that has
+  // not yet been verified and starts its server
+  // verification timer.
+  //
+  // For tasks with multiple actions, the UI should
+  // call verifyAction() for each required action.
   // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> verifyAndClaim({
@@ -664,40 +700,45 @@ class SocialTaskService {
 
     final required = <String>[];
 
-    if (task.requiresFollow) {
+    if (task.requiresFollow &&
+        !task.followVerified) {
       required.add('follow');
     }
 
-    if (task.requiresLike) {
+    if (task.requiresLike &&
+        !task.likeVerified) {
       required.add('like');
     }
 
-    if (task.requiresComment) {
+    if (task.requiresComment &&
+        !task.commentVerified) {
       required.add('comment');
     }
 
-    if (task.requiresShare) {
+    if (task.requiresShare &&
+        !task.shareVerified) {
       required.add('share');
     }
 
-    if (task.requiresJoin) {
+    if (task.requiresJoin &&
+        !task.joinVerified) {
       required.add('join');
     }
 
-    if (task.requiresSubscribe) {
+    if (task.requiresSubscribe &&
+        !task.subscribeVerified) {
       required.add('subscribe');
     }
 
     if (required.isEmpty) {
-      throw Exception(
-        'No social action is required for this task.',
-      );
-    }
+      if (task.allRequiredActionsVerified) {
+        return completeSocialTaskVerification(
+          taskId: cleanTaskId,
+        );
+      }
 
-    if (required.length > 1) {
       throw Exception(
-        'This task requires multiple social actions. '
-        'Verify each required action separately.',
+        'No unverified social action found.',
       );
     }
 
@@ -710,12 +751,13 @@ class SocialTaskService {
   // ------------------------------------------------------------
   // Direct claim method kept for compatibility.
   //
-  // The new UI should use:
-  // startVerification()
-  // then
-  // completeSocialTaskVerification()
+  // New Social UI should use:
   //
-  // This method is NOT used by verifyAndClaim().
+  // 1. verifyAction()
+  // 2. wait according to server response
+  // 3. completeSocialTaskVerification()
+  //
+  // This method is not used by verifyAndClaim().
   // ------------------------------------------------------------
 
   Future<Map<String, dynamic>> claimReward({
