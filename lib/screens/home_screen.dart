@@ -30,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Duration(seconds: 20);
 
   /// Total possible reward across the six social platforms.
-  static const double socialTotalReward = 60.0;
+  static const int socialTotalReward = 60;
 
   final MiningService _mining = MiningService.instance;
   final SocialTaskService _social = SocialTaskService();
@@ -1279,8 +1279,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final response =
           await _social.startVerification(
-        taskId,
-        action,
+        taskId: taskId,
+        action: action,
       );
 
       if (!mounted) return;
@@ -1350,7 +1350,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final response =
           await _social.completeSocialTaskVerification(
-        taskId,
+        taskId: taskId,
       );
 
       if (!mounted) return;
@@ -1495,16 +1495,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // SOCIAL ACTION COMPATIBILITY
-  // ============================================================
-
-  Future<void> _socialAction(
-    DailySocialTask task,
-  ) async {
-    await _openSocialTask(task);
-  }
-
-  // ============================================================
   // UUID
   // ============================================================
 
@@ -1601,7 +1591,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Follow and get 60 FAN reward',
+                      'Follow and get ${socialTotalReward} FAN reward',
                       style: TextStyle(
                         fontSize: 13,
                         color:
@@ -1692,7 +1682,7 @@ class _HomeScreenState extends State<HomeScreen> {
               label: Text(
                 _socialExpanded
                     ? 'HIDE SOCIAL TASKS'
-                    : 'FOLLOW & EARN 60 FAN',
+                    : 'FOLLOW & EARN ${socialTotalReward} FAN',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight:
@@ -1896,7 +1886,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Complete all 6 platforms and earn 60 FAN',
+                            'Complete all 6 platforms and earn ${socialTotalReward} FAN',
                             style:
                                 TextStyle(
                               fontSize: 11,
@@ -1908,7 +1898,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         Text(
-                          '60 FAN',
+                          '${socialTotalReward} FAN',
                           style:
                               TextStyle(
                             fontSize: 12,
@@ -1970,44 +1960,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 item.platform.trim().toLowerCase() ==
                 platform,
           )) {
-        result.add(task);
-      }
-    }
-
-    return result;
-  }
-
-  // ============================================================
-  // ORDER SIX PLATFORMS
-  // ============================================================
-
-  List<DailySocialTask> _orderedSocialTasks(
-    List<DailySocialTask> tasks,
-  ) {
-    final result =
-        <DailySocialTask>[];
-
-    for (final platform
-        in _socialPlatformOrder) {
-      final task =
-          _taskForPlatform(
-        tasks,
-        platform,
-      );
-
-      if (task != null) {
-        result.add(task);
-      }
-    }
-
-    // Keep any unexpected database platforms after
-    // the six official platforms.
-    for (final task in tasks) {
-      final platform =
-          task.platform.trim().toLowerCase();
-
-      if (!result.contains(task) &&
-          platform.isNotEmpty) {
         result.add(task);
       }
     }
@@ -2097,10 +2049,7 @@ class _HomeScreenState extends State<HomeScreen> {
       onTap: _busy || _socialProcessing
           ? null
           : () {
-              setState(() {
-                _selectedSocialPlatform =
-                    platform;
-              });
+              _selectSocialPlatform(platform);
             },
       child: Container(
         width: double.infinity,
@@ -4199,4 +4148,5 @@ class _HomeScreenState extends State<HomeScreen> {
       );
   }
 }
+
 
