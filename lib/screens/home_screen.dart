@@ -56,6 +56,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<DailySocialTask> _tasks = [];
 
+  // ------------------------------------------------------------
+  // SOCIAL CARD UI STATE
+  // ------------------------------------------------------------
+
+  bool _socialExpanded = false;
+  String? _selectedSocialPlatform;
+
   KycStatus _kycStatus = KycStatus.initial();
 
   static const Map<String, String> _officialSocialLinks = {
@@ -941,20 +948,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       if (updated) {
-        // The ad has already been verified by the mining flow.
-        // Record this verified ad as today's KYC Daily Boost.
-        //
-        // The backend is responsible for:
-        // - counting only one Boost day per calendar day
-        // - maintaining the consecutive streak
-        // - unlocking KYC at 30/30
         try {
           await _kyc.recordDailyBoost();
           await _loadKyc();
-        } catch (_) {
-          // Do not report the verified mining ad as failed
-          // just because the KYC refresh temporarily failed.
-        }
+        } catch (_) {}
 
         if (!mounted) return;
 
@@ -1001,7 +998,21 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _tasks = tasks;
       });
-    } catch (e) {
+
+      if (_selectedSocialPlatform != null) {
+        final exists = tasks.any(
+          (task) =>
+              task.platform
+                  .trim()
+                  .toLowerCase() ==
+              _selectedSocialPlatform,
+        );
+
+        if (!exists && tasks.isNotEmpty) {
+          _selectedSocialPlatform = null;
+        }
+      }
+    } catch (_) {
       if (!mounted) return;
 
       if (!silent) {
@@ -1031,15 +1042,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final taskId = task.id.trim();
+
     final isFallback =
         taskId.toLowerCase().startsWith('official-');
 
-    /*
-     * Fallback cards are only display/open links.
-     *
-     * They do not have a real database UUID, so they must NEVER
-     * be sent to start_social_task() or claim_social_task().
-     */
     if (isFallback) {
       final url = _taskUrl(task);
 
@@ -1084,9 +1090,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    /*
-     * Only real UUID task IDs are allowed to reach the database.
-     */
     if (!_isUuid(taskId)) {
       _message(
         'This social task is unavailable. Please refresh the tasks.',
@@ -1203,77 +1206,718 @@ class _HomeScreenState extends State<HomeScreen> {
             ? _tasks
             : _buildFallbackSocialTasks();
 
+    DailySocialTask? selectedTask;
+
+    if (_selectedSocialPlatform != null) {
+      for (final task in displayTasks) {
+        if (task.platform.trim().toLowerCase() ==
+            _selectedSocialPlatform) {
+          selectedTask = task;
+          break;
+        }
+      }
+    }
+
     return _card(
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          // ------------------------------------------------------
+          // DAILY TASK HEADER
+          // ------------------------------------------------------
+          Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.center,
+            children: [
+              _circleIcon(
+                Icons.assignment_turned_in_rounded,
+                background: successLight,
+                iconColor: successGreen,
+                size: 58,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: const [
+                    Text(
+                      'DAILY TASK',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight:
+                            FontWeight.w900,
+                        color: deepPurple,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Follow us on social media',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color:
+                            Color(0xFF66666F),
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Follow and get 60 FAN reward',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color:
+                            Color(0xFF238B57),
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+
+          // ------------------------------------------------------
+          // TOP SOCIAL ICONS
+          // ------------------------------------------------------
+          Row(
+            mainAxisAlignment:
+                MainAxisAlignment.spaceEvenly,
+            children: [
+              _socialTopIcon(
+                platform: 'x',
+                icon: Icons.close_rounded,
+              ),
+              _socialTopIcon(
+                platform: 'telegram',
+                icon: Icons.send_rounded,
+              ),
+              _socialTopIcon(
+                platform: 'instagram',
+                icon: Icons.camera_alt_rounded,
+              ),
+              _socialTopIcon(
+                platform: 'youtube',
+                icon: Icons.play_arrow_rounded,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 13),
+
+          // ------------------------------------------------------
+          // FOLLOW & EARN 60 FAN
+          // ------------------------------------------------------
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () {
+                      setState(() {
+                        _socialExpanded =
+                            !_socialExpanded;
+
+                        if (!_socialExpanded) {
+                          _selectedSocialPlatform =
+                              null;
+                        }
+                      });
+                    },
+              icon: Icon(
+                _socialExpanded
+                    ? Icons
+                        .keyboard_arrow_up_rounded
+                    : Icons.card_giftcard_rounded,
+                size: 23,
+              ),
+              label: Text(
+                _socialExpanded
+                    ? 'HIDE SOCIAL TASKS'
+                    : 'FOLLOW & EARN 60 FAN',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight:
+                      FontWeight.w900,
+                ),
+              ),
+              style:
+                  OutlinedButton.styleFrom(
+                foregroundColor:
+                    primaryPurple,
+                side: const BorderSide(
+                  color: primaryPurple,
+                  width: 1.5,
+                ),
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    14,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ------------------------------------------------------
+          // EXPANDED SOCIAL MEDIA
+          // SAME CARD
+          // ------------------------------------------------------
+          if (_socialExpanded) ...[
+            const SizedBox(height: 15),
+
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFFF8F7FD),
+                borderRadius:
+                    BorderRadius.circular(
+                  16,
+                ),
+                border: Border.all(
+                  color:
+                      primaryPurple.withValues(
+                    alpha: 0.10,
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  // ------------------------------------------------
+                  // SOCIAL MEDIA HEADER
+                  // ------------------------------------------------
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration:
+                            const BoxDecoration(
+                          color:
+                              primaryPurple,
+                          shape:
+                              BoxShape.circle,
+                        ),
+                        alignment:
+                            Alignment.center,
+                        child: const Icon(
+                          Icons.public_rounded,
+                          color: Colors.white,
+                          size: 23,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
+                          children: [
+                            Text(
+                              'SOCIAL MEDIA',
+                              style:
+                                  TextStyle(
+                                fontSize: 15,
+                                fontWeight:
+                                    FontWeight
+                                        .w900,
+                                color:
+                                    primaryPurple,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Choose a platform and earn 10 FAN',
+                              style:
+                                  TextStyle(
+                                fontSize: 10,
+                                color:
+                                    Color(
+                                  0xFF66666F,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ------------------------------------------------
+                  // ALL SIX PLATFORMS
+                  // ------------------------------------------------
+                  ...displayTasks.asMap().entries.map(
+                    (entry) {
+                      final index =
+                          entry.key;
+                      final task =
+                          entry.value;
+
+                      final platform =
+                          task.platform
+                              .trim()
+                              .toLowerCase();
+
+                      final selected =
+                          _selectedSocialPlatform ==
+                              platform;
+
+                      return Padding(
+                        padding:
+                            EdgeInsets.only(
+                          bottom:
+                              index ==
+                                      displayTasks
+                                          .length -
+                                          1
+                                  ? 0
+                                  : 7,
+                        ),
+                        child:
+                            _buildSocialPlatformRow(
+                          task,
+                          selected:
+                              selected,
+                        ),
+                      );
+                    },
+                  ),
+
+                  // ------------------------------------------------
+                  // SELECTED PLATFORM TASK
+                  // ------------------------------------------------
+                  if (selectedTask != null) ...[
+                    const SizedBox(height: 12),
+                    _buildSelectedSocialTask(
+                      selectedTask,
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  // ------------------------------------------------
+                  // TOTAL REWARD
+                  // ------------------------------------------------
+                  Container(
+                    width: double.infinity,
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration:
+                        BoxDecoration(
+                      color: successLight,
+                      borderRadius:
+                          BorderRadius
+                              .circular(11),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons
+                              .card_giftcard_rounded,
+                          color:
+                              successGreen,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Complete all 6 platforms and earn 60 FAN',
+                            style:
+                                TextStyle(
+                              fontSize: 11,
+                              fontWeight:
+                                  FontWeight.w800,
+                              color:
+                                  successGreen,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '60 FAN',
+                          style:
+                              TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                FontWeight.w900,
+                            color:
+                                successGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // TOP SOCIAL ICON
+  // ============================================================
+
+  Widget _socialTopIcon({
+    required String platform,
+    required IconData icon,
+  }) {
+    return GestureDetector(
+      onTap: _busy
+          ? null
+          : () {
+              setState(() {
+                _socialExpanded = true;
+                _selectedSocialPlatform =
+                    platform;
+              });
+            },
+      child: Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color:
+              _platformColor(platform),
+          borderRadius:
+              BorderRadius.circular(14),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          color: Colors.white,
+          size: 28,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PLATFORM ROW
+  // ============================================================
+
+  Widget _buildSocialPlatformRow(
+    DailySocialTask task, {
+    required bool selected,
+  }) {
+    final platform =
+        task.platform.trim().toLowerCase();
+
+    final name = _platformName(task);
+
+    final completed = task.claimed;
+
+    return InkWell(
+      borderRadius:
+          BorderRadius.circular(13),
+      onTap: _busy
+          ? null
+          : () {
+              setState(() {
+                _selectedSocialPlatform =
+                    platform;
+              });
+            },
+      child: Container(
+        width: double.infinity,
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 11,
+          vertical: 10,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? primaryPurple.withValues(
+                  alpha: 0.06,
+                )
+              : Colors.white,
+          borderRadius:
+              BorderRadius.circular(13),
+          border: Border.all(
+            color: selected
+                ? primaryPurple.withValues(
+                    alpha: 0.35,
+                  )
+                : Colors.grey.shade200,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color:
+                    _platformColor(platform)
+                        .withValues(
+                  alpha: 0.10,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  11,
+                ),
+              ),
+              alignment:
+                  Alignment.center,
+              child: Icon(
+                _platformIcon(platform),
+                color:
+                    _platformColor(platform),
+                size: 23,
+              ),
+            ),
+
+            const SizedBox(width: 10),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          FontWeight.w900,
+                      color: deepPurple,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    completed
+                        ? 'Completed'
+                        : 'Complete task',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight:
+                          FontWeight.w600,
+                      color: completed
+                          ? successGreen
+                          : const Color(
+                              0xFF777780,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 5,
+              ),
+              decoration: BoxDecoration(
+                color: completed
+                    ? successLight
+                    : const Color(
+                        0xFFEAF8F0,
+                      ),
+                borderRadius:
+                    BorderRadius.circular(8),
+              ),
+              child: Text(
+                completed
+                    ? 'DONE'
+                    : '+10 FAN',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight:
+                      FontWeight.w900,
+                  color: successGreen,
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 5),
+
+            Icon(
+              selected
+                  ? Icons
+                      .keyboard_arrow_up_rounded
+                  : Icons.chevron_right_rounded,
+              color: primaryPurple,
+              size: 21,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SELECTED PLATFORM TASK
+  // ============================================================
+
+  Widget _buildSelectedSocialTask(
+    DailySocialTask task,
+  ) {
+    final platform =
+        task.platform.trim().toLowerCase();
+
+    final completed = task.claimed;
+
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(14),
+        border: Border.all(
+          color:
+              primaryPurple.withValues(
+            alpha: 0.18,
+          ),
+        ),
+      ),
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              _circleIcon(
-                Icons.assignment_turned_in_rounded,
-                background: successLight,
-                iconColor: successGreen,
-                size: 56,
+              Icon(
+                _platformIcon(platform),
+                color:
+                    _platformColor(platform),
+                size: 23,
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'SOCIAL TASKS',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight:
-                            FontWeight.w900,
-                        color: deepPurple,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Choose a social platform and complete the task to earn FAN.',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color:
-                            Color(0xFF66666F),
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _platformName(task),
+                  style:
+                      const TextStyle(
+                    fontSize: 14,
+                    fontWeight:
+                        FontWeight.w900,
+                    color: deepPurple,
+                  ),
                 ),
               ),
-              IconButton(
-                tooltip: 'Refresh tasks',
-                onPressed: _busy || _loadingTasks
-                    ? null
-                    : () => _loadTasks(),
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                  color: primaryPurple,
+              const Text(
+                '+10 FAN',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w900,
+                  color: successGreen,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          ...displayTasks.asMap().entries.map(
-            (entry) {
-              final index = entry.key;
-              final task = entry.value;
 
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom:
-                      index == displayTasks.length - 1
-                          ? 0
-                          : 10,
+          const SizedBox(height: 8),
+
+          Text(
+            task.title.isNotEmpty
+                ? task.title
+                : 'Complete this social task',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight:
+                  FontWeight.w800,
+            ),
+          ),
+
+          if (task.description.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              task.description,
+              style: const TextStyle(
+                fontSize: 10,
+                height: 1.3,
+                color:
+                    Color(0xFF66666F),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 10),
+
+          _buildTaskActionsStatus(task),
+
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton.icon(
+              onPressed:
+                  _busy || completed
+                      ? null
+                      : () =>
+                          _socialAction(task),
+              icon: Icon(
+                completed
+                    ? Icons.check_rounded
+                    : Icons.open_in_new_rounded,
+                size: 18,
+              ),
+              label: Text(
+                completed
+                    ? 'COMPLETED'
+                    : 'OPEN & COMPLETE TASK',
+                style:
+                    const TextStyle(
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w900,
                 ),
-                child:
-                    _buildSingleSocialTask(
-                  task,
+              ),
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    completed
+                        ? successGreen
+                        : primaryPurple,
+                foregroundColor:
+                    Colors.white,
+                disabledBackgroundColor:
+                    completed
+                        ? successGreen
+                            .withValues(
+                            alpha: 0.45,
+                          )
+                        : primaryPurple
+                            .withValues(
+                            alpha: 0.45,
+                          ),
+                disabledForegroundColor:
+                    Colors.white,
+                elevation: 0,
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    11,
+                  ),
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ],
       ),
@@ -1288,9 +1932,28 @@ class _HomeScreenState extends State<HomeScreen> {
       _buildFallbackSocialTasks() {
     return [
       _fallbackTask(
+        id: 'official-telegram',
+        platform: 'telegram',
+        title:
+            'Join Power Fan Network on Telegram',
+        description:
+            'Open the official Power Fan Network Telegram channel and join it.',
+        requiresJoin: true,
+      ),
+      _fallbackTask(
+        id: 'official-youtube',
+        platform: 'youtube',
+        title:
+            'Subscribe to Power Fan Network on YouTube',
+        description:
+            'Open the official Power Fan Network YouTube channel and subscribe.',
+        requiresSubscribe: true,
+      ),
+      _fallbackTask(
         id: 'official-facebook',
         platform: 'facebook',
-        title: 'Follow Power Fan Network on Facebook',
+        title:
+            'Follow Power Fan Network on Facebook',
         description:
             'Open the official Power Fan Network Facebook page and follow it.',
         requiresFollow: true,
@@ -1298,42 +1961,29 @@ class _HomeScreenState extends State<HomeScreen> {
       _fallbackTask(
         id: 'official-instagram',
         platform: 'instagram',
-        title: 'Follow Power Fan Network on Instagram',
+        title:
+            'Follow Power Fan Network on Instagram',
         description:
             'Open the official Power Fan Network Instagram page and follow it.',
         requiresFollow: true,
       ),
       _fallbackTask(
-        id: 'official-x',
-        platform: 'x',
-        title: 'Follow Power Fan Network on X',
-        description:
-            'Open the official Power Fan Network X account and follow it.',
-        requiresFollow: true,
-      ),
-      _fallbackTask(
         id: 'official-tiktok',
         platform: 'tiktok',
-        title: 'Follow Power Fan Network on TikTok',
+        title:
+            'Follow Power Fan Network on TikTok',
         description:
             'Open the official Power Fan Network TikTok account and follow it.',
         requiresFollow: true,
       ),
       _fallbackTask(
-        id: 'official-youtube',
-        platform: 'youtube',
-        title: 'Subscribe to Power Fan Network on YouTube',
+        id: 'official-x',
+        platform: 'x',
+        title:
+            'Follow Power Fan Network on X',
         description:
-            'Open the official Power Fan Network YouTube channel and subscribe.',
-        requiresSubscribe: true,
-      ),
-      _fallbackTask(
-        id: 'official-telegram',
-        platform: 'telegram',
-        title: 'Join Power Fan Network on Telegram',
-        description:
-            'Open the official Power Fan Network Telegram channel and join it.',
-        requiresJoin: true,
+            'Open the official Power Fan Network X account and follow it.',
+        requiresFollow: true,
       ),
     ];
   }
@@ -1354,7 +2004,8 @@ class _HomeScreenState extends State<HomeScreen> {
       id: id,
       title: title,
       description: description,
-      url: _officialSocialLinks[platform] ?? '',
+      url:
+          _officialSocialLinks[platform] ?? '',
       platform: platform,
       rewardFan: 10.0,
       claimed: false,
@@ -1370,258 +2021,11 @@ class _HomeScreenState extends State<HomeScreen> {
       requiresComment: requiresComment,
       requiresShare: requiresShare,
       requiresJoin: requiresJoin,
-      requiresSubscribe: requiresSubscribe,
+      requiresSubscribe:
+          requiresSubscribe,
       taskDate: null,
       postExternalId: null,
       postPublishedAt: null,
-    );
-  }
-
-  // ============================================================
-  // SINGLE SOCIAL TASK
-  // ============================================================
-
-  Widget _buildSingleSocialTask(
-    DailySocialTask task,
-  ) {
-    final platform =
-        task.platform.trim().toLowerCase();
-
-    final platformLabel =
-        _platformName(task);
-
-    final platformIcon =
-        _platformIcon(platform);
-
-    final isFallback =
-        task.id.trim().toLowerCase().startsWith('official-');
-
-    final isClaimable =
-        task.canClaim &&
-        !task.claimed &&
-        !isFallback;
-
-    final isClaimed =
-        task.claimed;
-
-    final actionText =
-        isClaimed
-            ? 'CLAIMED'
-            : isClaimable
-                ? 'CLAIM ${_formatFan(task.rewardFan)} FAN'
-                : 'OPEN ${platformLabel.toUpperCase()}';
-
-    final actionColor =
-        isClaimed
-            ? Colors.grey
-            : isClaimable
-                ? successGreen
-                : primaryPurple;
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(16),
-        border: Border.all(
-          color: isClaimable
-              ? successGreen.withValues(
-                  alpha: 0.35,
-                )
-              : Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _platformColor(
-                    platform,
-                  ).withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    13,
-                  ),
-                ),
-                alignment:
-                    Alignment.center,
-                child: Icon(
-                  platformIcon,
-                  color:
-                      _platformColor(
-                    platform,
-                  ),
-                  size: 27,
-                ),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            platformLabel,
-                            maxLines: 1,
-                            overflow:
-                                TextOverflow.ellipsis,
-                            style:
-                                const TextStyle(
-                              fontSize: 12,
-                              fontWeight:
-                                  FontWeight.w900,
-                              color:
-                                  primaryPurple,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 6,
-                        ),
-                        Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
-                            horizontal: 7,
-                            vertical: 4,
-                          ),
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                const Color(
-                              0xFFFFF7E0,
-                            ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              7,
-                            ),
-                          ),
-                          child: Text(
-                            '+${_formatFan(task.rewardFan)} FAN',
-                            style:
-                                const TextStyle(
-                              fontSize: 9,
-                              fontWeight:
-                                  FontWeight.w900,
-                              color:
-                                  Color(
-                                0xFF9A6800,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      task.title.isNotEmpty
-                          ? task.title
-                          : 'Complete this social task',
-                      maxLines: 2,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(
-                        fontSize: 13,
-                        fontWeight:
-                            FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      task.description.isNotEmpty
-                          ? task.description
-                          : 'Open the official social page and complete the required action.',
-                      maxLines: 2,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(
-                        fontSize: 10,
-                        height: 1.3,
-                        color:
-                            Color(0xFF66666F),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _buildTaskActionsStatus(task),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            height: 43,
-            child: ElevatedButton.icon(
-              onPressed:
-                  _busy || isClaimed
-                      ? null
-                      : () =>
-                          _socialAction(task),
-              icon: Icon(
-                isClaimed
-                    ? Icons.check_rounded
-                    : isClaimable
-                        ? Icons.card_giftcard_rounded
-                        : Icons.open_in_new_rounded,
-                size: 18,
-              ),
-              label: Text(
-                actionText,
-                maxLines: 1,
-                overflow:
-                    TextOverflow.ellipsis,
-              ),
-              style:
-                  ElevatedButton.styleFrom(
-                backgroundColor:
-                    actionColor,
-                foregroundColor:
-                    Colors.white,
-                disabledBackgroundColor:
-                    actionColor.withValues(
-                  alpha: 0.45,
-                ),
-                disabledForegroundColor:
-                    Colors.white,
-                elevation: 0,
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    11,
-                  ),
-                ),
-                textStyle:
-                    const TextStyle(
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1694,7 +2098,8 @@ class _HomeScreenState extends State<HomeScreen> {
         style: TextStyle(
           fontSize: 10,
           color: Color(0xFF777780),
-          fontWeight: FontWeight.w600,
+          fontWeight:
+              FontWeight.w600,
         ),
       );
     }
@@ -1737,7 +2142,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Icon(
             verified
                 ? Icons.check_circle_rounded
-                : Icons.radio_button_unchecked,
+                : Icons
+                    .radio_button_unchecked,
             size: 13,
             color: verified
                 ? successGreen
@@ -1966,7 +2372,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(
                   color: primaryPurple,
                   fontSize: 22,
-                  fontWeight: FontWeight.w900,
+                  fontWeight:
+                      FontWeight.w900,
                   letterSpacing: -0.5,
                 ),
               ),
@@ -1974,9 +2381,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 'Mine FAN. Earn More',
                 style: TextStyle(
-                  color: Colors.indigo.shade900,
+                  color:
+                      Colors.indigo.shade900,
                   fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                  fontWeight:
+                      FontWeight.w500,
                 ),
               ),
             ],
@@ -1987,7 +2396,8 @@ class _HomeScreenState extends State<HomeScreen> {
           clipBehavior: Clip.none,
           children: [
             const Icon(
-              Icons.notifications_none_rounded,
+              Icons
+                  .notifications_none_rounded,
               color: deepPurple,
               size: 35,
             ),
@@ -2000,7 +2410,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 decoration:
                     const BoxDecoration(
                   color: Colors.red,
-                  shape: BoxShape.circle,
+                  shape:
+                      BoxShape.circle,
                 ),
               ),
             ),
@@ -2042,7 +2453,8 @@ class _HomeScreenState extends State<HomeScreen> {
               alpha: 0.18,
             ),
             blurRadius: 14,
-            offset: const Offset(0, 6),
+            offset:
+                const Offset(0, 6),
           ),
         ],
       ),
@@ -2077,7 +2489,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 7),
@@ -2088,12 +2501,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       height: 58,
                       decoration:
                           const BoxDecoration(
-                        shape: BoxShape.circle,
+                        shape:
+                            BoxShape.circle,
                         gradient:
                             LinearGradient(
                           colors: [
-                            Color(0xFFFFC928),
-                            Color(0xFFFFA800),
+                            Color(
+                              0xFFFFC928,
+                            ),
+                            Color(
+                              0xFFFFA800,
+                            ),
                           ],
                         ),
                       ),
@@ -2106,7 +2524,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             BoxDecoration(
                           shape:
                               BoxShape.circle,
-                          border: Border.all(
+                          border:
+                              Border.all(
                             color:
                                 const Color(
                               0xFFE89100,
@@ -2120,10 +2539,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           'F',
                           style: TextStyle(
                             color:
-                                Color(0xFFE58A00),
+                                Color(
+                              0xFFE58A00,
+                            ),
                             fontSize: 27,
                             fontWeight:
-                                FontWeight.w900,
+                                FontWeight
+                                    .w900,
                           ),
                         ),
                       ),
@@ -2132,16 +2554,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     Flexible(
                       child: Text(
                         displayedBalance
-                            .toStringAsFixed(8),
+                            .toStringAsFixed(
+                          8,
+                        ),
                         maxLines: 1,
                         overflow:
-                            TextOverflow.ellipsis,
+                            TextOverflow
+                                .ellipsis,
                         style:
                             const TextStyle(
-                          color: Colors.white,
+                          color:
+                              Colors.white,
                           fontSize: 31,
                           fontWeight:
-                              FontWeight.w800,
+                              FontWeight
+                                  .w800,
                           letterSpacing: -1,
                         ),
                       ),
@@ -2203,8 +2630,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 : _isMining
                     ? Icons.timer_rounded
                     : _busy
-                        ? Icons.ondemand_video_rounded
-                        : Icons.construction_rounded;
+                        ? Icons
+                            .ondemand_video_rounded
+                        : Icons
+                            .construction_rounded;
 
     return _card(
       child: Column(
@@ -2213,9 +2642,12 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               children: [
                 _circleIcon(
-                  Icons.check_circle_rounded,
-                  background: successLight,
-                  iconColor: successGreen,
+                  Icons
+                      .check_circle_rounded,
+                  background:
+                      successLight,
+                  iconColor:
+                      successGreen,
                   size: 62,
                 ),
                 const SizedBox(width: 13),
@@ -2253,7 +2685,8 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 width: 1,
                 height: 49,
-                color: Colors.grey.shade200,
+                color:
+                    Colors.grey.shade200,
               ),
               Expanded(
                 child: _miningInfo(
@@ -2271,14 +2704,16 @@ class _HomeScreenState extends State<HomeScreen> {
             style: const TextStyle(
               color: deepPurple,
               fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontWeight:
+                  FontWeight.w700,
             ),
           ),
           const SizedBox(height: 13),
           SizedBox(
             width: double.infinity,
             height: 55,
-            child: ElevatedButton.icon(
+            child:
+                ElevatedButton.icon(
               onPressed: _busy
                   ? null
                   : isReadyToClaim
@@ -2306,10 +2741,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     Colors.white,
                 disabledBackgroundColor:
                     isReadyToClaim
-                        ? successGreen.withValues(
+                        ? successGreen
+                            .withValues(
                             alpha: 0.70,
                           )
-                        : primaryPurple.withValues(
+                        : primaryPurple
+                            .withValues(
                             alpha: 0.70,
                           ),
                 disabledForegroundColor:
@@ -2324,11 +2761,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 textStyle: TextStyle(
                   fontSize:
-                      _isMining ? 17 : 16,
+                      _isMining
+                          ? 17
+                          : 16,
                   fontWeight:
                       FontWeight.w800,
                   letterSpacing:
-                      _isMining ? 0.6 : 0,
+                      _isMining
+                          ? 0.6
+                          : 0,
                 ),
               ),
             ),
@@ -2389,7 +2830,8 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               _circleIcon(
-                Icons.rocket_launch_rounded,
+                Icons
+                    .rocket_launch_rounded,
                 background:
                     const Color(0xFFF0EEFA),
                 iconColor:
@@ -2431,7 +2873,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _watchAd
                       : null,
                   icon: const Icon(
-                    Icons.ondemand_video_rounded,
+                    Icons
+                        .ondemand_video_rounded,
                     size: 18,
                   ),
                   label: const Text(
@@ -2448,7 +2891,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             .resolveWith(
                       (states) {
                         if (states.contains(
-                          WidgetState.disabled,
+                          WidgetState
+                              .disabled,
                         )) {
                           return primaryPurple
                               .withValues(
@@ -2639,7 +3083,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 3),
                 const Icon(
-                  Icons.chevron_right_rounded,
+                  Icons
+                      .chevron_right_rounded,
                   size: 18,
                 ),
               ],
@@ -2667,7 +3112,8 @@ class _HomeScreenState extends State<HomeScreen> {
             BorderRadius.circular(21),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
+            color:
+                Colors.black.withValues(
               alpha: 0.045,
             ),
             blurRadius: 11,
