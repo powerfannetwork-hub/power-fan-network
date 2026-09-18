@@ -135,7 +135,7 @@ const Map<String, String> zhTranslations = {
   'keepFaceVisible': '请保持脸部清晰可见',
   'lookAtCamera': '请看向摄像头',
   'verificationSeconds': '验证秒数',
-  'secondsRemaining': '秒剩余',
+  'secondsRemaining': '剩余秒数',
   'cameraPermissionRequired': '需要摄像头权限',
 
   'profile': '个人资料',
