@@ -33,6 +33,585 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadNotificationStatus();
   }
 
+  String _t(String key) {
+    return AppLocalizations.of(context).t(key);
+  }
+
+  String _localized(String key) {
+    final code = _languageController.languageCode;
+
+    const values = <String, Map<String, String>>{
+      'notificationsTitle': {
+        'en': 'Notifications',
+        'zh': '通知',
+        'es': 'Notificaciones',
+        'fr': 'Notifications',
+        'ar': 'الإشعارات',
+        'hi': 'सूचनाएँ',
+        'bn': 'বিজ্ঞপ্তি',
+        'ru': 'Уведомления',
+        'tr': 'Bildirimler',
+        'id': 'Notifikasi',
+      },
+      'manageNotifications': {
+        'en': 'Manage app notifications',
+        'zh': '管理应用通知',
+        'es': 'Gestionar las notificaciones de la aplicación',
+        'fr': 'Gérer les notifications de l’application',
+        'ar': 'إدارة إشعارات التطبيق',
+        'hi': 'ऐप सूचनाएँ प्रबंधित करें',
+        'bn': 'অ্যাপের বিজ্ঞপ্তি পরিচালনা করুন',
+        'ru': 'Управление уведомлениями приложения',
+        'tr': 'Uygulama bildirimlerini yönet',
+        'id': 'Kelola notifikasi aplikasi',
+      },
+      'notificationDescription': {
+        'en':
+            'Mining reminders, reward updates, social tasks, and other important Power Fan Network notifications will appear here.',
+        'zh':
+            '挖矿提醒、奖励更新、社交任务以及其他重要的 Power Fan Network 通知将在这里显示。',
+        'es':
+            'Aquí aparecerán recordatorios de minería, actualizaciones de recompensas, tareas sociales y otras notificaciones importantes de Power Fan Network.',
+        'fr':
+            'Les rappels de minage, mises à jour des récompenses, tâches sociales et autres notifications importantes de Power Fan Network apparaîtront ici.',
+        'ar':
+            'ستظهر هنا تذكيرات التعدين وتحديثات المكافآت والمهام الاجتماعية وإشعارات Power Fan Network المهمة الأخرى.',
+        'hi':
+            'माइनिंग रिमाइंडर, रिवॉर्ड अपडेट, सोशल टास्क और Power Fan Network की अन्य महत्वपूर्ण सूचनाएँ यहाँ दिखाई देंगी।',
+        'bn':
+            'মাইনিং রিমাইন্ডার, রিওয়ার্ড আপডেট, সামাজিক কাজ এবং Power Fan Network-এর অন্যান্য গুরুত্বপূর্ণ বিজ্ঞপ্তি এখানে দেখা যাবে।',
+        'ru':
+            'Здесь будут отображаться напоминания о майнинге, обновления наград, социальные задания и другие важные уведомления Power Fan Network.',
+        'tr':
+            'Madencilik hatırlatmaları, ödül güncellemeleri, sosyal görevler ve diğer önemli Power Fan Network bildirimleri burada görünecek.',
+        'id':
+            'Pengingat mining, pembaruan hadiah, tugas sosial, dan notifikasi penting Power Fan Network lainnya akan muncul di sini.',
+      },
+      'notificationsEnabled': {
+        'en': 'Notifications enabled',
+        'zh': '通知已启用',
+        'es': 'Notificaciones activadas',
+        'fr': 'Notifications activées',
+        'ar': 'الإشعارات مفعّلة',
+        'hi': 'सूचनाएँ सक्षम हैं',
+        'bn': 'বিজ্ঞপ্তি চালু আছে',
+        'ru': 'Уведомления включены',
+        'tr': 'Bildirimler etkin',
+        'id': 'Notifikasi aktif',
+      },
+      'notificationsDisabled': {
+        'en': 'Notifications disabled',
+        'zh': '通知已禁用',
+        'es': 'Notificaciones desactivadas',
+        'fr': 'Notifications désactivées',
+        'ar': 'الإشعارات معطّلة',
+        'hi': 'सूचनाएँ अक्षम हैं',
+        'bn': 'বিজ্ঞপ্তি বন্ধ আছে',
+        'ru': 'Уведомления отключены',
+        'tr': 'Bildirimler devre dışı',
+        'id': 'Notifikasi nonaktif',
+      },
+      'notificationsCanSend': {
+        'en':
+            'POWER FAN NETWORK can send important app notifications.',
+        'zh': 'POWER FAN NETWORK 可以发送重要的应用通知。',
+        'es':
+            'POWER FAN NETWORK puede enviar notificaciones importantes de la aplicación.',
+        'fr':
+            'POWER FAN NETWORK peut envoyer des notifications importantes de l’application.',
+        'ar':
+            'يمكن لـ POWER FAN NETWORK إرسال إشعارات مهمة للتطبيق.',
+        'hi':
+            'POWER FAN NETWORK महत्वपूर्ण ऐप सूचनाएँ भेज सकता है।',
+        'bn':
+            'POWER FAN NETWORK গুরুত্বপূর্ণ অ্যাপ বিজ্ঞপ্তি পাঠাতে পারে।',
+        'ru':
+            'POWER FAN NETWORK может отправлять важные уведомления приложения.',
+        'tr':
+            'POWER FAN NETWORK önemli uygulama bildirimleri gönderebilir.',
+        'id':
+            'POWER FAN NETWORK dapat mengirim notifikasi penting aplikasi.',
+      },
+      'allowNotifications': {
+        'en':
+            'Allow notifications to receive important app updates.',
+        'zh': '允许通知以接收重要的应用更新。',
+        'es':
+            'Permite las notificaciones para recibir actualizaciones importantes de la aplicación.',
+        'fr':
+            'Autorisez les notifications pour recevoir les mises à jour importantes de l’application.',
+        'ar':
+            'اسمح بالإشعارات لتلقي تحديثات التطبيق المهمة.',
+        'hi':
+            'महत्वपूर्ण ऐप अपडेट प्राप्त करने के लिए सूचनाएँ अनुमति दें।',
+        'bn':
+            'গুরুত্বপূর্ণ অ্যাপ আপডেট পেতে বিজ্ঞপ্তির অনুমতি দিন।',
+        'ru':
+            'Разрешите уведомления, чтобы получать важные обновления приложения.',
+        'tr':
+            'Önemli uygulama güncellemelerini almak için bildirimlere izin verin.',
+        'id':
+            'Izinkan notifikasi untuk menerima pembaruan penting aplikasi.',
+      },
+      'refreshNotificationStatus': {
+        'en': 'Refresh Notification Status',
+        'zh': '刷新通知状态',
+        'es': 'Actualizar estado de notificaciones',
+        'fr': 'Actualiser l’état des notifications',
+        'ar': 'تحديث حالة الإشعارات',
+        'hi': 'सूचना स्थिति रीफ़्रेश करें',
+        'bn': 'বিজ্ঞপ্তির অবস্থা রিফ্রেশ করুন',
+        'ru': 'Обновить статус уведомлений',
+        'tr': 'Bildirim durumunu yenile',
+        'id': 'Segarkan status notifikasi',
+      },
+      'enableNotifications': {
+        'en': 'Enable Notifications',
+        'zh': '启用通知',
+        'es': 'Activar notificaciones',
+        'fr': 'Activer les notifications',
+        'ar': 'تفعيل الإشعارات',
+        'hi': 'सूचनाएँ सक्षम करें',
+        'bn': 'বিজ্ঞপ্তি চালু করুন',
+        'ru': 'Включить уведомления',
+        'tr': 'Bildirimleri etkinleştir',
+        'id': 'Aktifkan notifikasi',
+      },
+      'checkCurrentStatus': {
+        'en': 'Check Current Status',
+        'zh': '检查当前状态',
+        'es': 'Comprobar estado actual',
+        'fr': 'Vérifier l’état actuel',
+        'ar': 'التحقق من الحالة الحالية',
+        'hi': 'वर्तमान स्थिति जाँचें',
+        'bn': 'বর্তমান অবস্থা পরীক্ষা করুন',
+        'ru': 'Проверить текущий статус',
+        'tr': 'Mevcut durumu kontrol et',
+        'id': 'Periksa status saat ini',
+      },
+      'notificationsDisabledMessage': {
+        'en':
+            'Notifications are currently disabled. Please allow notifications for POWER FAN NETWORK.',
+        'zh':
+            '通知当前已禁用。请允许 POWER FAN NETWORK 发送通知。',
+        'es':
+            'Las notificaciones están desactivadas. Permite las notificaciones para POWER FAN NETWORK.',
+        'fr':
+            'Les notifications sont actuellement désactivées. Autorisez les notifications pour POWER FAN NETWORK.',
+        'ar':
+            'الإشعارات معطّلة حاليًا. يرجى السماح بإشعارات POWER FAN NETWORK.',
+        'hi':
+            'सूचनाएँ अभी अक्षम हैं। POWER FAN NETWORK के लिए सूचनाओं की अनुमति दें।',
+        'bn':
+            'বিজ্ঞপ্তি বর্তমানে বন্ধ আছে। POWER FAN NETWORK-এর জন্য বিজ্ঞপ্তির অনুমতি দিন।',
+        'ru':
+            'Уведомления сейчас отключены. Разрешите уведомления для POWER FAN NETWORK.',
+        'tr':
+            'Bildirimler şu anda devre dışı. POWER FAN NETWORK için bildirimlere izin verin.',
+        'id':
+            'Notifikasi saat ini nonaktif. Izinkan notifikasi untuk POWER FAN NETWORK.',
+      },
+      'securityTitle': {
+        'en': 'Security',
+        'zh': '安全',
+        'es': 'Seguridad',
+        'fr': 'Sécurité',
+        'ar': 'الأمان',
+        'hi': 'सुरक्षा',
+        'bn': 'নিরাপত্তা',
+        'ru': 'Безопасность',
+        'tr': 'Güvenlik',
+        'id': 'Keamanan',
+      },
+      'accountSecurity': {
+        'en': 'Account Security',
+        'zh': '账户安全',
+        'es': 'Seguridad de la cuenta',
+        'fr': 'Sécurité du compte',
+        'ar': 'أمان الحساب',
+        'hi': 'खाता सुरक्षा',
+        'bn': 'অ্যাকাউন্ট নিরাপত্তা',
+        'ru': 'Безопасность аккаунта',
+        'tr': 'Hesap güvenliği',
+        'id': 'Keamanan akun',
+      },
+      'securityDescription': {
+        'en':
+            'POWER FAN NETWORK is designed to protect the integrity of the network and its users.',
+        'zh':
+            'POWER FAN NETWORK 旨在保护网络及其用户的完整性。',
+        'es':
+            'POWER FAN NETWORK está diseñado para proteger la integridad de la red y sus usuarios.',
+        'fr':
+            'POWER FAN NETWORK est conçu pour protéger l’intégrité du réseau et de ses utilisateurs.',
+        'ar':
+            'تم تصميم POWER FAN NETWORK لحماية سلامة الشبكة ومستخدميها.',
+        'hi':
+            'POWER FAN NETWORK नेटवर्क और उसके उपयोगकर्ताओं की सुरक्षा के लिए बनाया गया है।',
+        'bn':
+            'POWER FAN NETWORK নেটওয়ার্ক এবং এর ব্যবহারকারীদের সুরক্ষার জন্য তৈরি করা হয়েছে।',
+        'ru':
+            'POWER FAN NETWORK создан для защиты целостности сети и её пользователей.',
+        'tr':
+            'POWER FAN NETWORK, ağın ve kullanıcılarının bütünlüğünü korumak için tasarlanmıştır.',
+        'id':
+            'POWER FAN NETWORK dirancang untuk melindungi integritas jaringan dan penggunanya.',
+      },
+      'onePersonOneAccount': {
+        'en': 'One person = one account',
+        'zh': '一人 = 一个账户',
+        'es': 'Una persona = una cuenta',
+        'fr': 'Une personne = un compte',
+        'ar': 'شخص واحد = حساب واحد',
+        'hi': 'एक व्यक्ति = एक खाता',
+        'bn': 'একজন ব্যক্তি = একটি অ্যাকাউন্ট',
+        'ru': 'Один человек = один аккаунт',
+        'tr': 'Bir kişi = bir hesap',
+        'id': 'Satu orang = satu akun',
+      },
+      'oneAccountDescription': {
+        'en': 'Each user should maintain only one genuine account.',
+        'zh': '每位用户只能维护一个真实账户。',
+        'es': 'Cada usuario debe mantener una sola cuenta auténtica.',
+        'fr': 'Chaque utilisateur doit conserver un seul compte authentique.',
+        'ar': 'يجب على كل مستخدم الاحتفاظ بحساب حقيقي واحد فقط.',
+        'hi': 'प्रत्येक उपयोगकर्ता को केवल एक वास्तविक खाता रखना चाहिए।',
+        'bn': 'প্রত্যেক ব্যবহারকারীর শুধুমাত্র একটি আসল অ্যাকাউন্ট রাখা উচিত।',
+        'ru': 'Каждый пользователь должен иметь только один настоящий аккаунт.',
+        'tr': 'Her kullanıcı yalnızca bir gerçek hesap kullanmalıdır.',
+        'id': 'Setiap pengguna harus memiliki satu akun asli saja.',
+      },
+      'noBots': {
+        'en': 'No bots or automation',
+        'zh': '禁止机器人或自动化',
+        'es': 'Sin bots ni automatización',
+        'fr': 'Aucun bot ni automatisation',
+        'ar': 'لا روبوتات أو أتمتة',
+        'hi': 'बॉट या स्वचालन नहीं',
+        'bn': 'বট বা স্বয়ংক্রিয়তা নয়',
+        'ru': 'Без ботов и автоматизации',
+        'tr': 'Bot veya otomasyon yok',
+        'id': 'Tanpa bot atau otomatisasi',
+      },
+      'noBotsDescription': {
+        'en':
+            'Bots, automated activity, fake activity, or attempts to abuse the system are not allowed.',
+        'zh':
+            '不允许使用机器人、自动化活动、虚假活动或试图滥用系统。',
+        'es':
+            'No se permiten bots, actividad automatizada, actividad falsa ni intentos de abusar del sistema.',
+        'fr':
+            'Les bots, activités automatisées, activités frauduleuses ou tentatives d’abus du système sont interdits.',
+        'ar':
+            'لا يُسمح بالروبوتات أو النشاط الآلي أو النشاط المزيف أو محاولات إساءة استخدام النظام.',
+        'hi':
+            'बॉट, स्वचालित गतिविधि, नकली गतिविधि या सिस्टम का दुरुपयोग करने के प्रयास की अनुमति नहीं है।',
+        'bn':
+            'বট, স্বয়ংক্রিয় কার্যকলাপ, ভুয়া কার্যকলাপ বা সিস্টেমের অপব্যবহারের চেষ্টা অনুমোদিত নয়।',
+        'ru':
+            'Боты, автоматическая или фиктивная активность, а также попытки злоупотребления системой запрещены.',
+        'tr':
+            'Botlar, otomatik etkinlikler, sahte etkinlikler veya sistemi kötüye kullanma girişimleri yasaktır.',
+        'id':
+            'Bot, aktivitas otomatis, aktivitas palsu, atau upaya menyalahgunakan sistem tidak diperbolehkan.',
+      },
+      'rewardProtection': {
+        'en': 'Reward protection',
+        'zh': '奖励保护',
+        'es': 'Protección de recompensas',
+        'fr': 'Protection des récompenses',
+        'ar': 'حماية المكافآت',
+        'hi': 'रिवॉर्ड सुरक्षा',
+        'bn': 'রিওয়ার্ড সুরক্ষা',
+        'ru': 'Защита наград',
+        'tr': 'Ödül koruması',
+        'id': 'Perlindungan hadiah',
+      },
+      'rewardProtectionDescription': {
+        'en':
+            'Accounts involved in suspicious or abusive activity may lose access to rewards and network features.',
+        'zh':
+            '涉及可疑或滥用活动的账户可能会失去奖励和网络功能的访问权限。',
+        'es':
+            'Las cuentas involucradas en actividades sospechosas o abusivas pueden perder el acceso a recompensas y funciones de la red.',
+        'fr':
+            'Les comptes impliqués dans des activités suspectes ou abusives peuvent perdre l’accès aux récompenses et aux fonctionnalités du réseau.',
+        'ar':
+            'قد تفقد الحسابات المتورطة في نشاط مشبوه أو مسيء الوصول إلى المكافآت وميزات الشبكة.',
+        'hi':
+            'संदिग्ध या दुरुपयोग वाली गतिविधि में शामिल खाते रिवॉर्ड और नेटवर्क सुविधाओं तक पहुँच खो सकते हैं।',
+        'bn':
+            'সন্দেহজনক বা অপব্যবহারমূলক কার্যকলাপে জড়িত অ্যাকাউন্ট রিওয়ার্ড এবং নেটওয়ার্ক সুবিধার অ্যাক্সেস হারাতে পারে।',
+        'ru':
+            'Аккаунты, связанные с подозрительной или злоупотребляющей активностью, могут потерять доступ к наградам и функциям сети.',
+        'tr':
+            'Şüpheli veya kötüye kullanımla ilişkili hesaplar ödüllere ve ağ özelliklerine erişimini kaybedebilir.',
+        'id':
+            'Akun yang terlibat dalam aktivitas mencurigakan atau penyalahgunaan dapat kehilangan akses ke hadiah dan fitur jaringan.',
+      },
+      'useNetworkFairly': {
+        'en': 'Use the network fairly',
+        'zh': '公平使用网络',
+        'es': 'Usa la red de forma justa',
+        'fr': 'Utilisez le réseau équitablement',
+        'ar': 'استخدم الشبكة بعدل',
+        'hi': 'नेटवर्क का निष्पक्ष उपयोग करें',
+        'bn': 'নেটওয়ার্ক ন্যায্যভাবে ব্যবহার করুন',
+        'ru': 'Используйте сеть честно',
+        'tr': 'Ağı adil kullan',
+        'id': 'Gunakan jaringan secara wajar',
+      },
+      'useNetworkFairlyDescription': {
+        'en':
+            'Please keep your account secure and use POWER FAN NETWORK fairly and genuinely.',
+        'zh':
+            '请保护您的账户安全，并公平、真实地使用 POWER FAN NETWORK。',
+        'es':
+            'Mantén tu cuenta segura y utiliza POWER FAN NETWORK de forma justa y auténtica.',
+        'fr':
+            'Gardez votre compte sécurisé et utilisez POWER FAN NETWORK de manière équitable et authentique.',
+        'ar':
+            'يرجى الحفاظ على أمان حسابك واستخدام POWER FAN NETWORK بعدل وبشكل حقيقي.',
+        'hi':
+            'अपने खाते को सुरक्षित रखें और POWER FAN NETWORK का निष्पक्ष एवं वास्तविक उपयोग करें।',
+        'bn':
+            'আপনার অ্যাকাউন্ট সুরক্ষিত রাখুন এবং POWER FAN NETWORK ন্যায্য ও বাস্তবভাবে ব্যবহার করুন।',
+        'ru':
+            'Защищайте свой аккаунт и используйте POWER FAN NETWORK честно и добросовестно.',
+        'tr':
+            'Hesabını güvende tut ve POWER FAN NETWORK’ü adil ve gerçek şekilde kullan.',
+        'id':
+            'Jaga keamanan akun Anda dan gunakan POWER FAN NETWORK secara wajar dan nyata.',
+      },
+      'aboutTitle': {
+        'en': 'About Power Fan Network',
+        'zh': '关于 Power Fan Network',
+        'es': 'Acerca de Power Fan Network',
+        'fr': 'À propos de Power Fan Network',
+        'ar': 'حول Power Fan Network',
+        'hi': 'Power Fan Network के बारे में',
+        'bn': 'Power Fan Network সম্পর্কে',
+        'ru': 'О Power Fan Network',
+        'tr': 'Power Fan Network hakkında',
+        'id': 'Tentang Power Fan Network',
+      },
+      'about': {
+        'en': 'About',
+        'zh': '关于',
+        'es': 'Acerca de',
+        'fr': 'À propos',
+        'ar': 'حول',
+        'hi': 'परिचय',
+        'bn': 'সম্পর্কে',
+        'ru': 'О проекте',
+        'tr': 'Hakkında',
+        'id': 'Tentang',
+      },
+      'aboutDescriptionOne': {
+        'en':
+            'POWER FAN NETWORK is built around consistency, patience, participation, and community.',
+        'zh':
+            'POWER FAN NETWORK 建立在坚持、耐心、参与和社区之上。',
+        'es':
+            'POWER FAN NETWORK se basa en la constancia, la paciencia, la participación y la comunidad.',
+        'fr':
+            'POWER FAN NETWORK repose sur la constance, la patience, la participation et la communauté.',
+        'ar':
+            'يعتمد POWER FAN NETWORK على الاستمرارية والصبر والمشاركة والمجتمع.',
+        'hi':
+            'POWER FAN NETWORK निरंतरता, धैर्य, भागीदारी और समुदाय पर आधारित है।',
+        'bn':
+            'POWER FAN NETWORK ধারাবাহিকতা, ধৈর্য, অংশগ্রহণ এবং সম্প্রদায়ের উপর ভিত্তি করে তৈরি।',
+        'ru':
+            'POWER FAN NETWORK построен на постоянстве, терпении, участии и сообществе.',
+        'tr':
+            'POWER FAN NETWORK; istikrar, sabır, katılım ve topluluk üzerine kuruludur.',
+        'id':
+            'POWER FAN NETWORK dibangun berdasarkan konsistensi, kesabaran, partisipasi, dan komunitas.',
+      },
+      'aboutDescriptionTwo': {
+        'en':
+            'Stay active, participate in daily activities, complete available tasks, build genuine connections, and keep moving forward with the network.',
+        'zh':
+            '保持活跃，参与每日活动，完成可用任务，建立真实联系，并继续与网络一起前进。',
+        'es':
+            'Mantente activo, participa en las actividades diarias, completa las tareas disponibles, crea conexiones auténticas y sigue avanzando con la red.',
+        'fr':
+            'Restez actif, participez aux activités quotidiennes, accomplissez les tâches disponibles, créez de vraies relations et continuez à avancer avec le réseau.',
+        'ar':
+            'كن نشطًا، وشارك في الأنشطة اليومية، وأكمل المهام المتاحة، وابنِ علاقات حقيقية، واستمر في التقدم مع الشبكة.',
+        'hi':
+            'सक्रिय रहें, दैनिक गतिविधियों में भाग लें, उपलब्ध कार्य पूरे करें, वास्तविक संबंध बनाएँ और नेटवर्क के साथ आगे बढ़ते रहें।',
+        'bn':
+            'সক্রিয় থাকুন, দৈনিক কার্যক্রমে অংশ নিন, উপলভ্য কাজ সম্পন্ন করুন, বাস্তব সংযোগ তৈরি করুন এবং নেটওয়ার্কের সাথে এগিয়ে চলুন।',
+        'ru':
+            'Будьте активны, участвуйте в ежедневных мероприятиях, выполняйте доступные задания, создавайте настоящие связи и продолжайте развиваться вместе с сетью.',
+        'tr':
+            'Aktif kal, günlük etkinliklere katıl, mevcut görevleri tamamla, gerçek bağlantılar kur ve ağ ile ilerlemeye devam et.',
+        'id':
+            'Tetap aktif, ikuti aktivitas harian, selesaikan tugas yang tersedia, bangun koneksi nyata, dan terus maju bersama jaringan.',
+      },
+      'aboutDescriptionThree': {
+        'en':
+            'Mining is only one part of the journey. Your consistency and genuine participation help you make the most of the Power Fan Network experience.',
+        'zh':
+            '挖矿只是这段旅程的一部分。您的坚持和真实参与将帮助您充分体验 Power Fan Network。',
+        'es':
+            'La minería es solo una parte del camino. Tu constancia y participación auténtica te ayudan a aprovechar al máximo la experiencia de Power Fan Network.',
+        'fr':
+            'Le minage n’est qu’une partie du parcours. Votre constance et votre participation authentique vous aident à profiter pleinement de l’expérience Power Fan Network.',
+        'ar':
+            'التعدين هو جزء واحد فقط من الرحلة. تساعدك استمراريتك ومشاركتك الحقيقية على الاستفادة من تجربة Power Fan Network.',
+        'hi':
+            'माइनिंग इस यात्रा का केवल एक हिस्सा है। आपकी निरंतरता और वास्तविक भागीदारी आपको Power Fan Network के अनुभव का अधिकतम लाभ उठाने में मदद करती है।',
+        'bn':
+            'মাইনিং এই যাত্রার একটি অংশ মাত্র। আপনার ধারাবাহিকতা এবং প্রকৃত অংশগ্রহণ আপনাকে Power Fan Network-এর অভিজ্ঞতা থেকে সর্বাধিক সুবিধা পেতে সাহায্য করবে।',
+        'ru':
+            'Майнинг — лишь одна часть пути. Ваша постоянная и искренняя активность помогает максимально использовать возможности Power Fan Network.',
+        'tr':
+            'Madencilik yolculuğun yalnızca bir parçasıdır. İstikrarın ve gerçek katılımın Power Fan Network deneyiminden en iyi şekilde yararlanmanı sağlar.',
+        'id':
+            'Mining hanyalah salah satu bagian dari perjalanan. Konsistensi dan partisipasi nyata Anda membantu memaksimalkan pengalaman Power Fan Network.',
+      },
+      'stayActive': {
+        'en': 'STAY ACTIVE.',
+        'zh': '保持活跃。',
+        'es': 'MANTENTE ACTIVO.',
+        'fr': 'RESTEZ ACTIF.',
+        'ar': 'كُن نشطًا.',
+        'hi': 'सक्रिय रहें।',
+        'bn': 'সক্রিয় থাকুন।',
+        'ru': 'БУДЬТЕ АКТИВНЫ.',
+        'tr': 'AKTİF KAL.',
+        'id': 'TETAP AKTIF.',
+      },
+      'stayGenuine': {
+        'en': 'STAY GENUINE.',
+        'zh': '保持真实。',
+        'es': 'SÉ AUTÉNTICO.',
+        'fr': 'RESTEZ AUTHENTIQUE.',
+        'ar': 'كُن حقيقيًا.',
+        'hi': 'वास्तविक रहें।',
+        'bn': 'বাস্তব থাকুন।',
+        'ru': 'БУДЬТЕ ИСКРЕННИМИ.',
+        'tr': 'GERÇEK KAL.',
+        'id': 'TETAP NYATA.',
+      },
+      'stayConsistent': {
+        'en': 'STAY CONSISTENT.',
+        'zh': '保持坚持。',
+        'es': 'MANTENTE CONSTANTE.',
+        'fr': 'RESTEZ CONSTANT.',
+        'ar': 'كُن مستمرًا.',
+        'hi': 'निरंतर बने रहें।',
+        'bn': 'ধারাবাহিক থাকুন।',
+        'ru': 'БУДЬТЕ ПОСЛЕДОВАТЕЛЬНЫ.',
+        'tr': 'İSTİKRARLI KAL.',
+        'id': 'TETAP KONSISTEN.',
+      },
+      'languageSelected': {
+        'en': 'Language changed',
+        'zh': '语言已更改',
+        'es': 'Idioma cambiado',
+        'fr': 'Langue modifiée',
+        'ar': 'تم تغيير اللغة',
+        'hi': 'भाषा बदल दी गई',
+        'bn': 'ভাষা পরিবর্তন হয়েছে',
+        'ru': 'Язык изменён',
+        'tr': 'Dil değiştirildi',
+        'id': 'Bahasa diubah',
+      },
+      'mineFanEarnMore': {
+        'en': 'mine FAN. earn more.',
+        'zh': '挖掘 FAN，赚取更多。',
+        'es': 'mina FAN. gana más.',
+        'fr': 'minez FAN. gagnez plus.',
+        'ar': 'استخرج FAN. واربح المزيد.',
+        'hi': 'FAN माइन करें। अधिक कमाएँ।',
+        'bn': 'FAN মাইন করুন। আরও উপার্জন করুন।',
+        'ru': 'майните FAN. зарабатывайте больше.',
+        'tr': 'FAN madenciliği yap. daha fazla kazan.',
+        'id': 'mine FAN. dapatkan lebih banyak.',
+      },
+      'settingsApp': {
+        'en': 'App',
+        'zh': '应用',
+        'es': 'Aplicación',
+        'fr': 'Application',
+        'ar': 'التطبيق',
+        'hi': 'ऐप',
+        'bn': 'অ্যাপ',
+        'ru': 'Приложение',
+        'tr': 'Uygulama',
+        'id': 'Aplikasi',
+      },
+      'notificationsEnabledSubtitle': {
+        'en': 'Notifications are enabled',
+        'zh': '通知已启用',
+        'es': 'Las notificaciones están activadas',
+        'fr': 'Les notifications sont activées',
+        'ar': 'الإشعارات مفعّلة',
+        'hi': 'सूचनाएँ सक्षम हैं',
+        'bn': 'বিজ্ঞপ্তি চালু আছে',
+        'ru': 'Уведомления включены',
+        'tr': 'Bildirimler etkin',
+        'id': 'Notifikasi aktif',
+      },
+      'notificationsDisabledSubtitle': {
+        'en': 'Notifications are disabled',
+        'zh': '通知已禁用',
+        'es': 'Las notificaciones están desactivadas',
+        'fr': 'Les notifications sont désactivées',
+        'ar': 'الإشعارات معطّلة',
+        'hi': 'सूचनाएँ अक्षम हैं',
+        'bn': 'বিজ্ঞপ্তি বন্ধ আছে',
+        'ru': 'Уведомления отключены',
+        'tr': 'Bildirimler devre dışı',
+        'id': 'Notifikasi nonaktif',
+      },
+      'securitySubtitle': {
+        'en': 'Protect your account and network activity',
+        'zh': '保护您的账户和网络活动',
+        'es': 'Protege tu cuenta y actividad en la red',
+        'fr': 'Protégez votre compte et votre activité sur le réseau',
+        'ar': 'احمِ حسابك ونشاطك على الشبكة',
+        'hi': 'अपने खाते और नेटवर्क गतिविधि की सुरक्षा करें',
+        'bn': 'আপনার অ্যাকাউন্ট ও নেটওয়ার্ক কার্যক্রম সুরক্ষিত করুন',
+        'ru': 'Защищайте аккаунт и активность в сети',
+        'tr': 'Hesabını ve ağ etkinliğini koru',
+        'id': 'Lindungi akun dan aktivitas jaringan Anda',
+      },
+      'aboutSubtitle': {
+        'en': 'Learn more about Power Fan Network',
+        'zh': '了解更多关于 Power Fan Network 的信息',
+        'es': 'Obtén más información sobre Power Fan Network',
+        'fr': 'En savoir plus sur Power Fan Network',
+        'ar': 'تعرف على المزيد حول Power Fan Network',
+        'hi': 'Power Fan Network के बारे में और जानें',
+        'bn': 'Power Fan Network সম্পর্কে আরও জানুন',
+        'ru': 'Узнайте больше о Power Fan Network',
+        'tr': 'Power Fan Network hakkında daha fazla bilgi edin',
+        'id': 'Pelajari lebih lanjut tentang Power Fan Network',
+      },
+      'userFallback': {
+        'en': 'User',
+        'zh': '用户',
+        'es': 'Usuario',
+        'fr': 'Utilisateur',
+        'ar': 'مستخدم',
+        'hi': 'उपयोगकर्ता',
+        'bn': 'ব্যবহারকারী',
+        'ru': 'Пользователь',
+        'tr': 'Kullanıcı',
+        'id': 'Pengguna',
+      },
+    };
+
+    return values[key]?[code] ??
+        values[key]?['en'] ??
+        key;
+  }
+
   Future<void> _loadData() async {
     if (!mounted) return;
 
@@ -171,7 +750,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final user = _supabase.auth.currentUser;
 
-    return user?.userMetadata?['name']?.toString() ?? 'User';
+    return user?.userMetadata?['name']?.toString() ??
+        _localized('userFallback');
   }
 
   String get _email {
@@ -346,7 +926,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
 
-    return 'English';
+    return AppLocalizations.languages.first.nativeName;
   }
 
   Future<void> _openLanguageSelector() async {
@@ -397,10 +977,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Languages',
-                            style: TextStyle(
+                            _t('language'),
+                            style: const TextStyle(
                               fontSize: 19,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF241064),
@@ -416,9 +996,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Choose your preferred app language.',
-                      style: TextStyle(
+                    Text(
+                      _t('chooseLanguage'),
+                      style: const TextStyle(
                         fontSize: 13,
                         color: Color(0xFF666666),
                       ),
@@ -462,7 +1042,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     .showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      '${language.nativeName} selected',
+                                      _t('languageChanged'),
                                     ),
                                     duration:
                                         const Duration(seconds: 1),
@@ -504,11 +1084,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             BorderRadius.circular(12),
                                       ),
                                       child: Text(
-                                        language.nativeName
-                                                .isNotEmpty
+                                        language.nativeName.isNotEmpty
                                             ? language.nativeName
-                                                .characters
-                                                .first
+                                                .substring(0, 1)
                                             : language.code
                                                 .toUpperCase(),
                                         style: const TextStyle(
@@ -612,10 +1190,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 if (!enabled) {
                   ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(
+                    SnackBar(
                       content: Text(
-                        'Notifications are currently disabled. '
-                        'Please allow notifications for POWER FAN NETWORK.',
+                        _localized('notificationsDisabledMessage'),
                       ),
                     ),
                   );
@@ -694,10 +1271,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Notifications',
-                            style: TextStyle(
+                            _localized('notificationsTitle'),
+                            style: const TextStyle(
                               fontSize: 19,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF241064),
@@ -706,26 +1283,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         IconButton(
                           onPressed: () {
-                            Navigator.pop(context);
+                            Navigator.pop(sheetContext);
                           },
                           icon: const Icon(Icons.close),
                         ),
                       ],
                     ),
                     const SizedBox(height: 18),
-                    const Text(
-                      'Manage app notifications',
-                      style: TextStyle(
+                    Text(
+                      _localized('manageNotifications'),
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Mining reminders, reward updates, social tasks, '
-                      'and other important Power Fan Network notifications '
-                      'will appear here.',
-                      style: TextStyle(
+                    Text(
+                      _localized('notificationDescription'),
+                      style: const TextStyle(
                         fontSize: 13,
                         color: Colors.grey,
                         height: 1.5,
@@ -773,8 +1348,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               children: [
                                 Text(
                                   _notificationsEnabled
-                                      ? 'Notifications enabled'
-                                      : 'Notifications disabled',
+                                      ? _localized(
+                                          'notificationsEnabled',
+                                        )
+                                      : _localized(
+                                          'notificationsDisabled',
+                                        ),
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
@@ -784,8 +1363,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   _notificationsEnabled
-                                      ? 'POWER FAN NETWORK can send important app notifications.'
-                                      : 'Allow notifications to receive important app updates.',
+                                      ? _localized(
+                                          'notificationsCanSend',
+                                        )
+                                      : _localized(
+                                          'allowNotifications',
+                                        ),
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Color(0xFF666666),
@@ -831,8 +1414,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                         label: Text(
                           _notificationsEnabled
-                              ? 'Refresh Notification Status'
-                              : 'Enable Notifications',
+                              ? _localized(
+                                  'refreshNotificationStatus',
+                                )
+                              : _localized(
+                                  'enableNotifications',
+                                ),
                         ),
                       ),
                     ),
@@ -859,8 +1446,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Icons.sync,
                           size: 20,
                         ),
-                        label: const Text(
-                          'Check Current Status',
+                        label: Text(
+                          _localized('checkCurrentStatus'),
                         ),
                       ),
                     ),
@@ -912,10 +1499,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Security',
-                        style: TextStyle(
+                        _localized('securityTitle'),
+                        style: const TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF241064),
@@ -931,19 +1518,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Account Security',
-                  style: TextStyle(
+                Text(
+                  _localized('accountSecurity'),
+                  style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF241064),
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'POWER FAN NETWORK is designed to protect the '
-                  'integrity of the network and its users.',
-                  style: TextStyle(
+                Text(
+                  _localized('securityDescription'),
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF555555),
                     height: 1.5,
@@ -952,30 +1538,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 16),
                 _buildSecurityPoint(
                   icon: Icons.person_outline,
-                  title: 'One person = one account',
-                  text:
-                      'Each user should maintain only one genuine account.',
+                  title: _localized('onePersonOneAccount'),
+                  text: _localized('oneAccountDescription'),
                 ),
                 _buildSecurityPoint(
                   icon: Icons.smart_toy_outlined,
-                  title: 'No bots or automation',
-                  text:
-                      'Bots, automated activity, fake activity, or attempts '
-                      'to abuse the system are not allowed.',
+                  title: _localized('noBots'),
+                  text: _localized('noBotsDescription'),
                 ),
                 _buildSecurityPoint(
                   icon: Icons.shield_outlined,
-                  title: 'Reward protection',
-                  text:
-                      'Accounts involved in suspicious or abusive activity '
-                      'may lose access to rewards and network features.',
+                  title: _localized('rewardProtection'),
+                  text: _localized('rewardProtectionDescription'),
                 ),
                 _buildSecurityPoint(
                   icon: Icons.verified_user_outlined,
-                  title: 'Use the network fairly',
-                  text:
-                      'Please keep your account secure and use '
-                      'POWER FAN NETWORK fairly and genuinely.',
+                  title: _localized('useNetworkFairly'),
+                  text: _localized('useNetworkFairlyDescription'),
                 ),
               ],
             ),
@@ -1081,10 +1660,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'About Power Fan Network',
-                        style: TextStyle(
+                        _localized('aboutTitle'),
+                        style: const TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF241064),
@@ -1110,50 +1689,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  'mine FAN. earn more.',
-                  style: TextStyle(
+                Text(
+                  _localized('mineFanEarnMore'),
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF777777),
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'About',
-                  style: TextStyle(
+                Text(
+                  _localized('about'),
+                  style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF241064),
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'POWER FAN NETWORK is built around consistency, '
-                  'patience, participation, and community.',
-                  style: TextStyle(
+                Text(
+                  _localized('aboutDescriptionOne'),
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF555555),
                     height: 1.55,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Stay active, participate in daily activities, '
-                  'complete available tasks, build genuine connections, '
-                  'and keep moving forward with the network.',
-                  style: TextStyle(
+                Text(
+                  _localized('aboutDescriptionTwo'),
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF555555),
                     height: 1.55,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Mining is only one part of the journey. '
-                  'Your consistency and genuine participation help '
-                  'you make the most of the Power Fan Network experience.',
-                  style: TextStyle(
+                Text(
+                  _localized('aboutDescriptionThree'),
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF555555),
                     height: 1.55,
@@ -1175,34 +1749,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
                       Text(
-                        'STAY ACTIVE.',
+                        _localized('stayActive'),
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.8,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'STAY GENUINE.',
+                        _localized('stayGenuine'),
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.8,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
-                        'STAY CONSISTENT.',
+                        _localized('stayConsistent'),
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -1213,13 +1787,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const Center(
-                  child: Text(
-                    'Version 1.0.0',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
+                Text(
+                  '${_t('version')} 1.0.0',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
                   ),
                 ),
               ],
@@ -1238,9 +1811,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         elevation: 0,
         backgroundColor: const Color(0xFFF8F8FC),
         foregroundColor: const Color(0xFF241064),
-        title: const Text(
-          'Settings',
-          style: TextStyle(
+        title: Text(
+          _t('settings'),
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -1264,49 +1837,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _buildProfileCard(),
                   const SizedBox(height: 22),
-                  const Text(
-                    'App',
-                    style: TextStyle(
+                  Text(
+                    _localized('settingsApp'),
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF241064),
                     ),
                   ),
                   const SizedBox(height: 8),
-
                   _buildSettingTile(
                     icon: Icons.language,
-                    title: 'Languages',
+                    title: _t('language'),
                     subtitle: _currentLanguageName,
                     onTap: _openLanguageSelector,
                   ),
-
                   _buildSettingTile(
                     icon: Icons.notifications_none,
-                    title: 'Notifications',
+                    title: _t('notifications'),
                     subtitle: _notificationsEnabled
-                        ? 'Notifications are enabled'
-                        : 'Notifications are disabled',
+                        ? _localized(
+                            'notificationsEnabledSubtitle',
+                          )
+                        : _localized(
+                            'notificationsDisabledSubtitle',
+                          ),
                     onTap: _openNotifications,
                   ),
                   _buildSettingTile(
                     icon: Icons.security_outlined,
-                    title: 'Security',
-                    subtitle:
-                        'Protect your account and network activity',
+                    title: _t('security'),
+                    subtitle: _localized('securitySubtitle'),
                     onTap: _openSecurity,
                   ),
                   _buildSettingTile(
                     icon: Icons.info_outline,
-                    title: 'About Power Fan Network',
-                    subtitle:
-                        'Learn more about Power Fan Network',
+                    title: _localized('aboutTitle'),
+                    subtitle: _localized('aboutSubtitle'),
                     onTap: _openAbout,
                   ),
                   const SizedBox(height: 18),
                   _buildSettingTile(
                     icon: Icons.logout,
-                    title: 'Sign Out',
+                    title: _t('logout'),
                     iconColor: Colors.red,
                     onTap: _loggingOut ? null : _logout,
                   ),
@@ -1316,4 +1889,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
