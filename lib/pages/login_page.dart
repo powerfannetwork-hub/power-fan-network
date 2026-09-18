@@ -51,7 +51,10 @@ class _LoginPageState extends State<LoginPage> {
           Supabase.instance.client.auth.currentSession;
 
       if (session == null) {
-        throw Exception('Login failed. Please try again.');
+        throw Exception(
+          AppLocalizations.of(context)
+              .translate('authenticationError'),
+        );
       }
 
       Navigator.of(context).pushAndRemoveUntil(
@@ -84,72 +87,109 @@ class _LoginPageState extends State<LoginPage> {
 
   void _showLanguageSelector() {
     final controller = context.read<LanguageController>();
-    final localization = AppLocalizations.of(context);
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       backgroundColor: Colors.white,
       builder: (sheetContext) {
         return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.only(bottom: 16),
-            children: [
-              Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(24, 8, 24, 12),
-                child: Text(
-                  localization.translate('selectLanguage'),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF241064),
-                  ),
-                ),
-              ),
-              ...AppLocalizations.languages.map(
-                (language) {
-                  final selected =
-                      controller.languageCode == language.code;
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              final localization =
+                  AppLocalizations.of(context);
 
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: selected
-                          ? const Color(0xFF3B159B)
-                          : const Color(0xFFF0EEF8),
-                      child: Text(
-                        language.code.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: selected
-                              ? Colors.white
-                              : const Color(0xFF3B159B),
-                        ),
-                      ),
+              final currentCode =
+                  controller.languageCode;
+
+              return ListView(
+                shrinkWrap: true,
+                padding:
+                    const EdgeInsets.only(bottom: 16),
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.fromLTRB(
+                      24,
+                      8,
+                      24,
+                      12,
                     ),
-                    title: Text(
-                      language.nativeName,
+                    child: Text(
+                      localization.translate(
+                        'selectLanguage',
+                      ),
                       style: const TextStyle(
-                        fontWeight: FontWeight.w600,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF241064),
                       ),
                     ),
-                    subtitle: Text(language.name),
-                    trailing: selected
-                        ? const Icon(
-                            Icons.check_circle,
-                            color: Color(0xFF3B159B),
-                          )
-                        : null,
-                    onTap: () {
-                      controller.setLanguage(language.code);
-                      Navigator.pop(sheetContext);
+                  ),
+                  ...AppLocalizations.languages.map(
+                    (language) {
+                      final selected =
+                          currentCode == language.code;
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: selected
+                              ? const Color(0xFF3B159B)
+                              : const Color(0xFFF0EEF8),
+                          child: Text(
+                            language.code.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight:
+                                  FontWeight.bold,
+                              color: selected
+                                  ? Colors.white
+                                  : const Color(
+                                      0xFF3B159B,
+                                    ),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          language.nativeName,
+                          style: const TextStyle(
+                            fontWeight:
+                                FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          language.name,
+                        ),
+                        trailing: selected
+                            ? const Icon(
+                                Icons.check_circle,
+                                color:
+                                    Color(0xFF3B159B),
+                              )
+                            : null,
+                        onTap: () async {
+                          await controller.setLanguage(
+                            language.code,
+                          );
+
+                          if (!mounted) return;
+
+                          setSheetState(() {});
+
+                          if (Navigator.of(
+                            sheetContext,
+                          ).canPop()) {
+                            Navigator.of(
+                              sheetContext,
+                            ).pop();
+                          }
+                        },
+                      );
                     },
-                  );
-                },
-              ),
-            ],
+                  ),
+                ],
+              );
+            },
           ),
         );
       },
@@ -186,10 +226,13 @@ class _LoginPageState extends State<LoginPage> {
                     onPressed: _loading
                         ? null
                         : _showLanguageSelector,
-                    icon:
-                        const Icon(Icons.language, size: 19),
-                    label:
-                        Text(t.translate('language')),
+                    icon: const Icon(
+                      Icons.language,
+                      size: 19,
+                    ),
+                    label: Text(
+                      t.translate('language'),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor:
                           const Color(0xFF3B159B),
@@ -202,33 +245,31 @@ class _LoginPageState extends State<LoginPage> {
                           const EdgeInsets.symmetric(
                         horizontal: 16,
                       ),
-                      shape: RoundedRectangleBorder(
+                      shape:
+                          RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.circular(12),
                       ),
-                      textStyle: const TextStyle(
+                      textStyle:
+                          const TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 28),
-
-                // ----------------------------------------------------------------
-                // POWER FAN NETWORK BRAND HEADER
-                // Only this top branding section is changed.
-                // The login form below remains unchanged.
-                // ----------------------------------------------------------------
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
+                  padding:
+                      const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 18,
                   ),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient:
+                        const LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
@@ -244,11 +285,13 @@ class _LoginPageState extends State<LoginPage> {
                     children: [
                       const Text(
                         'POWER FAN',
-                        textAlign: TextAlign.center,
+                        textAlign:
+                            TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 25,
-                          fontWeight: FontWeight.w900,
+                          fontWeight:
+                              FontWeight.w900,
                           letterSpacing: 1.1,
                           height: 1.0,
                         ),
@@ -256,34 +299,37 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 2),
                       const Text(
                         'NETWORK',
-                        textAlign: TextAlign.center,
+                        textAlign:
+                            TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 25,
-                          fontWeight: FontWeight.w900,
+                          fontWeight:
+                              FontWeight.w900,
                           letterSpacing: 1.1,
                           height: 1.0,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Mine FAN. Earn More.',
-                        textAlign: TextAlign.center,
+                        t.translate('mineFan'),
+                        textAlign:
+                            TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white.withValues(
+                          color:
+                              Colors.white.withValues(
                             alpha: 0.92,
                           ),
                           fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                          fontWeight:
+                              FontWeight.w500,
                           letterSpacing: 0.3,
                         ),
                       ),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 28),
-
                 Text(
                   t.translate('welcomeBack'),
                   style: const TextStyle(
@@ -292,9 +338,7 @@ class _LoginPageState extends State<LoginPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 5),
-
                 Text(
                   t.translate('loginToContinue'),
                   style: TextStyle(
@@ -302,9 +346,7 @@ class _LoginPageState extends State<LoginPage> {
                     fontSize: 14,
                   ),
                 ),
-
                 const SizedBox(height: 22),
-
                 TextFormField(
                   controller: _emailController,
                   keyboardType:
@@ -313,7 +355,8 @@ class _LoginPageState extends State<LoginPage> {
                       TextInputAction.next,
                   enabled: !_loading,
                   decoration: InputDecoration(
-                    labelText: t.translate('email'),
+                    labelText:
+                        t.translate('email'),
                     hintText:
                         t.translate('enterEmail'),
                     prefixIcon:
@@ -328,23 +371,26 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   validator: (value) {
-                    final email = value?.trim() ?? '';
+                    final email =
+                        value?.trim() ?? '';
 
                     if (email.isEmpty ||
                         !email.contains('@') ||
                         !email.contains('.')) {
-                      return t.translate('invalidEmail');
+                      return t.translate(
+                        'invalidEmail',
+                      );
                     }
 
                     return null;
                   },
                 ),
-
                 const SizedBox(height: 13),
-
                 TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
+                  controller:
+                      _passwordController,
+                  obscureText:
+                      _obscurePassword,
                   textInputAction:
                       TextInputAction.done,
                   enabled: !_loading,
@@ -353,13 +399,16 @@ class _LoginPageState extends State<LoginPage> {
                     labelText:
                         t.translate('password'),
                     hintText:
-                        t.translate('enterPassword'),
+                        t.translate(
+                      'enterPassword',
+                    ),
                     prefixIcon:
                         const Icon(
                       Icons.lock_outline,
                       size: 21,
                     ),
-                    suffixIcon: IconButton(
+                    suffixIcon:
+                        IconButton(
                       onPressed: () {
                         setState(() {
                           _obscurePassword =
@@ -368,8 +417,10 @@ class _LoginPageState extends State<LoginPage> {
                       },
                       icon: Icon(
                         _obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                            ? Icons
+                                .visibility_outlined
+                            : Icons
+                                .visibility_off_outlined,
                         size: 21,
                       ),
                     ),
@@ -389,15 +440,15 @@ class _LoginPageState extends State<LoginPage> {
                     return null;
                   },
                 ),
-
                 const SizedBox(height: 6),
-
                 Align(
                   alignment:
                       Alignment.centerRight,
                   child: TextButton(
                     onPressed:
-                        _loading ? null : _resetPassword,
+                        _loading
+                            ? null
+                            : _resetPassword,
                     style: TextButton.styleFrom(
                       padding:
                           const EdgeInsets.symmetric(
@@ -406,12 +457,17 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       minimumSize: Size.zero,
                       tapTargetSize:
-                          MaterialTapTargetSize.shrinkWrap,
+                          MaterialTapTargetSize
+                              .shrinkWrap,
                     ),
                     child: Text(
-                      t.translate('forgotPassword'),
-                      style: const TextStyle(
-                        color: Color(0xFF3B159B),
+                      t.translate(
+                        'forgotPassword',
+                      ),
+                      style:
+                          const TextStyle(
+                        color:
+                            Color(0xFF3B159B),
                         fontSize: 14,
                         fontWeight:
                             FontWeight.w600,
@@ -419,19 +475,20 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 SizedBox(
                   height: 52,
                   child: FilledButton(
                     onPressed:
                         _loading ? null : _login,
-                    style: FilledButton.styleFrom(
+                    style:
+                        FilledButton.styleFrom(
                       backgroundColor:
                           const Color(0xFF3B159B),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
+                      foregroundColor:
+                          Colors.white,
+                      shape:
+                          RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.circular(14),
                       ),
@@ -443,11 +500,14 @@ class _LoginPageState extends State<LoginPage> {
                             child:
                                 CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              color: Colors.white,
+                              color:
+                                  Colors.white,
                             ),
                           )
                         : Text(
-                            t.translate('signIn'),
+                            t.translate(
+                              'signIn',
+                            ),
                             style:
                                 const TextStyle(
                               fontSize: 15,
@@ -457,9 +517,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.center,
@@ -478,17 +536,22 @@ class _LoginPageState extends State<LoginPage> {
                       onPressed: _loading
                           ? null
                           : _openRegisterPage,
-                      style: TextButton.styleFrom(
+                      style:
+                          TextButton.styleFrom(
                         padding:
-                            const EdgeInsets.symmetric(
+                            const EdgeInsets
+                                .symmetric(
                           horizontal: 6,
                         ),
                         minimumSize: Size.zero,
                         tapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
+                            MaterialTapTargetSize
+                                .shrinkWrap,
                       ),
                       child: Text(
-                        t.translate('register'),
+                        t.translate(
+                          'register',
+                        ),
                         style:
                             const TextStyle(
                           color:
@@ -501,14 +564,13 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-
-                Text(
+                const Text(
                   'POWER FAN NETWORK',
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                   style: TextStyle(
-                    color: Colors.grey.shade500,
+                    color: Color(0xFF888888),
                     fontSize: 10,
                     fontWeight:
                         FontWeight.w600,
@@ -524,14 +586,19 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _resetPassword() async {
-    final email = _emailController.text.trim();
+    final email =
+        _emailController.text.trim();
 
-    if (email.isEmpty || !email.contains('@')) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    if (email.isEmpty ||
+        !email.contains('@')) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(
             AppLocalizations.of(context)
-                .translate('invalidEmail'),
+                .translate(
+              'invalidEmail',
+            ),
           ),
           behavior:
               SnackBarBehavior.floating,
@@ -541,15 +608,19 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     try {
-      await AuthService.instance.resetPassword(email);
+      await AuthService.instance
+          .resetPassword(email);
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(
             AppLocalizations.of(context)
-                .translate('operationSuccessful'),
+                .translate(
+              'operationSuccessful',
+            ),
           ),
           behavior:
               SnackBarBehavior.floating,
@@ -564,7 +635,8 @@ class _LoginPageState extends State<LoginPage> {
         message = message.substring(11);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(message),
           behavior:
@@ -589,16 +661,21 @@ class _RegisterPage extends StatefulWidget {
 
 class _RegisterPageState
     extends State<_RegisterPage> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey =
+      GlobalKey<FormState>();
 
   final _usernameController =
       TextEditingController();
+
   final _emailController =
       TextEditingController();
+
   final _passwordController =
       TextEditingController();
+
   final _confirmPasswordController =
       TextEditingController();
+
   final _referralController =
       TextEditingController();
 
@@ -616,26 +693,182 @@ class _RegisterPageState
     super.dispose();
   }
 
+  void _showRegisterLanguageSelector() {
+    final controller =
+        context.read<LanguageController>();
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              final localization =
+                  AppLocalizations.of(context);
+
+              final currentCode =
+                  controller.languageCode;
+
+              return ListView(
+                shrinkWrap: true,
+                padding:
+                    const EdgeInsets.only(
+                  bottom: 16,
+                ),
+                children: [
+                  Padding(
+                    padding:
+                        const EdgeInsets.fromLTRB(
+                      24,
+                      8,
+                      24,
+                      12,
+                    ),
+                    child: Text(
+                      localization.translate(
+                        'selectLanguage',
+                      ),
+                      style:
+                          const TextStyle(
+                        fontSize: 20,
+                        fontWeight:
+                            FontWeight.bold,
+                        color:
+                            Color(0xFF241064),
+                      ),
+                    ),
+                  ),
+                  ...AppLocalizations.languages
+                      .map(
+                    (language) {
+                      final selected =
+                          currentCode ==
+                              language.code;
+
+                      return ListTile(
+                        leading:
+                            CircleAvatar(
+                          backgroundColor:
+                              selected
+                                  ? const Color(
+                                      0xFF3B159B,
+                                    )
+                                  : const Color(
+                                      0xFFF0EEF8,
+                                    ),
+                          child: Text(
+                            language.code
+                                .toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight:
+                                  FontWeight
+                                      .bold,
+                              color: selected
+                                  ? Colors.white
+                                  : const Color(
+                                      0xFF3B159B,
+                                    ),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          language.nativeName,
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight
+                                    .w600,
+                          ),
+                        ),
+                        subtitle: Text(
+                          language.name,
+                        ),
+                        trailing: selected
+                            ? const Icon(
+                                Icons
+                                    .check_circle,
+                                color: Color(
+                                  0xFF3B159B,
+                                ),
+                              )
+                            : null,
+                        onTap: () async {
+                          await controller
+                              .setLanguage(
+                            language.code,
+                          );
+
+                          if (!mounted) return;
+
+                          setSheetState(() {});
+
+                          if (Navigator.of(
+                            sheetContext,
+                          ).canPop()) {
+                            Navigator.of(
+                              sheetContext,
+                            ).pop();
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Future<bool> _showRegistrationWarning() async {
     bool accepted = false;
 
-    final result = await showDialog<bool>(
+    final result =
+        await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            final t =
+                AppLocalizations.of(context);
+
             return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
+              backgroundColor:
+                  Colors.white,
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(
+                  24,
+                ),
               ),
               titlePadding:
-                  const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                  const EdgeInsets.fromLTRB(
+                24,
+                24,
+                24,
+                8,
+              ),
               contentPadding:
-                  const EdgeInsets.fromLTRB(24, 8, 24, 8),
+                  const EdgeInsets.fromLTRB(
+                24,
+                8,
+                24,
+                8,
+              ),
               actionsPadding:
-                  const EdgeInsets.fromLTRB(16, 8, 16, 18),
+                  const EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                18,
+              ),
               title: Column(
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
@@ -643,142 +876,237 @@ class _RegisterPageState
                   Container(
                     width: 52,
                     height: 52,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF1F1),
+                    decoration:
+                        BoxDecoration(
+                      color:
+                          const Color(
+                        0xFFFFF1F1,
+                      ),
                       borderRadius:
-                          BorderRadius.circular(16),
+                          BorderRadius.circular(
+                        16,
+                      ),
                     ),
                     child: const Icon(
                       Icons.security_rounded,
-                      color: Colors.redAccent,
+                      color:
+                          Colors.redAccent,
                       size: 28,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'ONE PERSON • ONE ACCOUNT',
-                    style: TextStyle(
-                      color: Color(0xFF241064),
+                  const SizedBox(
+                    height: 16,
+                  ),
+                  Text(
+                    t.translate(
+                      'oneDeviceRuleMessage',
+                    ),
+                    style:
+                        const TextStyle(
+                      color:
+                          Color(0xFF241064),
                       fontSize: 21,
-                      fontWeight: FontWeight.w900,
+                      fontWeight:
+                          FontWeight.w900,
                     ),
                   ),
                 ],
               ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
+              content:
+                  SizedBox(
+                width:
+                    double.maxFinite,
+                child:
+                    SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        CrossAxisAlignment
+                            .start,
                     children: [
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Before you create your POWER FAN NETWORK account, please read this important warning.',
-                        style: TextStyle(
-                          color: Color(0xFF333333),
+                      const SizedBox(
+                        height: 8,
+                      ),
+                      Text(
+                        t.translate(
+                          'kycRequirements',
+                        ),
+                        style:
+                            const TextStyle(
+                          color:
+                              Color(0xFF333333),
                           fontSize: 15,
                           height: 1.5,
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      _warningItem(
-                        icon: Icons.person_outline_rounded,
-                        title: 'One person = one account',
-                        text:
-                            'Each person is allowed to have only one POWER FAN NETWORK account.',
+                      const SizedBox(
+                        height: 18,
                       ),
                       _warningItem(
-                        icon: Icons.smart_toy_outlined,
-                        title: 'No bots or automation',
-                        text:
-                            'Bots, scripts, automated activity, or any system designed to manipulate the app are not allowed.',
+                        icon: Icons
+                            .person_outline_rounded,
+                        title: t.translate(
+                          'account',
+                        ),
+                        text: t.translate(
+                          'oneDeviceRuleMessage',
+                        ),
                       ),
                       _warningItem(
-                        icon: Icons.group_off_outlined,
-                        title: 'No fake or multiple accounts',
-                        text:
-                            'Creating multiple accounts or using fake accounts to gain additional rewards is prohibited.',
+                        icon: Icons
+                            .smart_toy_outlined,
+                        title: t.translate(
+                          'robotWarning',
+                        ),
+                        text: t.translate(
+                          'robotWarning',
+                        ),
                       ),
                       _warningItem(
-                        icon: Icons.warning_amber_rounded,
-                        title: 'Protect your account',
-                        text:
-                            'If suspicious, abusive, fraudulent, or manipulated activity is detected, access to rewards, mining, or network features may be restricted or removed.',
+                        icon: Icons
+                            .group_off_outlined,
+                        title: t.translate(
+                          'security',
+                        ),
+                        text: t.translate(
+                          'oneDeviceRuleMessage',
+                        ),
                       ),
                       _warningItem(
-                        icon: Icons.verified_user_outlined,
-                        title: 'Use the network genuinely',
-                        text:
-                            'Use your real account, follow the rules, participate fairly, and do not attempt to exploit the system.',
+                        icon: Icons
+                            .warning_amber_rounded,
+                        title: t.translate(
+                          'warning',
+                        ),
+                        text: t.translate(
+                          'somethingWentWrong',
+                        ),
                       ),
-                      const SizedBox(height: 8),
+                      _warningItem(
+                        icon: Icons
+                            .verified_user_outlined,
+                        title: t.translate(
+                          'privacy',
+                        ),
+                        text: t.translate(
+                          'privacyPolicy',
+                        ),
+                      ),
+                      const SizedBox(
+                        height: 8,
+                      ),
                       Container(
                         padding:
-                            const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5F2FF),
+                            const EdgeInsets
+                                .all(14),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              const Color(
+                            0xFFF5F2FF,
+                          ),
                           borderRadius:
-                              BorderRadius.circular(14),
-                          border: Border.all(
-                            color: const Color(0xFFE3DDF7),
+                              BorderRadius
+                                  .circular(
+                            14,
+                          ),
+                          border:
+                              Border.all(
+                            color:
+                                const Color(
+                              0xFFE3DDF7,
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'POWER FAN NETWORK is built for real users and genuine participation. Your account history matters, so protect it and use the platform responsibly.',
-                          style: TextStyle(
-                            color: Color(0xFF3B159B),
+                        child: Text(
+                          t.translate(
+                            'oneDeviceRuleMessage',
+                          ),
+                          style:
+                              const TextStyle(
+                            color:
+                                Color(
+                              0xFF3B159B,
+                            ),
                             fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
+                            fontWeight:
+                                FontWeight
+                                    .w600,
                             height: 1.45,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(
+                        height: 12,
+                      ),
                       InkWell(
                         borderRadius:
-                            BorderRadius.circular(12),
+                            BorderRadius
+                                .circular(
+                          12,
+                        ),
                         onTap: () {
-                          setDialogState(() {
-                            accepted = !accepted;
-                          });
+                          setDialogState(
+                            () {
+                              accepted =
+                                  !accepted;
+                            },
+                          );
                         },
                         child: Padding(
                           padding:
-                              const EdgeInsets.symmetric(
+                              const EdgeInsets
+                                  .symmetric(
                             vertical: 6,
                           ),
                           child: Row(
                             crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                                CrossAxisAlignment
+                                    .start,
                             children: [
                               Checkbox(
-                                value: accepted,
+                                value:
+                                    accepted,
                                 activeColor:
-                                    const Color(0xFF3B159B),
-                                onChanged: (value) {
-                                  setDialogState(() {
-                                    accepted =
-                                        value ?? false;
-                                  });
+                                    const Color(
+                                  0xFF3B159B,
+                                ),
+                                onChanged:
+                                    (value) {
+                                  setDialogState(
+                                    () {
+                                      accepted =
+                                          value ??
+                                              false;
+                                    },
+                                  );
                                 },
                               ),
-                              const Expanded(
-                                child: Padding(
+                              Expanded(
+                                child:
+                                    Padding(
                                   padding:
-                                      EdgeInsets.only(
+                                      const EdgeInsets
+                                          .only(
                                     top: 12,
                                     right: 4,
                                   ),
                                   child: Text(
-                                    'I understand and agree to follow the POWER FAN NETWORK one-person-one-account rules.',
-                                    style: TextStyle(
+                                    t.translate(
+                                      'oneDeviceRuleMessage',
+                                    ),
+                                    style:
+                                        const TextStyle(
                                       color:
-                                          Color(0xFF333333),
-                                      fontSize: 13.5,
-                                      height: 1.4,
+                                          Color(
+                                        0xFF333333,
+                                      ),
+                                      fontSize:
+                                          13.5,
+                                      height:
+                                          1.4,
                                       fontWeight:
-                                          FontWeight.w600,
+                                          FontWeight
+                                              .w600,
                                     ),
                                   ),
                                 ),
@@ -794,41 +1122,61 @@ class _RegisterPageState
               actions: [
                 TextButton(
                   onPressed: () {
-                    Navigator.of(dialogContext)
-                        .pop(false);
+                    Navigator.of(
+                      dialogContext,
+                    ).pop(false);
                   },
-                  child: const Text(
-                    'CANCEL',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontWeight: FontWeight.bold,
+                  child: Text(
+                    t.translate(
+                      'cancel',
+                    ),
+                    style:
+                        const TextStyle(
+                      color:
+                          Colors.grey,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
                 FilledButton(
                   onPressed: accepted
                       ? () {
-                          Navigator.of(dialogContext)
-                              .pop(true);
+                          Navigator.of(
+                            dialogContext,
+                          ).pop(true);
                         }
                       : null,
-                  style: FilledButton.styleFrom(
+                  style:
+                      FilledButton.styleFrom(
                     backgroundColor:
-                        const Color(0xFF3B159B),
-                    foregroundColor: Colors.white,
+                        const Color(
+                      0xFF3B159B,
+                    ),
+                    foregroundColor:
+                        Colors.white,
                     disabledBackgroundColor:
-                        const Color(0xFFE0DCEB),
+                        const Color(
+                      0xFFE0DCEB,
+                    ),
                     disabledForegroundColor:
                         Colors.grey,
-                    shape: RoundedRectangleBorder(
+                    shape:
+                        RoundedRectangleBorder(
                       borderRadius:
-                          BorderRadius.circular(12),
+                          BorderRadius.circular(
+                        12,
+                      ),
                     ),
                   ),
-                  child: const Text(
-                    'I AGREE & CONTINUE',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                  child: Text(
+                    t.translate(
+                      'continue',
+                    ),
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
                       fontSize: 13,
                     ),
                   ),
@@ -849,7 +1197,10 @@ class _RegisterPageState
     required String text,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+      padding:
+          const EdgeInsets.only(
+        bottom: 15,
+      ),
       child: Row(
         crossAxisAlignment:
             CrossAxisAlignment.start,
@@ -857,36 +1208,50 @@ class _RegisterPageState
           Container(
             width: 38,
             height: 38,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1EEFA),
+            decoration:
+                BoxDecoration(
+              color:
+                  const Color(0xFFF1EEFA),
               borderRadius:
-                  BorderRadius.circular(11),
+                  BorderRadius.circular(
+                11,
+              ),
             ),
             child: Icon(
               icon,
-              color: const Color(0xFF3B159B),
+              color:
+                  const Color(0xFF3B159B),
               size: 21,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(
+            width: 12,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Color(0xFF241064),
+                  style:
+                      const TextStyle(
+                    color:
+                        Color(0xFF241064),
                     fontSize: 14,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(
+                  height: 3,
+                ),
                 Text(
                   text,
                   style: TextStyle(
-                    color: Colors.grey.shade700,
+                    color:
+                        Colors.grey.shade700,
                     fontSize: 13,
                     height: 1.4,
                   ),
@@ -900,41 +1265,58 @@ class _RegisterPageState
   }
 
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) {
+    if (!_formKey.currentState!
+        .validate()) {
       return;
     }
 
     FocusScope.of(context).unfocus();
 
-    final accepted = await _showRegistrationWarning();
+    final accepted =
+        await _showRegistrationWarning();
 
     if (!accepted || !mounted) {
       return;
     }
 
-    setState(() => _loading = true);
+    setState(
+      () => _loading = true,
+    );
 
     try {
       await AuthService.instance.register(
-        username: _usernameController.text.trim(),
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+        username:
+            _usernameController.text
+                .trim(),
+        email:
+            _emailController.text
+                .trim(),
+        password:
+            _passwordController.text,
         referralCode:
-            _referralController.text.trim().isEmpty
+            _referralController.text
+                    .trim()
+                    .isEmpty
                 ? null
-                : _referralController.text.trim(),
+                : _referralController
+                    .text
+                    .trim(),
       );
 
       if (!mounted) return;
 
       final session =
-          Supabase.instance.client.auth.currentSession;
+          Supabase.instance.client
+              .auth
+              .currentSession;
 
       if (session == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
           SnackBar(
             content: Text(
-              AppLocalizations.of(context).translate(
+              AppLocalizations.of(context)
+                  .translate(
                 'operationSuccessful',
               ),
             ),
@@ -947,7 +1329,8 @@ class _RegisterPageState
         return;
       }
 
-      Navigator.of(context).pushAndRemoveUntil(
+      Navigator.of(context)
+          .pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) =>
               const MainNavigationScreen(),
@@ -957,13 +1340,18 @@ class _RegisterPageState
     } catch (e) {
       if (!mounted) return;
 
-      String message = e.toString();
+      String message =
+          e.toString();
 
-      if (message.startsWith('Exception: ')) {
-        message = message.substring(11);
+      if (message.startsWith(
+        'Exception: ',
+      )) {
+        message =
+            message.substring(11);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(message),
           behavior:
@@ -972,14 +1360,17 @@ class _RegisterPageState
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(
+          () => _loading = false,
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
+    final t =
+        AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor:
@@ -992,13 +1383,29 @@ class _RegisterPageState
             const Color(0xFF241064),
         title: Text(
           t.translate('register'),
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: t.translate(
+              'language',
+            ),
+            onPressed: _loading
+                ? null
+                : _showRegisterLanguageSelector,
+            icon: const Icon(
+              Icons.language,
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child:
+            SingleChildScrollView(
           padding:
               const EdgeInsets.fromLTRB(
             24,
@@ -1010,35 +1417,48 @@ class _RegisterPageState
             key: _formKey,
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.stretch,
+                  CrossAxisAlignment
+                      .stretch,
               children: [
                 Container(
                   width: 76,
                   height: 76,
                   alignment:
                       Alignment.center,
-                  decoration: BoxDecoration(
+                  decoration:
+                      BoxDecoration(
                     color:
-                        const Color(0xFF3B159B),
+                        const Color(
+                      0xFF3B159B,
+                    ),
                     borderRadius:
-                        BorderRadius.circular(22),
+                        BorderRadius
+                            .circular(
+                      22,
+                    ),
                   ),
-                  child: const Text(
+                  child:
+                      const Text(
                     'PF',
-                    style: TextStyle(
-                      color: Colors.white,
+                    style:
+                        TextStyle(
+                      color:
+                          Colors.white,
                       fontSize: 26,
                       fontWeight:
                           FontWeight.w900,
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(
+                  height: 20,
+                ),
                 Text(
                   t.translate(
                     'createAccount',
                   ),
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     color:
                         Color(0xFF241064),
                     fontSize: 28,
@@ -1046,7 +1466,9 @@ class _RegisterPageState
                         FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(
+                  height: 7,
+                ),
                 Text(
                   t.translate(
                     'joinPowerFanNetwork',
@@ -1057,14 +1479,16 @@ class _RegisterPageState
                     fontSize: 14,
                   ),
                 ),
-                const SizedBox(height: 28),
-
+                const SizedBox(
+                  height: 28,
+                ),
                 TextFormField(
                   controller:
                       _usernameController,
                   enabled: !_loading,
                   textInputAction:
-                      TextInputAction.next,
+                      TextInputAction
+                          .next,
                   decoration:
                       InputDecoration(
                     labelText:
@@ -1077,15 +1501,21 @@ class _RegisterPageState
                     ),
                     prefixIcon:
                         const Icon(
-                      Icons.person_outline,
+                      Icons
+                          .person_outline,
                     ),
                   ),
-                  validator: (value) {
+                  validator:
+                      (value) {
                     final username =
-                        value?.trim() ?? '';
+                        value?.trim() ??
+                            '';
 
-                    if (username.length < 3) {
-                      return t.translate(
+                    if (username
+                            .length <
+                        3) {
+                      return t
+                          .translate(
                         'invalidUsername',
                       );
                     }
@@ -1093,9 +1523,9 @@ class _RegisterPageState
                     return null;
                   },
                 ),
-
-                const SizedBox(height: 16),
-
+                const SizedBox(
+                  height: 16,
+                ),
                 TextFormField(
                   controller:
                       _emailController,
@@ -1104,7 +1534,8 @@ class _RegisterPageState
                       TextInputType
                           .emailAddress,
                   textInputAction:
-                      TextInputAction.next,
+                      TextInputAction
+                          .next,
                   decoration:
                       InputDecoration(
                     labelText:
@@ -1117,17 +1548,28 @@ class _RegisterPageState
                     ),
                     prefixIcon:
                         const Icon(
-                      Icons.email_outlined,
+                      Icons
+                          .email_outlined,
                     ),
                   ),
-                  validator: (value) {
+                  validator:
+                      (value) {
                     final email =
-                        value?.trim() ?? '';
+                        value?.trim() ??
+                            '';
 
-                    if (email.isEmpty ||
-                        !email.contains('@') ||
-                        !email.contains('.')) {
-                      return t.translate(
+                    if (email
+                            .isEmpty ||
+                        !email
+                            .contains(
+                          '@',
+                        ) ||
+                        !email
+                            .contains(
+                          '.',
+                        )) {
+                      return t
+                          .translate(
                         'invalidEmail',
                       );
                     }
@@ -1135,9 +1577,9 @@ class _RegisterPageState
                     return null;
                   },
                 ),
-
-                const SizedBox(height: 16),
-
+                const SizedBox(
+                  height: 16,
+                ),
                 TextFormField(
                   controller:
                       _passwordController,
@@ -1145,7 +1587,8 @@ class _RegisterPageState
                   obscureText:
                       _obscurePassword,
                   textInputAction:
-                      TextInputAction.next,
+                      TextInputAction
+                          .next,
                   decoration:
                       InputDecoration(
                     labelText:
@@ -1158,15 +1601,18 @@ class _RegisterPageState
                     ),
                     prefixIcon:
                         const Icon(
-                      Icons.lock_outline,
+                      Icons
+                          .lock_outline,
                     ),
                     suffixIcon:
                         IconButton(
                       onPressed: () {
-                        setState(() {
-                          _obscurePassword =
-                              !_obscurePassword;
-                        });
+                        setState(
+                          () {
+                            _obscurePassword =
+                                !_obscurePassword;
+                          },
+                        );
                       },
                       icon: Icon(
                         _obscurePassword
@@ -1177,10 +1623,14 @@ class _RegisterPageState
                       ),
                     ),
                   ),
-                  validator: (value) {
-                    if ((value ?? '').length <
+                  validator:
+                      (value) {
+                    if ((value ??
+                                '')
+                            .length <
                         6) {
-                      return t.translate(
+                      return t
+                          .translate(
                         'invalidPassword',
                       );
                     }
@@ -1188,9 +1638,9 @@ class _RegisterPageState
                     return null;
                   },
                 ),
-
-                const SizedBox(height: 16),
-
+                const SizedBox(
+                  height: 16,
+                ),
                 TextFormField(
                   controller:
                       _confirmPasswordController,
@@ -1198,7 +1648,8 @@ class _RegisterPageState
                   obscureText:
                       _obscureConfirmPassword,
                   textInputAction:
-                      TextInputAction.next,
+                      TextInputAction
+                          .next,
                   decoration:
                       InputDecoration(
                     labelText:
@@ -1207,15 +1658,18 @@ class _RegisterPageState
                     ),
                     prefixIcon:
                         const Icon(
-                      Icons.lock_reset_outlined,
+                      Icons
+                          .lock_reset_outlined,
                     ),
                     suffixIcon:
                         IconButton(
                       onPressed: () {
-                        setState(() {
-                          _obscureConfirmPassword =
-                              !_obscureConfirmPassword;
-                        });
+                        setState(
+                          () {
+                            _obscureConfirmPassword =
+                                !_obscureConfirmPassword;
+                          },
+                        );
                       },
                       icon: Icon(
                         _obscureConfirmPassword
@@ -1226,10 +1680,13 @@ class _RegisterPageState
                       ),
                     ),
                   ),
-                  validator: (value) {
+                  validator:
+                      (value) {
                     if (value !=
-                        _passwordController.text) {
-                      return t.translate(
+                        _passwordController
+                            .text) {
+                      return t
+                          .translate(
                         'passwordsDoNotMatch',
                       );
                     }
@@ -1237,15 +1694,16 @@ class _RegisterPageState
                     return null;
                   },
                 ),
-
-                const SizedBox(height: 16),
-
+                const SizedBox(
+                  height: 16,
+                ),
                 TextFormField(
                   controller:
                       _referralController,
                   enabled: !_loading,
                   textInputAction:
-                      TextInputAction.done,
+                      TextInputAction
+                          .done,
                   decoration:
                       InputDecoration(
                     labelText:
@@ -1258,22 +1716,25 @@ class _RegisterPageState
                     ),
                     prefixIcon:
                         const Icon(
-                      Icons.people_outline,
+                      Icons
+                          .people_outline,
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 26),
-
+                const SizedBox(
+                  height: 26,
+                ),
                 SizedBox(
                   height: 54,
-                  child: FilledButton(
+                  child:
+                      FilledButton(
                     onPressed:
                         _loading
                             ? null
                             : _register,
                     style:
-                        FilledButton.styleFrom(
+                        FilledButton
+                            .styleFrom(
                       backgroundColor:
                           const Color(
                         0xFF3B159B,
@@ -1283,7 +1744,8 @@ class _RegisterPageState
                       shape:
                           RoundedRectangleBorder(
                         borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                           15,
                         ),
                       ),
@@ -1294,7 +1756,8 @@ class _RegisterPageState
                             height: 23,
                             child:
                                 CircularProgressIndicator(
-                              strokeWidth: 2.5,
+                              strokeWidth:
+                                  2.5,
                               color:
                                   Colors.white,
                             ),
@@ -1305,45 +1768,58 @@ class _RegisterPageState
                             ),
                             style:
                                 const TextStyle(
-                              fontSize: 16,
+                              fontSize:
+                                  16,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                             ),
                           ),
                   ),
                 ),
-
-                const SizedBox(height: 18),
-
+                const SizedBox(
+                  height: 18,
+                ),
                 Row(
                   mainAxisAlignment:
-                      MainAxisAlignment.center,
+                      MainAxisAlignment
+                          .center,
                   children: [
                     Text(
                       t.translate(
                         'alreadyHaveAccount',
                       ),
-                      style: TextStyle(
-                        color:
-                            Colors.grey.shade700,
+                      style:
+                          TextStyle(
+                        color: Colors
+                            .grey
+                            .shade700,
                       ),
                     ),
                     TextButton(
-                      onPressed: _loading
-                          ? null
-                          : () {
-                              Navigator.of(
-                                context,
-                              ).pop();
-                            },
-                      child: Text(
-                        t.translate('signIn'),
+                      onPressed:
+                          _loading
+                              ? null
+                              : () {
+                                  Navigator
+                                      .of(
+                                    context,
+                                  ).pop();
+                                },
+                      child:
+                          Text(
+                        t.translate(
+                          'signIn',
+                        ),
                         style:
                             const TextStyle(
                           color:
-                              Color(0xFF3B159B),
+                              Color(
+                            0xFF3B159B,
+                          ),
                           fontWeight:
-                              FontWeight.bold,
+                              FontWeight
+                                  .bold,
                         ),
                       ),
                     ),
