@@ -205,8 +205,10 @@ const Map<String, String> frTranslations = {
       'Code de parrainage copié',
   'referralLinkCopied':
       'Lien de parrainage copié',
-  'noReferrals': 'Aucun parrainage pour le moment',
-  'inviteMoreFriends': 'Invitez plus d’amis',
+  'noReferrals':
+      'Aucun parrainage pour le moment',
+  'inviteMoreFriends':
+      'Invitez plus d’amis',
   'active': 'Actif',
   'inactive': 'Inactif',
 
@@ -231,7 +233,8 @@ const Map<String, String> frTranslations = {
 
   'connectionError': 'Erreur de connexion',
   'serverError': 'Erreur du serveur',
-  'authenticationError': 'Erreur d’authentification',
+  'authenticationError':
+      'Erreur d’authentification',
   'sessionExpired': 'La session a expiré',
   'pleaseLoginAgain':
       'Veuillez vous reconnecter',
@@ -248,17 +251,21 @@ const Map<String, String> frTranslations = {
   'deleteAccountConfirm':
       'Êtes-vous sûr de vouloir supprimer votre compte ?',
 
-  'miningStarted': 'Minage démarré avec succès',
+  'miningStarted':
+      'Minage démarré avec succès',
   'miningClaimed':
       'Récompense de minage réclamée avec succès',
-  'miningAlreadyActive': 'Le minage est déjà actif',
-  'miningSessionEnded': 'La session de minage est terminée',
+  'miningAlreadyActive':
+      'Le minage est déjà actif',
+  'miningSessionEnded':
+      'La session de minage est terminée',
   'startNewSession':
       'Démarrer une nouvelle session de minage',
 
   'adLimitReached':
       'La limite quotidienne de publicités est atteinte',
-  'watchAnotherAd': 'Regarder une autre publicité',
+  'watchAnotherAd':
+      'Regarder une autre publicité',
   'adRewardReceived':
       'Récompense publicitaire reçue',
   'adBoost': 'Boost publicitaire',
@@ -270,10 +277,12 @@ const Map<String, String> frTranslations = {
   'socialRewardReceived':
       'Récompense sociale reçue',
   'alreadyClaimed': 'Déjà réclamé',
-  'claimAvailable': 'Récompense disponible',
+  'claimAvailable':
+      'Récompense disponible',
 
   'terms': 'Conditions générales',
-  'privacyPolicy': 'Politique de confidentialité',
+  'privacyPolicy':
+      'Politique de confidentialité',
   'version': 'Version',
 
   'comingSoonMessage':
