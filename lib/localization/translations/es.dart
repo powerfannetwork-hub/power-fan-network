@@ -42,8 +42,8 @@ const Map<String, String> esTranslations = {
   'settings': 'Configuración',
 
   'balance': 'Saldo',
-  'fanBalance': 'Saldo FAN',
-  'afamBalance': 'Saldo AFAM',
+  'fanBalance': 'Saldo de FAN',
+  'afamBalance': 'Saldo de AFAM',
   'miningBalance': 'Saldo de minería',
 
   'mining': 'Minería',
@@ -106,8 +106,8 @@ const Map<String, String> esTranslations = {
   'miningBonus': 'Bono de minería',
   'perActiveReferral': 'Por cada referido activo',
 
-  'afamWallet': 'Billetera AFAM',
-  'fanMiningBalance': 'Saldo de minería FAN',
+  'afamWallet': 'Billetera de AFAM',
+  'fanMiningBalance': 'Saldo de minería de FAN',
   'migration': 'Migración',
   'migrate': 'Migrar',
   'migrationComingSoon': 'Migración próximamente',
@@ -121,11 +121,11 @@ const Map<String, String> esTranslations = {
   'receive': 'Recibir',
 
   'kyc': 'KYC',
-  'kycVerification': 'Verificación KYC',
+  'kycVerification': 'Verificación de KYC',
   'faceVerification': 'Verificación facial',
   'faceVerificationComingSoon': 'Verificación facial próximamente',
   'kycComingSoon': 'KYC próximamente',
-  'kycRequirements': 'Requisitos KYC',
+  'kycRequirements': 'Requisitos de KYC',
   'kycRequirementOne': 'Requisito 1',
   'kycRequirementTwo': 'Requisito 2',
   'kycRequirementThree': 'Requisito 3',
@@ -175,8 +175,7 @@ const Map<String, String> esTranslations = {
   'dailyBoostRequired': 'Se requiere el aumento diario',
   'robotWarning': 'Asegúrate de que no eres un robot',
   'deviceAlreadyRegistered': 'Este dispositivo ya está registrado',
-  'oneDeviceRuleMessage':
-      'Solo se permite una cuenta por dispositivo',
+  'oneDeviceRuleMessage': 'Solo se permite una cuenta por dispositivo',
 
   'boostCompleted': 'Aumento completado',
   'dailyBoostCompleted': 'Aumento diario completado',
@@ -184,13 +183,11 @@ const Map<String, String> esTranslations = {
   'mining_loading': 'Cargando minería...',
   'mining_active': 'La minería está activa',
   'session_time': 'Tiempo de sesión',
-  'boost_by_watching_ads':
-      'Aumenta la minería viendo anuncios',
+  'boost_by_watching_ads': 'Aumenta la minería viendo anuncios',
   'daily_task': 'Tarea diaria',
   'complete_social_tasks': 'Completa las tareas sociales',
   'no_daily_tasks': 'No hay tareas diarias disponibles',
-  'rewarded_ad_not_connected':
-      'El anuncio recompensado no está conectado',
+  'rewarded_ad_not_connected': 'El anuncio recompensado no está conectado',
 
   'welcomeReward': 'Recompensa de bienvenida',
   'referralCodeCopied': 'Código de referido copiado',
@@ -212,7 +209,7 @@ const Map<String, String> esTranslations = {
   'confirm': 'Confirmar',
   'yes': 'Sí',
   'no': 'No',
-  'ok': 'OK',
+  'ok': 'Aceptar',
 
   'updateAvailable': 'Actualización disponible',
   'updateRequired': 'Actualización requerida',
@@ -234,12 +231,10 @@ const Map<String, String> esTranslations = {
   'accountSettings': 'Configuración de la cuenta',
   'changePassword': 'Cambiar contraseña',
   'deleteAccount': 'Eliminar cuenta',
-  'deleteAccountConfirm':
-      '¿Estás seguro de que quieres eliminar tu cuenta?',
+  'deleteAccountConfirm': '¿Estás seguro de que quieres eliminar tu cuenta?',
 
   'miningStarted': 'Minería iniciada correctamente',
-  'miningClaimed':
-      'Recompensa de minería reclamada correctamente',
+  'miningClaimed': 'Recompensa de minería reclamada correctamente',
   'miningAlreadyActive': 'La minería ya está activa',
   'miningSessionEnded': 'La sesión de minería ha terminado',
   'startNewSession': 'Iniciar una nueva sesión de minería',
