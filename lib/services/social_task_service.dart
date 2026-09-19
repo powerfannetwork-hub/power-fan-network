@@ -12,6 +12,12 @@ class DailySocialTask {
   final bool claimed;
   final bool canClaim;
 
+  final bool verificationStarted;
+  final int remainingSeconds;
+
+  final DateTime? verificationStartedAt;
+  final DateTime? claimAvailableAt;
+
   final bool followVerified;
   final bool likeVerified;
   final bool commentVerified;
@@ -39,6 +45,10 @@ class DailySocialTask {
     required this.rewardFan,
     required this.claimed,
     required this.canClaim,
+    required this.verificationStarted,
+    required this.remainingSeconds,
+    required this.verificationStartedAt,
+    required this.claimAvailableAt,
     required this.followVerified,
     required this.likeVerified,
     required this.commentVerified,
@@ -63,32 +73,107 @@ class DailySocialTask {
 
     return DailySocialTask(
       id: (map['id'] ?? '').toString().trim(),
+
       title: (map['title'] ?? '').toString(),
-      description: (map['description'] ?? '').toString(),
-      url: (map['task_url'] ?? map['url'] ?? '').toString(),
+
+      description:
+          (map['description'] ?? '').toString(),
+
+      url: (
+        map['task_url'] ??
+        map['url'] ??
+        ''
+      ).toString(),
+
       platform: (map['platform'] ?? '')
           .toString()
           .toLowerCase()
           .trim(),
+
       rewardFan: reward > 0 ? reward : 10.0,
-      claimed: _toBool(map['claimed']),
-      canClaim: _toBool(map['can_claim']),
-      followVerified: _toBool(map['follow_verified']),
-      likeVerified: _toBool(map['like_verified']),
-      commentVerified: _toBool(map['comment_verified']),
-      shareVerified: _toBool(map['share_verified']),
-      joinVerified: _toBool(map['join_verified']),
-      subscribeVerified: _toBool(map['subscribe_verified']),
-      requiresFollow: _toBool(map['requires_follow']),
-      requiresLike: _toBool(map['requires_like']),
-      requiresComment: _toBool(map['requires_comment']),
-      requiresShare: _toBool(map['requires_share']),
-      requiresJoin: _toBool(map['requires_join']),
-      requiresSubscribe: _toBool(map['requires_subscribe']),
-      taskDate: _toDate(map['task_date']),
+
+      claimed: _toBool(
+        map['claimed_today'] ??
+            map['claimed'],
+      ),
+
+      canClaim: _toBool(
+        map['claim_available'] ??
+            map['can_claim'],
+      ),
+
+      verificationStarted: _toBool(
+        map['verification_started'],
+      ),
+
+      remainingSeconds: _toInt(
+        map['remaining_seconds'],
+      ),
+
+      verificationStartedAt: _toDate(
+        map['verification_started_at'],
+      ),
+
+      claimAvailableAt: _toDate(
+        map['claim_available_at'],
+      ),
+
+      followVerified: _toBool(
+        map['follow_verified'],
+      ),
+
+      likeVerified: _toBool(
+        map['like_verified'],
+      ),
+
+      commentVerified: _toBool(
+        map['comment_verified'],
+      ),
+
+      shareVerified: _toBool(
+        map['share_verified'],
+      ),
+
+      joinVerified: _toBool(
+        map['join_verified'],
+      ),
+
+      subscribeVerified: _toBool(
+        map['subscribe_verified'],
+      ),
+
+      requiresFollow: _toBool(
+        map['requires_follow'],
+      ),
+
+      requiresLike: _toBool(
+        map['requires_like'],
+      ),
+
+      requiresComment: _toBool(
+        map['requires_comment'],
+      ),
+
+      requiresShare: _toBool(
+        map['requires_share'],
+      ),
+
+      requiresJoin: _toBool(
+        map['requires_join'],
+      ),
+
+      requiresSubscribe: _toBool(
+        map['requires_subscribe'],
+      ),
+
+      taskDate: _toDate(
+        map['task_date'],
+      ),
+
       postExternalId: _toNullableString(
         map['post_external_id'],
       ),
+
       postPublishedAt: _toDate(
         map['post_published_at'],
       ),
@@ -104,7 +189,29 @@ class DailySocialTask {
       return value.toDouble();
     }
 
-    return double.tryParse(value.toString()) ?? 0.0;
+    return double.tryParse(
+          value.toString(),
+        ) ??
+        0.0;
+  }
+
+  static int _toInt(dynamic value) {
+    if (value == null) {
+      return 0;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value.toString(),
+        ) ??
+        0;
   }
 
   static bool _toBool(dynamic value) {
@@ -116,7 +223,8 @@ class DailySocialTask {
       return value != 0;
     }
 
-    final text = value?.toString().toLowerCase().trim();
+    final text =
+        value?.toString().toLowerCase().trim();
 
     return text == 'true' ||
         text == '1' ||
@@ -138,7 +246,9 @@ class DailySocialTask {
     return DateTime.tryParse(text);
   }
 
-  static String? _toNullableString(dynamic value) {
+  static String? _toNullableString(
+    dynamic value,
+  ) {
     if (value == null) {
       return null;
     }
@@ -158,27 +268,33 @@ class DailySocialTask {
   }
 
   bool get allRequiredActionsVerified {
-    if (requiresFollow && !followVerified) {
+    if (requiresFollow &&
+        !followVerified) {
       return false;
     }
 
-    if (requiresLike && !likeVerified) {
+    if (requiresLike &&
+        !likeVerified) {
       return false;
     }
 
-    if (requiresComment && !commentVerified) {
+    if (requiresComment &&
+        !commentVerified) {
       return false;
     }
 
-    if (requiresShare && !shareVerified) {
+    if (requiresShare &&
+        !shareVerified) {
       return false;
     }
 
-    if (requiresJoin && !joinVerified) {
+    if (requiresJoin &&
+        !joinVerified) {
       return false;
     }
 
-    if (requiresSubscribe && !subscribeVerified) {
+    if (requiresSubscribe &&
+        !subscribeVerified) {
       return false;
     }
 
@@ -292,6 +408,10 @@ class SocialTaskService {
   final SupabaseClient _client =
       Supabase.instance.client;
 
+  // ============================================================
+  // GET DAILY SOCIAL TASKS
+  // ============================================================
+
   Future<List<DailySocialTask>>
       getDailyTasksForCard() async {
     try {
@@ -309,18 +429,18 @@ class SocialTaskService {
         );
       }
 
-      final data = Map<String, dynamic>.from(
-        response,
-      );
+      final data =
+          Map<String, dynamic>.from(response);
 
       final success = data['success'];
 
       if (success is bool && !success) {
         throw Exception(
-          (data['message'] ??
-                  data['error'] ??
-                  'Unable to load social tasks.')
-              .toString(),
+          (
+            data['message'] ??
+            data['error'] ??
+            'Unable to load social tasks.'
+          ).toString(),
         );
       }
 
@@ -336,14 +456,16 @@ class SocialTaskService {
         );
       }
 
-      final tasks = <DailySocialTask>[];
+      final tasks =
+          <DailySocialTask>[];
 
       for (final item in rawTasks) {
         if (item is! Map) {
           continue;
         }
 
-        final task = DailySocialTask.fromMap(
+        final task =
+            DailySocialTask.fromMap(
           Map<String, dynamic>.from(item),
         );
 
@@ -366,6 +488,10 @@ class SocialTaskService {
     }
   }
 
+  // ============================================================
+  // UUID CHECK
+  // ============================================================
+
   bool _isUuid(String value) {
     return RegExp(
       r'^[0-9a-fA-F]{8}-'
@@ -376,8 +502,15 @@ class SocialTaskService {
     ).hasMatch(value);
   }
 
-  String _platformFromLegacyId(String value) {
-    final cleanValue = value.toLowerCase().trim();
+  // ============================================================
+  // LEGACY PLATFORM ID
+  // ============================================================
+
+  String _platformFromLegacyId(
+    String value,
+  ) {
+    final cleanValue =
+        value.toLowerCase().trim();
 
     const prefix = 'official-';
 
@@ -385,13 +518,20 @@ class SocialTaskService {
       return '';
     }
 
-    return cleanValue.substring(prefix.length);
+    return cleanValue.substring(
+      prefix.length,
+    );
   }
+
+  // ============================================================
+  // RESOLVE TASK ID
+  // ============================================================
 
   Future<String> _resolveTaskId(
     String taskId,
   ) async {
-    final cleanTaskId = taskId.trim();
+    final cleanTaskId =
+        taskId.trim();
 
     if (cleanTaskId.isEmpty) {
       throw Exception(
@@ -404,7 +544,9 @@ class SocialTaskService {
     }
 
     final legacyPlatform =
-        _platformFromLegacyId(cleanTaskId);
+        _platformFromLegacyId(
+      cleanTaskId,
+    );
 
     if (legacyPlatform.isEmpty) {
       throw Exception(
@@ -412,23 +554,29 @@ class SocialTaskService {
       );
     }
 
-    final tasks = await getDailyTasksForCard();
+    final tasks =
+        await getDailyTasksForCard();
 
-    final matchingTasks = tasks.where((task) {
+    final matchingTasks =
+        tasks.where((task) {
       final taskPlatform =
-          task.platform.toLowerCase().trim();
+          task.platform
+              .toLowerCase()
+              .trim();
 
       if (legacyPlatform == 'x') {
         return taskPlatform == 'x' ||
             taskPlatform == 'twitter';
       }
 
-      if (legacyPlatform == 'twitter') {
+      if (legacyPlatform ==
+          'twitter') {
         return taskPlatform == 'twitter' ||
             taskPlatform == 'x';
       }
 
-      return taskPlatform == legacyPlatform;
+      return taskPlatform ==
+          legacyPlatform;
     }).toList();
 
     if (matchingTasks.isEmpty) {
@@ -455,6 +603,59 @@ class SocialTaskService {
     return resolvedId;
   }
 
+  // ============================================================
+  // OPEN TASK
+  // ============================================================
+
+  Future<bool> openTaskUrl(
+    String url,
+  ) async {
+    final cleanUrl =
+        url.trim();
+
+    if (cleanUrl.isEmpty) {
+      return false;
+    }
+
+    Uri uri;
+
+    try {
+      uri = Uri.parse(
+        cleanUrl,
+      );
+    } catch (_) {
+      return false;
+    }
+
+    if (!uri.hasScheme) {
+      return false;
+    }
+
+    if (uri.scheme != 'http' &&
+        uri.scheme != 'https') {
+      return false;
+    }
+
+    try {
+      return await launchUrl(
+        uri,
+        mode:
+            LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ============================================================
+  // START TASK
+  //
+  // THIS STARTS THE SERVER-SIDE
+  // 60 SECOND COUNTDOWN.
+  //
+  // It does NOT give FAN.
+  // ============================================================
+
   Future<Map<String, dynamic>> startTask({
     required String taskId,
   }) async {
@@ -462,7 +663,8 @@ class SocialTaskService {
         await _resolveTaskId(taskId);
 
     try {
-      final response = await _client.rpc(
+      final response =
+          await _client.rpc(
         'start_social_task',
         params: {
           'p_task_id': cleanTaskId,
@@ -487,74 +689,37 @@ class SocialTaskService {
     }
   }
 
-  Future<bool> openTaskUrl(
-    String url,
-  ) async {
-    final cleanUrl = url.trim();
-
-    if (cleanUrl.isEmpty) {
-      return false;
-    }
-
-    Uri uri;
-
-    try {
-      uri = Uri.parse(cleanUrl);
-    } catch (_) {
-      return false;
-    }
-
-    if (!uri.hasScheme) {
-      return false;
-    }
-
-    if (uri.scheme != 'http' &&
-        uri.scheme != 'https') {
-      return false;
-    }
-
-    try {
-      return await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ------------------------------------------------------------
-  // SERVER-SIDE SOCIAL VERIFICATION
+  // ============================================================
+  // START VERIFICATION
   //
-  // User performs the required social action.
+  // Kept for compatibility with existing UI.
   //
-  // Flutter calls startVerification().
-  //
-  // Supabase starts the 60-second server timer.
-  //
-  // Flutter can then call
-  // completeSocialTaskVerification().
-  //
-  // The server remains the authority over
-  // the 60-second waiting period.
-  // ------------------------------------------------------------
+  // The action argument is accepted but the server-side
+  // timer belongs to the task itself.
+  // ============================================================
 
   Future<Map<String, dynamic>>
       startVerification({
     required String taskId,
+    String? action,
+  }) async {
+    return startTask(
+      taskId: taskId,
+    );
+  }
+
+  // ============================================================
+  // VERIFY ACTION
+  //
+  // Existing UI can continue calling this.
+  // ============================================================
+
+  Future<Map<String, dynamic>> verifyAction({
+    required String taskId,
     required String action,
   }) async {
-    final cleanTaskId =
-        await _resolveTaskId(taskId);
-
     final cleanAction =
         action.trim().toLowerCase();
-
-    if (cleanAction.isEmpty) {
-      throw Exception(
-        'Invalid social action.',
-      );
-    }
 
     const validActions = <String>{
       'follow',
@@ -565,209 +730,63 @@ class SocialTaskService {
       'subscribe',
     };
 
-    if (!validActions.contains(cleanAction)) {
-      throw Exception(
-        'Invalid social action.',
-      );
-    }
-
-    try {
-      final response = await _client.rpc(
-        'request_social_task_verification',
-        params: {
-          'p_task_id': cleanTaskId,
-          'p_action': cleanAction,
-        },
-      );
-
-      return _parseRpcResponse(
-        response,
-        fallbackMessage:
-            'Unable to start social verification.',
-        invalidMessage:
-            'Invalid social verification response.',
-      );
-    } on PostgrestException catch (e) {
-      throw Exception(
-        'Failed to start social verification: ${e.message}',
-      );
-    } catch (e) {
-      throw Exception(
-        'Failed to start social verification: $e',
-      );
-    }
-  }
-
-  Future<Map<String, dynamic>>
-      completeSocialTaskVerification({
-    required String taskId,
-  }) async {
-    final cleanTaskId =
-        await _resolveTaskId(taskId);
-
-    try {
-      final response = await _client.rpc(
-        'complete_social_task_verification',
-        params: {
-          'p_task_id': cleanTaskId,
-        },
-      );
-
-      return _parseRpcResponse(
-        response,
-        fallbackMessage:
-            'Unable to complete social verification.',
-        invalidMessage:
-            'Invalid social completion response.',
-      );
-    } on PostgrestException catch (e) {
-      throw Exception(
-        'Failed to complete social verification: ${e.message}',
-      );
-    } catch (e) {
-      throw Exception(
-        'Failed to complete social verification: $e',
-      );
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Verify one specific required action.
-  //
-  // This is the preferred method for the UI.
-  //
-  // Example:
-  // verifyAction(taskId: id, action: 'follow')
-  //
-  // It does NOT wait for 60 seconds in Flutter.
-  // The server starts and controls the timer.
-  // ------------------------------------------------------------
-
-  Future<Map<String, dynamic>> verifyAction({
-    required String taskId,
-    required String action,
-  }) async {
-    final cleanAction =
-        action.trim().toLowerCase();
-
     if (cleanAction.isEmpty) {
       throw Exception(
         'Invalid social action.',
       );
     }
 
-    return startVerification(
+    if (!validActions.contains(
+      cleanAction,
+    )) {
+      throw Exception(
+        'Invalid social action.',
+      );
+    }
+
+    return startTask(
       taskId: taskId,
-      action: cleanAction,
     );
   }
 
-  // ------------------------------------------------------------
-  // Compatibility method.
+  // ============================================================
+  // VERIFY AND CLAIM
   //
-  // It no longer directly claims the reward.
+  // IMPORTANT:
+  // This method ONLY starts verification.
   //
-  // It finds the first required action that has
-  // not yet been verified and starts its server
-  // verification timer.
+  // It does NOT claim immediately.
   //
-  // For tasks with multiple actions, the UI should
-  // call verifyAction() for each required action.
-  // ------------------------------------------------------------
+  // After 60 seconds the UI should call claimReward().
+  // ============================================================
 
-  Future<Map<String, dynamic>> verifyAndClaim({
+  Future<Map<String, dynamic>>
+      verifyAndClaim({
     required String taskId,
   }) async {
-    final cleanTaskId =
-        await _resolveTaskId(taskId);
-
-    final tasks = await getDailyTasksForCard();
-
-    DailySocialTask? task;
-
-    for (final item in tasks) {
-      if (item.id.trim() == cleanTaskId) {
-        task = item;
-        break;
-      }
-    }
-
-    if (task == null) {
-      throw Exception(
-        'Social task not found.',
-      );
-    }
-
-    final required = <String>[];
-
-    if (task.requiresFollow &&
-        !task.followVerified) {
-      required.add('follow');
-    }
-
-    if (task.requiresLike &&
-        !task.likeVerified) {
-      required.add('like');
-    }
-
-    if (task.requiresComment &&
-        !task.commentVerified) {
-      required.add('comment');
-    }
-
-    if (task.requiresShare &&
-        !task.shareVerified) {
-      required.add('share');
-    }
-
-    if (task.requiresJoin &&
-        !task.joinVerified) {
-      required.add('join');
-    }
-
-    if (task.requiresSubscribe &&
-        !task.subscribeVerified) {
-      required.add('subscribe');
-    }
-
-    if (required.isEmpty) {
-      if (task.allRequiredActionsVerified) {
-        return completeSocialTaskVerification(
-          taskId: cleanTaskId,
-        );
-      }
-
-      throw Exception(
-        'No unverified social action found.',
-      );
-    }
-
-    return startVerification(
-      taskId: cleanTaskId,
-      action: required.first,
+    return startTask(
+      taskId: taskId,
     );
   }
 
-  // ------------------------------------------------------------
-  // Direct claim method kept for compatibility.
+  // ============================================================
+  // CLAIM DAILY REWARD
   //
-  // New Social UI should use:
+  // Supabase itself checks whether 60 seconds have passed.
   //
-  // 1. verifyAction()
-  // 2. wait according to server response
-  // 3. completeSocialTaskVerification()
-  //
-  // This method is not used by verifyAndClaim().
-  // ------------------------------------------------------------
+  // Therefore Flutter cannot bypass the timer.
+  // ============================================================
 
-  Future<Map<String, dynamic>> claimReward({
+  Future<Map<String, dynamic>>
+      claimReward({
     required String taskId,
   }) async {
     final cleanTaskId =
         await _resolveTaskId(taskId);
 
     try {
-      final response = await _client.rpc(
+      final response =
+          await _client.rpc(
         'claim_daily_social_reward',
         params: {
           'p_task_id': cleanTaskId,
@@ -792,16 +811,70 @@ class SocialTaskService {
     }
   }
 
+  // ============================================================
+  // CHECK IF CLAIM CAN BE MADE
+  //
+  // This is useful for UI.
+  //
+  // The returned value is NOT the final authority.
+  // Supabase remains the authority when CLAIM is pressed.
+  // ============================================================
+
+  Future<Map<String, dynamic>>
+      getTaskStatus({
+    required String taskId,
+  }) async {
+    final cleanTaskId =
+        await _resolveTaskId(taskId);
+
+    final tasks =
+        await getDailyTasksForCard();
+
+    for (final task in tasks) {
+      if (task.id == cleanTaskId) {
+        return {
+          'success': true,
+          'task_id': task.id,
+          'platform': task.platform,
+          'verification_started':
+              task.verificationStarted,
+          'remaining_seconds':
+              task.remainingSeconds,
+          'claim_available':
+              task.canClaim,
+          'claimed_today':
+              task.claimed,
+          'verification_started_at':
+              task.verificationStartedAt
+                  ?.toIso8601String(),
+          'claim_available_at':
+              task.claimAvailableAt
+                  ?.toIso8601String(),
+        };
+      }
+    }
+
+    return {
+      'success': false,
+      'message': 'Social task not found.',
+    };
+  }
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
+
   Future<List<DailySocialTask>>
       refreshTasks() async {
     return getDailyTasksForCard();
   }
 
-  // ------------------------------------------------------------
-  // RPC response helper
-  // ------------------------------------------------------------
+  // ============================================================
+  // RPC RESPONSE PARSER
+  // ============================================================
 
-  Map<String, dynamic> _parseRpcResponse(
+  Map<String, dynamic>
+      _parseRpcResponse(
     dynamic response, {
     required String fallbackMessage,
     required String invalidMessage,
@@ -818,18 +891,22 @@ class SocialTaskService {
       );
     }
 
-    final data = Map<String, dynamic>.from(
+    final data =
+        Map<String, dynamic>.from(
       response,
     );
 
-    final success = data['success'];
+    final success =
+        data['success'];
 
-    if (success is bool && !success) {
+    if (success is bool &&
+        !success) {
       throw Exception(
-        (data['message'] ??
-                data['error'] ??
-                fallbackMessage)
-            .toString(),
+        (
+          data['message'] ??
+          data['error'] ??
+          fallbackMessage
+        ).toString(),
       );
     }
 
