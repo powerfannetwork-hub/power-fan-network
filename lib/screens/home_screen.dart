@@ -72,6 +72,11 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Flutter does not decide when the reward becomes available.
   String? _socialPendingTaskId;
 
+  /// One-second UI countdown. This is display state only.
+  /// Supabase remains authoritative for the actual claim.
+  Timer? _socialCountdownTimer;
+  int _socialRemainingSeconds = 0;
+
   /// Local UI state only: remembers that this task was opened
   /// before Verify is allowed. The server remains authoritative.
   String? _socialOpenedTaskId;
@@ -117,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _timer?.cancel();
     _socialTaskTimer?.cancel();
+    _socialCountdownTimer?.cancel();
     super.dispose();
   }
 
@@ -1026,6 +1032,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _tasks = tasks;
       });
 
+      _syncSocialCountdown(tasks);
+
       if (_selectedSocialPlatform != null) {
         final displayTasks =
             _socialTasksForDisplay(tasks);
@@ -1055,6 +1063,102 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       _loadingTasks = false;
     }
+  }
+
+  /// Starts/stops the one-second display countdown from the latest
+  /// server-provided remaining_seconds value. This never authorizes
+  /// a claim; claim_daily_social_reward remains server-authoritative.
+  void _syncSocialCountdown(
+    List<DailySocialTask> tasks,
+  ) {
+    DailySocialTask? activeTask;
+
+    if (_socialPendingTaskId != null) {
+      for (final task in tasks) {
+        if (task.id.trim() == _socialPendingTaskId) {
+          activeTask = task;
+          break;
+        }
+      }
+    }
+
+    activeTask ??= (() {
+      for (final task in tasks) {
+        if (task.verificationStarted &&
+            !task.claimed) {
+          return task;
+        }
+      }
+      return null;
+    })();
+
+    if (activeTask == null) {
+      _socialCountdownTimer?.cancel();
+      _socialCountdownTimer = null;
+
+      if (_socialRemainingSeconds != 0 &&
+          mounted) {
+        setState(() {
+          _socialRemainingSeconds = 0;
+        });
+      }
+
+      return;
+    }
+
+    final serverRemaining =
+        activeTask.remainingSeconds < 0
+            ? 0
+            : activeTask.remainingSeconds;
+
+    _socialPendingTaskId =
+        activeTask.id.trim();
+
+    if (_socialRemainingSeconds !=
+        serverRemaining) {
+      setState(() {
+        _socialRemainingSeconds =
+            serverRemaining;
+      });
+    }
+
+    if (serverRemaining <= 0) {
+      _socialCountdownTimer?.cancel();
+      _socialCountdownTimer = null;
+      return;
+    }
+
+    _socialCountdownTimer?.cancel();
+
+    _socialCountdownTimer =
+        Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (!mounted) return;
+
+        if (_socialRemainingSeconds <= 1) {
+          _socialCountdownTimer?.cancel();
+          _socialCountdownTimer = null;
+
+          setState(() {
+            _socialRemainingSeconds = 0;
+          });
+
+          // Re-read the server state. The server decides whether
+          // the claim is actually available.
+          unawaited(
+            _loadTasks(
+              silent: true,
+            ),
+          );
+          return;
+        }
+
+        setState(() {
+          _socialRemainingSeconds--;
+        });
+      },
+    );
   }
 
   // ============================================================
@@ -1115,60 +1219,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final isFallback =
         taskId.toLowerCase().startsWith('official-');
 
-    if (isFallback) {
-      final url = _taskUrl(task);
+    final url = _taskUrl(task);
 
-      if (url.isEmpty) {
-        _message(
-          'The social task link is unavailable.',
-        );
-        return;
-      }
-
-      setState(() {
-        _socialProcessing = true;
-        _busy = true;
-      });
-
-      try {
-        final opened =
-            await _social.openTaskUrl(url);
-
-        if (!mounted) return;
-
-        if (opened) {
-          if (mounted) {
-            setState(() {
-              _socialOpenedTaskId = taskId;
-            });
-          }
-          _message(
-            'Complete the task, then return here.',
-          );
-        } else {
-          _message(
-            'Unable to open the social task.',
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          _message(_error(e));
-        }
-      } finally {
-        if (!mounted) return;
-
-        setState(() {
-          _socialProcessing = false;
-          _busy = false;
-        });
-      }
-
-      return;
-    }
-
-    if (!_isUuid(taskId)) {
+    if (url.isEmpty) {
       _message(
-        'This social task is unavailable. Please refresh the tasks.',
+        'The social task link is unavailable.',
       );
       return;
     }
@@ -1179,42 +1234,26 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      await _social.startTask(
-        taskId: taskId,
-      );
-
-      final url = _taskUrl(task);
-
-      if (url.isEmpty) {
-        if (mounted) {
-          _message(
-            'Task started. Complete the required action, then press VERIFY.',
-          );
-        }
-
-        await _loadTasks();
-        return;
-      }
-
       final opened =
           await _social.openTaskUrl(url);
 
-      if (mounted) {
-        if (opened) {
-          setState(() {
-            _socialOpenedTaskId = taskId;
-          });
-          _message(
-            'Complete the social action, then return here and press VERIFY.',
-          );
-        } else {
-          _message(
-            'Unable to open the social task.',
-          );
-        }
-      }
+      if (!mounted) return;
 
-      await _loadTasks();
+      if (opened) {
+        setState(() {
+          _socialOpenedTaskId = taskId;
+        });
+
+        _message(
+          isFallback
+              ? 'Complete the task, then return here.'
+              : 'Complete the social action, then return here and press VERIFY.',
+        );
+      } else {
+        _message(
+          'Unable to open the social task.',
+        );
+      }
     } catch (e) {
       if (mounted) {
         _message(_error(e));
@@ -1263,39 +1302,39 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final action =
-        _firstRequiredUnverifiedAction(task);
-
-    if (action == null) {
-      await _checkAndClaimSocialTask(task);
-      return;
-    }
-
     setState(() {
       _socialProcessing = true;
       _busy = true;
     });
 
     try {
+      // IMPORTANT: the 60-second server timer starts here, not
+      // when OPEN TASK is pressed.
       final response =
           await _social.startVerification(
         taskId: taskId,
-        action: action,
       );
 
       if (!mounted) return;
 
-      final message =
-          _socialResponseMessage(response);
+      final remaining =
+          _toInt(
+            response['remaining_seconds'],
+          );
 
       setState(() {
         _socialPendingTaskId = taskId;
+        _socialRemainingSeconds =
+            remaining > 0 ? remaining : 60;
       });
+
+      final message =
+          _socialResponseMessage(response);
 
       _message(
         message.isNotEmpty
             ? message
-            : 'Server verification started. Wait 60 seconds, then check your reward.',
+            : 'Verification started. Please wait 60 seconds.',
       );
 
       await _loadTasks(
@@ -1316,7 +1355,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ============================================================
-  // CHECK SERVER TIMER + CLAIM
+  // CLAIM SOCIAL REWARD
   // ============================================================
 
   Future<void> _checkAndClaimSocialTask(
@@ -1342,6 +1381,14 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    if (!task.canClaim &&
+        _socialRemainingSeconds > 0) {
+      _message(
+        'Please wait ${_socialRemainingSeconds} seconds before claiming.',
+      );
+      return;
+    }
+
     setState(() {
       _socialProcessing = true;
       _busy = true;
@@ -1349,7 +1396,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final response =
-          await _social.completeSocialTaskVerification(
+          await _social.claimReward(
         taskId: taskId,
       );
 
@@ -1361,9 +1408,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final reward =
           _socialResponseReward(response);
 
+      _socialCountdownTimer?.cancel();
+      _socialCountdownTimer = null;
+
       setState(() {
         _socialPendingTaskId = null;
         _socialOpenedTaskId = null;
+        _socialRemainingSeconds = 0;
       });
 
       await _loadProfile();
@@ -1399,7 +1450,11 @@ class _HomeScreenState extends State<HomeScreen> {
           lower.contains('not available') ||
           lower.contains('too early')) {
         _message(
-          'Server verification is still active. Please wait until the 60 seconds are complete, then check again.',
+          'The server timer is still active. Please wait until 60 seconds are complete, then try CLAIM again.',
+        );
+
+        await _loadTasks(
+          silent: true,
         );
       } else {
         _message(text);
@@ -2041,7 +2096,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final pending =
         _socialPendingTaskId ==
-            task.id.trim();
+                task.id.trim() ||
+            task.verificationStarted;
 
     return InkWell(
       borderRadius:
@@ -2125,7 +2181,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     completed
                         ? 'Completed'
                         : pending
-                            ? 'Server verification active'
+                            ? (_socialRemainingSeconds > 0
+                                ? 'Verification active'
+                                : 'Ready to claim')
                             : 'Complete task',
                     maxLines: 1,
                     overflow:
@@ -2168,7 +2226,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 completed
                     ? 'DONE'
                     : pending
-                        ? 'VERIFY'
+                        ? (_socialRemainingSeconds > 0
+                            ? '${_socialRemainingSeconds}s'
+                            : 'CLAIM')
                         : '+10 FAN',
                 style: TextStyle(
                   fontSize: 9,
@@ -2219,7 +2279,8 @@ class _HomeScreenState extends State<HomeScreen> {
             .startsWith('official-');
 
     final pending =
-        _socialPendingTaskId == taskId;
+        _socialPendingTaskId == taskId ||
+            task.verificationStarted;
 
     final requiredAction =
         _firstRequiredUnverifiedAction(task);
@@ -2455,7 +2516,7 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           else if (pending)
             // ----------------------------------------------------
-            // SERVER VERIFICATION PENDING
+            // SERVER VERIFICATION + 60 SECOND COUNTDOWN
             // ----------------------------------------------------
             Column(
               children: [
@@ -2465,7 +2526,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const EdgeInsets
                           .symmetric(
                     horizontal: 12,
-                    vertical: 10,
+                    vertical: 12,
                   ),
                   decoration:
                       BoxDecoration(
@@ -2479,30 +2540,41 @@ class _HomeScreenState extends State<HomeScreen> {
                       11,
                     ),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       SizedBox(
-                        width: 17,
-                        height: 17,
+                        width: 20,
+                        height: 20,
                         child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color:
-                              primaryPurple,
-                        ),
+                            _socialRemainingSeconds > 0
+                                ? const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: primaryPurple,
+                                  )
+                                : const Icon(
+                                    Icons
+                                        .check_circle_rounded,
+                                    color:
+                                        successGreen,
+                                    size: 20,
+                                  ),
                       ),
-                      SizedBox(width: 9),
+                      const SizedBox(width: 9),
                       Expanded(
                         child: Text(
-                          'Server verification is active. The reward will become available after 60 seconds.',
+                          _socialRemainingSeconds > 0
+                              ? 'Verification active. Please wait ${_socialRemainingSeconds}s.'
+                              : '60 seconds completed. Your reward is ready to claim.',
                           style:
                               TextStyle(
                             fontSize: 10,
                             height: 1.3,
                             fontWeight:
-                                FontWeight.w700,
+                                FontWeight.w800,
                             color:
-                                primaryPurple,
+                                _socialRemainingSeconds > 0
+                                    ? primaryPurple
+                                    : successGreen,
                           ),
                         ),
                       ),
@@ -2517,7 +2589,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ElevatedButton.icon(
                     onPressed:
                         _busy ||
-                                _socialProcessing
+                                _socialProcessing ||
+                                _socialRemainingSeconds > 0 ||
+                                !task.canClaim
                             ? null
                             : () =>
                                 _checkAndClaimSocialTask(
@@ -2525,12 +2599,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                     icon: const Icon(
                       Icons
-                          .verified_rounded,
+                          .card_giftcard_rounded,
                       size: 18,
                     ),
-                    label: const Text(
-                      'CHECK & CLAIM 10 FAN',
-                      style: TextStyle(
+                    label: Text(
+                      _socialRemainingSeconds > 0
+                          ? 'WAIT ${_socialRemainingSeconds}s'
+                          : 'CLAIM 10 FAN',
+                      style: const TextStyle(
                         fontSize: 11,
                         fontWeight:
                             FontWeight.w900,
@@ -2563,9 +2639,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             )
-          else if (allVerified)
+          else if (allVerified && task.canClaim)
             // ----------------------------------------------------
-            // ALL REQUIRED ACTIONS VERIFIED
+            // SERVER SAYS CLAIM IS AVAILABLE
             // ----------------------------------------------------
             SizedBox(
               width: double.infinity,
@@ -4148,5 +4224,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
   }
 }
+
 
 
