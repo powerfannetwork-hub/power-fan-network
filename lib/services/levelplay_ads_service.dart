@@ -23,6 +23,7 @@ class LevelPlayAdsService with LevelPlayInitListener {
   bool _showingAd = false;
 
   Future<void>? _initializeFuture;
+  Completer<bool>? _adLoadCompleter;
 
   FutureOr<void> Function()? _onRewarded;
   FutureOr<void> Function()? _onAdClosed;
@@ -67,6 +68,16 @@ class LevelPlayAdsService with LevelPlayInitListener {
         );
       }
 
+      /*
+       * Enable adapter debug logs and integration validation only
+       * during debug builds. These are useful while testing the
+       * mediation setup and should not remain enabled in release.
+       */
+      if (kDebugMode) {
+        await LevelPlay.setAdaptersDebug(true);
+        LevelPlay.validateIntegration();
+      }
+
       final initRequest = LevelPlayInitRequest.builder(appKey)
           .withUserId(user.id)
           .build();
@@ -76,11 +87,16 @@ class LevelPlayAdsService with LevelPlayInitListener {
         initListener: this,
       );
 
-      _initialized = true;
-
+      /*
+       * Keep the Dynamic User ID configured before any rewarded ad
+       * is shown. The UUID hyphens are removed because LevelPlay
+       * requires an alphanumeric value with a maximum of 64 chars.
+       */
       await _setDynamicUserId(user.id);
 
       _createRewardedAd();
+
+      _initialized = true;
 
       await loadRewardedAd();
     } catch (e, st) {
@@ -134,6 +150,10 @@ class LevelPlayAdsService with LevelPlayInitListener {
   Future<bool> loadRewardedAd() async {
     try {
       if (!_initialized) {
+        /*
+         * During initialization, _initialized is set after
+         * LevelPlay.init succeeds and before this method is called.
+         */
         await initialize();
       }
 
@@ -145,15 +165,60 @@ class LevelPlayAdsService with LevelPlayInitListener {
         _createRewardedAd();
       }
 
+      /*
+       * Do not start a second load while one is already running.
+       * Wait for the existing load callback instead.
+       */
       if (_loadingAd) {
-        return false;
+        final existingLoad = _adLoadCompleter?.future;
+
+        if (existingLoad == null) {
+          return false;
+        }
+
+        try {
+          return await existingLoad.timeout(
+            const Duration(seconds: 15),
+          );
+        } catch (_) {
+          return false;
+        }
       }
 
       _loadingAd = true;
 
-      await _rewardedAd!.loadAd();
+      final completer = Completer<bool>();
+      _adLoadCompleter = completer;
 
-      return true;
+      try {
+        await _rewardedAd!.loadAd();
+
+        /*
+         * LevelPlay reports the real result through
+         * onAdLoaded / onAdLoadFailed. Do not assume that
+         * loadAd() returning means the ad is ready.
+         */
+        return await completer.future.timeout(
+          const Duration(seconds: 15),
+        );
+      } catch (e, st) {
+        _loadingAd = false;
+
+        if (!completer.isCompleted) {
+          completer.complete(false);
+        }
+
+        if (identical(_adLoadCompleter, completer)) {
+          _adLoadCompleter = null;
+        }
+
+        debugPrint(
+          'LevelPlay loadRewardedAd error: $e',
+        );
+        debugPrint('$st');
+
+        return false;
+      }
     } catch (e, st) {
       _loadingAd = false;
 
@@ -220,6 +285,11 @@ class LevelPlayAdsService with LevelPlayInitListener {
         return false;
       }
 
+      /*
+       * Set the Dynamic User ID immediately before showing the ad.
+       * This keeps the S2S user mapping correct even after a session
+       * change or re-authentication.
+       */
       await _setDynamicUserId(user.id);
 
       if (_rewardedAd == null) {
@@ -229,18 +299,25 @@ class LevelPlayAdsService with LevelPlayInitListener {
       var ready = await _rewardedAd!.isAdReady();
 
       if (!ready) {
-        await loadRewardedAd();
+        /*
+         * Wait for the actual LevelPlay load callback instead of
+         * waiting an arbitrary 500 ms.
+         */
+        final loaded = await loadRewardedAd();
 
-        await Future<void>.delayed(
-          const Duration(milliseconds: 500),
-        );
+        if (!loaded) {
+          debugPrint(
+            'LevelPlay rewarded ad did not finish loading.',
+          );
+          return false;
+        }
 
         ready = await _rewardedAd!.isAdReady();
       }
 
       if (!ready) {
         debugPrint(
-          'LevelPlay rewarded ad is still not ready.',
+          'LevelPlay rewarded ad is still not ready after loading.',
         );
         return false;
       }
@@ -315,7 +392,6 @@ class LevelPlayAdsService with LevelPlayInitListener {
       }
 
       final rawAmount = reward.amount;
-
       final double amount = rawAmount.toDouble();
 
       final response = await _supabase.rpc(
@@ -359,6 +435,14 @@ class LevelPlayAdsService with LevelPlayInitListener {
   ) {
     _loadingAd = false;
 
+    final completer = _adLoadCompleter;
+
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(true);
+    }
+
+    _adLoadCompleter = null;
+
     debugPrint(
       'LevelPlay rewarded ad loaded: ${adInfo.adUnitId}',
     );
@@ -368,6 +452,14 @@ class LevelPlayAdsService with LevelPlayInitListener {
     LevelPlayAdError error,
   ) {
     _loadingAd = false;
+
+    final completer = _adLoadCompleter;
+
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(false);
+    }
+
+    _adLoadCompleter = null;
 
     debugPrint(
       'LevelPlay rewarded ad load failed: '
@@ -433,6 +525,10 @@ class LevelPlayAdsService with LevelPlayInitListener {
       unawaited(_runCallback(closedCallback));
     }
 
+    /*
+     * Reuse the same rewarded ad object and load the next ad after
+     * the current one is closed.
+     */
     unawaited(loadRewardedAd());
   }
 
@@ -448,18 +544,18 @@ class LevelPlayAdsService with LevelPlayInitListener {
     /*
      * IMPORTANT:
      *
-     * This record is created BEFORE the existing onRewarded callback.
-     * HomeScreen then calls KycService.recordDailyBoost().
+     * This record is created before the existing onRewarded callback.
      *
-     * Therefore the chain becomes:
+     * Current application chain:
      *
      * LevelPlay reward
      *      ↓
-     * ad_rewards
+     * record_ad_reward_for_kyc()
      *      ↓
-     * record_daily_boost()
-     *      ↓
-     * KYC Daily Boost 1/30
+     * KYC daily boost tracking
+     *
+     * Keep this call unchanged until the backend/S2S reward path
+     * has been checked for possible duplicate reward crediting.
      */
     unawaited(
       _recordAdRewardForKyc(reward).then((recorded) {
@@ -533,6 +629,7 @@ class LevelPlayAdsService with LevelPlayInitListener {
     _showingAd = false;
 
     _initializeFuture = null;
+    _adLoadCompleter = null;
 
     _onRewarded = null;
     _onAdClosed = null;
@@ -580,14 +677,18 @@ class _RewardedAdListener with LevelPlayRewardedAdListener {
   void onAdClicked(
     LevelPlayAdInfo adInfo,
   ) {
-    _service._handleAdClicked(adInfo);
+    _service._handleAdClicked(
+      adInfo,
+    );
   }
 
   @override
   void onAdClosed(
     LevelPlayAdInfo adInfo,
   ) {
-    _service._handleAdClosed(adInfo);
+    _service._handleAdClosed(
+      adInfo,
+    );
   }
 
   @override
@@ -605,6 +706,9 @@ class _RewardedAdListener with LevelPlayRewardedAdListener {
   void onAdInfoChanged(
     LevelPlayAdInfo adInfo,
   ) {
-    _service._handleAdInfoChanged(adInfo);
+    _service._handleAdInfoChanged(
+      adInfo,
+    );
   }
 }
+
