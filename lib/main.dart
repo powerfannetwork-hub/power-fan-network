@@ -9,6 +9,7 @@ import 'globals/app_state.dart';
 import 'localization/app_localizations.dart';
 import 'localization/language_controller.dart';
 import 'pages/auth_page.dart';
+import 'pages/reset_password_page.dart';
 import 'screens/main_navigation_screen.dart';
 import 'services/device_service.dart';
 import 'services/notification_service.dart';
@@ -133,6 +134,8 @@ class AppRoot extends StatefulWidget {
 class _AppRootState extends State<AppRoot> {
   StreamSubscription<AuthState>? _authSubscription;
 
+  bool _isPasswordRecovery = false;
+
   @override
   void initState() {
     super.initState();
@@ -151,15 +154,25 @@ class _AppRootState extends State<AppRoot> {
           break;
 
         case AuthChangeEvent.signedOut:
-          setState(() {});
+          setState(() {
+            _isPasswordRecovery = false;
+          });
           break;
 
         case AuthChangeEvent.userUpdated:
+          if (_isPasswordRecovery) {
+            setState(() {
+              _isPasswordRecovery = false;
+            });
+          }
+
           _loadUserData();
           break;
 
         case AuthChangeEvent.passwordRecovery:
-          setState(() {});
+          setState(() {
+            _isPasswordRecovery = true;
+          });
           break;
 
         case AuthChangeEvent.tokenRefreshed:
@@ -231,6 +244,10 @@ class _AppRootState extends State<AppRoot> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isPasswordRecovery) {
+      return const ResetPasswordPage();
+    }
+
     final session =
         Supabase.instance.client.auth.currentSession;
 
