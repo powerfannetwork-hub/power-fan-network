@@ -245,8 +245,13 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     _buildReferralCodeCard(info),
                     const SizedBox(height: 16),
                     _buildMiningBonusCard(info),
-                    const SizedBox(height: 16),
-                    _buildApplyReferralCard(),
+
+                    // Show Apply Referral Code ONLY
+                    // when the user has not applied one yet.
+                    if (!(info?.hasAppliedReferral ?? false)) ...[
+                      const SizedBox(height: 16),
+                      _buildApplyReferralCard(),
+                    ],
                   ],
                 ),
               ),
@@ -623,7 +628,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _applying ? null : _applyReferralCode,
+              onPressed:
+                  _applying ? null : _applyReferralCode,
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryPurple,
                 foregroundColor: Colors.white,
