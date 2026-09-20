@@ -24,6 +24,8 @@ class _ReferralPageState extends State<ReferralPage> {
   double _miningBonus = 0;
   double _bonusPerReferral = 0;
 
+  bool _hasAppliedReferral = false;
+
   bool _loading = true;
   bool _refreshing = false;
   String? _error;
@@ -60,6 +62,9 @@ class _ReferralPageState extends State<ReferralPage> {
         _miningBonus = _toDouble(data['miningBonus']);
         _bonusPerReferral =
             _toDouble(data['miningBonusPerActiveReferral']);
+
+        _hasAppliedReferral =
+            data['hasAppliedReferral'] == true;
 
         _loading = false;
         _refreshing = false;
@@ -208,6 +213,18 @@ class _ReferralPageState extends State<ReferralPage> {
                   const SizedBox(height: 16),
                   _buildReferralCodeCard(),
                   const SizedBox(height: 16),
+
+                  // --------------------------------------------------
+                  // APPLY REFERRAL CODE
+                  // --------------------------------------------------
+                  // Only show this section when the current user
+                  // has NOT already applied a referral code.
+                  // --------------------------------------------------
+                  if (!_hasAppliedReferral) ...[
+                    _buildApplyReferralCard(),
+                    const SizedBox(height: 16),
+                  ],
+
                   _buildStats(),
                   const SizedBox(height: 16),
                   _buildRewardInfo(),
@@ -413,6 +430,135 @@ class _ReferralPageState extends State<ReferralPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildApplyReferralCard() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.card_giftcard,
+                color: primaryColor,
+                size: 27,
+              ),
+              SizedBox(width: 10),
+              Text(
+                'Apply Referral Code',
+                style: TextStyle(
+                  color: deepPurple,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Have a referral code from another user? Apply it here.',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton(
+            onPressed: _showApplyReferralDialog,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'APPLY REFERRAL CODE',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showApplyReferralDialog() async {
+    final controller = TextEditingController();
+
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Apply Referral Code'),
+          content: TextField(
+            controller: controller,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(
+              labelText: 'Referral Code',
+              hintText: 'Enter referral code',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final value = controller.text.trim();
+
+                if (value.isEmpty) {
+                  return;
+                }
+
+                Navigator.pop(context, value);
+              },
+              child: const Text('APPLY'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (code == null || code.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      setState(() {
+        _refreshing = true;
+      });
+
+      final result = await ApiService.applyReferral(code);
+
+      if (!mounted) return;
+
+      _showMessage(
+        result['message']?.toString() ??
+            'Referral code applied successfully.',
+      );
+
+      await _load(refresh: true);
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _refreshing = false;
+      });
+
+      _showMessage(
+        _cleanError(error),
+        isError: true,
+      );
+    }
   }
 
   Widget _buildStats() {
