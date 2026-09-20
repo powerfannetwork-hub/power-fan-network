@@ -417,6 +417,7 @@ class AuthService {
 
       await _supabase.auth.resetPasswordForEmail(
         cleanEmail,
+        redirectTo: 'powerfan://reset-password',
       );
     } on AuthException catch (e) {
       throw Exception(e.message);
