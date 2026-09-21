@@ -98,10 +98,15 @@ class _ReferralScreenState extends State<ReferralScreen> {
       return;
     }
 
+    const apkDownloadLink =
+        'https://github.com/powerfannetwork-hub/power-fan-network/releases/latest/download/app-release.apk';
+
     final message =
-        'Join POWER FAN NETWORK and start mining FAN.\n\n'
-        'Use my referral code: $code\n\n'
-        'POWER FAN NETWORK';
+        '🚀 Join POWER FAN NETWORK and start mining FAN!\n\n'
+        '📲 Download the app:\n'
+        '$apkDownloadLink\n\n'
+        '🎁 Use my referral code: $code\n\n'
+        'Join me on POWER FAN NETWORK and start earning FAN!';
 
     try {
       await SharePlus.instance.share(
