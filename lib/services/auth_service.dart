@@ -1,5 +1,8 @@
 // lib/services/auth_service.dart
 
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'referral_service.dart';
@@ -71,6 +74,23 @@ class AuthService {
       }
 
       // ----------------------------------------------------------
+      // COUNTRY DETECTION
+      // ----------------------------------------------------------
+      //
+      // This uses the user's public IP.
+      //
+      // IMPORTANT:
+      // - No GPS is used.
+      // - No location permission is requested.
+      // - If detection fails, registration continues normally.
+      //
+      // The detected country is stored in Supabase Auth metadata
+      // and then synced to public.profiles.country.
+      // ----------------------------------------------------------
+
+      final String? country = await _detectCountry();
+
+      // ----------------------------------------------------------
       // SUPABASE SIGN UP
       // ----------------------------------------------------------
 
@@ -79,6 +99,10 @@ class AuthService {
         'username': cleanUsername,
         'registration_notice_presented': true,
       };
+
+      if (country != null && country.isNotEmpty) {
+        metadata['country'] = country;
+      }
 
       if (cleanReferral != null &&
           cleanReferral.isNotEmpty) {
@@ -93,22 +117,16 @@ class AuthService {
       );
 
       // ----------------------------------------------------------
-      // ACCEPT REGISTRATION NOTICE
+      // IF SESSION EXISTS IMMEDIATELY
       // ----------------------------------------------------------
 
       if (response.session != null) {
         await acceptRegistrationNotice();
 
-        // --------------------------------------------------------
-        // APPLY REGISTRATION REFERRAL
-        // --------------------------------------------------------
-        //
-        // When a session is available immediately, apply the
-        // referral code directly after registration.
-        //
-        // The referral code is already stored in the user's
-        // Supabase auth metadata by signUp().
-        // --------------------------------------------------------
+        await _syncCountryToProfile(
+          response.user,
+          country,
+        );
 
         await _applyPendingReferral(response.user);
       }
@@ -171,19 +189,19 @@ class AuthService {
       }
 
       // ----------------------------------------------------------
-      // PENDING REGISTRATION REFERRAL
+      // COUNTRY SYNC
       // ----------------------------------------------------------
       //
-      // If email confirmation was enabled during registration,
-      // signUp() may have returned no session.
+      // If registration happened with email confirmation enabled,
+      // there may have been no session during signUp().
       //
-      // The referral code remains in auth metadata.
-      //
-      // After the user confirms the email and logs in, apply
-      // the referral automatically here.
+      // When the user logs in later, we try to make sure the
+      // country is present in public.profiles.
       // ----------------------------------------------------------
 
       if (response.session != null) {
+        await _syncCountryAfterLogin(response.user);
+
         await _applyPendingReferral(response.user);
       }
 
@@ -196,6 +214,188 @@ class AuthService {
       }
 
       throw Exception(e.toString());
+    }
+  }
+
+  // ============================================================
+  // COUNTRY DETECTION
+  // ============================================================
+
+  Future<String?> _detectCountry() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('https://ipapi.co/json/'),
+          )
+          .timeout(
+            const Duration(seconds: 5),
+          );
+
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final dynamic decoded =
+          jsonDecode(response.body);
+
+      if (decoded is! Map) {
+        return null;
+      }
+
+      final dynamic countryCode =
+          decoded['country_code'];
+
+      if (countryCode == null) {
+        return null;
+      }
+
+      final country =
+          countryCode.toString().trim().toUpperCase();
+
+      // Country codes should be exactly two letters.
+      if (!RegExp(r'^[A-Z]{2}$').hasMatch(country)) {
+        return null;
+      }
+
+      return country;
+    } catch (_) {
+      // Country detection must NEVER prevent registration.
+      return null;
+    }
+  }
+
+  // ============================================================
+  // SYNC COUNTRY TO PROFILE
+  // ============================================================
+
+  Future<void> _syncCountryToProfile(
+    User? user,
+    String? detectedCountry,
+  ) async {
+    if (user == null) {
+      return;
+    }
+
+    try {
+      String? country = detectedCountry;
+
+      // --------------------------------------------------------
+      // FIRST: use country detected during registration/login.
+      // --------------------------------------------------------
+
+      if (country == null || country.isEmpty) {
+        final metadata = user.userMetadata;
+
+        final metadataCountry =
+            metadata?['country'];
+
+        if (metadataCountry != null) {
+          country = metadataCountry
+              .toString()
+              .trim()
+              .toUpperCase();
+        }
+      }
+
+      // --------------------------------------------------------
+      // SECOND: if still unavailable, detect again.
+      // --------------------------------------------------------
+
+      if (country == null || country.isEmpty) {
+        country = await _detectCountry();
+      }
+
+      if (country == null || country.isEmpty) {
+        return;
+      }
+
+      // --------------------------------------------------------
+      // CHECK PROFILE
+      // --------------------------------------------------------
+
+      final profile = await _supabase
+          .from('profiles')
+          .select('country')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (profile == null) {
+        // Do not create a profile here.
+        //
+        // The existing profile creation system remains
+        // responsible for creating profiles.
+        return;
+      }
+
+      final existingCountry =
+          profile['country'];
+
+      // --------------------------------------------------------
+      // DO NOT OVERWRITE A VALID COUNTRY.
+      // --------------------------------------------------------
+
+      if (existingCountry != null &&
+          existingCountry
+              .toString()
+              .trim()
+              .isNotEmpty) {
+        return;
+      }
+
+      // --------------------------------------------------------
+      // SAVE COUNTRY
+      // --------------------------------------------------------
+
+      await _supabase
+          .from('profiles')
+          .update(<String, dynamic>{
+        'country': country,
+      }).eq('id', user.id);
+    } catch (_) {
+      // Country syncing must NEVER break registration/login.
+    }
+  }
+
+  // ============================================================
+  // COUNTRY SYNC AFTER LOGIN
+  // ============================================================
+
+  Future<void> _syncCountryAfterLogin(
+    User? user,
+  ) async {
+    if (user == null) {
+      return;
+    }
+
+    try {
+      final profile = await _supabase
+          .from('profiles')
+          .select('country')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (profile == null) {
+        return;
+      }
+
+      final existingCountry =
+          profile['country'];
+
+      // Country already exists.
+      if (existingCountry != null &&
+          existingCountry
+              .toString()
+              .trim()
+              .isNotEmpty) {
+        return;
+      }
+
+      await _syncCountryToProfile(
+        user,
+        null,
+      );
+    } catch (_) {
+      // Never block login.
     }
   }
 
@@ -225,7 +425,10 @@ class AuthService {
       }
 
       final referralCode =
-          rawReferralCode.toString().trim().toUpperCase();
+          rawReferralCode
+              .toString()
+              .trim()
+              .toUpperCase();
 
       if (referralCode.isEmpty) {
         return;
@@ -233,10 +436,6 @@ class AuthService {
 
       // ----------------------------------------------------------
       // CHECK CURRENT PROFILE
-      // ----------------------------------------------------------
-      //
-      // If referred_by is already set, the referral has already
-      // been applied. Never try to apply another referral.
       // ----------------------------------------------------------
 
       final profile =
@@ -254,7 +453,10 @@ class AuthService {
           profile['referred_by'];
 
       if (existingReferredBy != null &&
-          existingReferredBy.toString().trim().isNotEmpty) {
+          existingReferredBy
+              .toString()
+              .trim()
+              .isNotEmpty) {
         return;
       }
 
@@ -264,21 +466,12 @@ class AuthService {
 
       final result =
           await ReferralService.instance
-              .applyReferralCode(referralCode);
+              .applyReferralCode(
+        referralCode,
+      );
 
       // ----------------------------------------------------------
       // SUCCESS
-      // ----------------------------------------------------------
-      //
-      // No UI is required here.
-      //
-      // The referral service is responsible for:
-      // - validating the referral code
-      // - setting referred_by
-      // - creating referral relationship/reward data
-      // - updating referral statistics
-      //
-      // The user simply continues into the app.
       // ----------------------------------------------------------
 
       if (!result.success) {
@@ -286,9 +479,6 @@ class AuthService {
       }
     } catch (_) {
       // Referral failure must not destroy a valid account login.
-      //
-      // The registration/login itself remains successful.
-      // The referral is only applied when the server accepts it.
     }
   }
 
@@ -299,7 +489,8 @@ class AuthService {
   Future<Map<String, dynamic>>
       acceptRegistrationNotice() async {
     try {
-      final user = _supabase.auth.currentUser;
+      final user =
+          _supabase.auth.currentUser;
 
       if (user == null) {
         return <String, dynamic>{
@@ -341,7 +532,8 @@ class AuthService {
   Future<Map<String, dynamic>>
       getAccountSecurityStatus() async {
     try {
-      final user = _supabase.auth.currentUser;
+      final user =
+          _supabase.auth.currentUser;
 
       if (user == null) {
         return <String, dynamic>{
