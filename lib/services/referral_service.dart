@@ -27,7 +27,7 @@ class ReferralInfo {
       activeReferrals: 0,
       totalReferrals: 0,
       totalInviterRewards: 0.0,
-      miningBonus: 0.02,
+      miningBonus: 0.0,
       miningBonusPerActiveReferral: 0.02,
       hasAppliedReferral: false,
     );
