@@ -1,9 +1,6 @@
-import 'dart:async';
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 
-import '../services/power_fan_growth_system.dart';
+import '../services/daily_spin_service.dart';
 
 class DailySpinScreen extends StatefulWidget {
   const DailySpinScreen({
@@ -18,760 +15,625 @@ class DailySpinScreen extends StatefulWidget {
 class _DailySpinScreenState
     extends State<DailySpinScreen>
     with SingleTickerProviderStateMixin {
-  final Random _random = Random();
+  final DailySpinService _spinService =
+      DailySpinService.instance;
 
-  late final AnimationController _spinController;
+  bool _loading = true;
+  bool _spinning = false;
 
-  bool _isSpinning = false;
-  bool _hasSpunToday = false;
+  Map<String, dynamic> _status =
+      <String, dynamic>{};
 
-  DailySpinReward? _selectedReward;
-  double _displayRotation = 0;
+  Map<String, dynamic>? _result;
 
-  Timer? _resultTimer;
+  String? _error;
+
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
 
-    _spinController = AnimationController(
+    _controller = AnimationController(
       vsync: this,
-      duration: const Duration(
-        milliseconds: 3600,
-      ),
+      duration: const Duration(seconds: 3),
     );
+
+    _loadStatus();
   }
 
   @override
   void dispose() {
-    _resultTimer?.cancel();
-    _spinController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _spin() {
-    if (_isSpinning || _hasSpunToday) {
-      return;
-    }
-
+  Future<void> _loadStatus() async {
     setState(() {
-      _isSpinning = true;
-      _selectedReward = null;
+      _loading = true;
+      _error = null;
     });
 
-    final rewards =
-        PowerFanGrowthSystem.dailySpinRewards;
+    try {
+      final status =
+          await _spinService.getStatus();
 
-    final reward = _pickWeightedReward(rewards);
-
-    final rewardIndex = rewards.indexOf(reward);
-
-    final segmentAngle =
-        (2 * pi) / rewards.length;
-
-    final targetAngle =
-        (2 * pi * 5) +
-        ((2 * pi) -
-            (rewardIndex * segmentAngle) -
-            (segmentAngle / 2));
-
-    _displayRotation += targetAngle;
-
-    _spinController
-        .forward(from: 0)
-        .whenComplete(() {
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _isSpinning = false;
-        _hasSpunToday = true;
-        _selectedReward = reward;
+        _status = status;
+        _loading = false;
       });
-    });
-  }
-
-  DailySpinReward _pickWeightedReward(
-    List<DailySpinReward> rewards,
-  ) {
-    final totalWeight =
-        PowerFanGrowthSystem
-            .calculateWeightedSpinTotal();
-
-    var randomValue =
-        _random.nextDouble() * totalWeight;
-
-    for (final reward in rewards) {
-      randomValue -= reward.weight;
-
-      if (randomValue <= 0) {
-        return reward;
+    } catch (e) {
+      if (!mounted) {
+        return;
       }
-    }
 
-    return rewards.last;
+      setState(() {
+        _loading = false;
+        _error = _cleanError(e);
+      });
+    }
   }
 
-  void _resetDemoSpin() {
+  Future<void> _spin() async {
+    if (_spinning) {
+      return;
+    }
+
+    if (!_spinService.isSignedIn) {
+      _showMessage(
+        'Please sign in first.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (!_spinService.canSpin(_status)) {
+      _showMessage(
+        'You have already used your Daily Spin today.',
+        isError: false,
+      );
+      return;
+    }
+
     setState(() {
-      _hasSpunToday = false;
-      _selectedReward = null;
-      _displayRotation = 0;
+      _spinning = true;
+      _error = null;
+      _result = null;
     });
+
+    try {
+      await _controller.forward(
+        from: 0,
+      );
+
+      final result =
+          await _spinService.spin();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _result = result;
+        _status = result;
+        _spinning = false;
+      });
+
+      final success =
+          _spinService.isSuccess(result);
+
+      if (!success) {
+        _showMessage(
+          _spinService.message(result).isEmpty
+              ? 'Spin could not be completed.'
+              : _spinService.message(result),
+          isError: true,
+        );
+
+        return;
+      }
+
+      _showReward(result);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _spinning = false;
+        _error = _cleanError(e);
+      });
+
+      _showMessage(
+        _cleanError(e),
+        isError: true,
+      );
+    }
   }
 
-  String _rewardDescription(
-    DailySpinReward reward,
+  void _showReward(
+    Map<String, dynamic> result,
   ) {
-    switch (reward.type) {
-      case DailySpinRewardType.fan:
-        return '+${reward.fanAmount.toStringAsFixed(0)} FAN';
+    final title =
+        _spinService.rewardTitle(result);
 
-      case DailySpinRewardType.miningBoost:
-        return '+${reward.boostRatePerHour.toStringAsFixed(2)} FAN/H '
-            'for ${reward.boostDurationMinutes} minutes';
+    final amount =
+        _spinService.fanAmount(result);
 
-      case DailySpinRewardType.streakBoost:
-        return 'Streak boost for '
-            '${reward.boostDurationMinutes} minutes';
+    final type =
+        _spinService.rewardType(result);
 
-      case DailySpinRewardType.taskBonus:
-        return '+${reward.fanAmount.toStringAsFixed(0)} FAN task bonus';
+    String message;
 
-      case DailySpinRewardType.tryAgain:
-        return 'Try again tomorrow';
+    if (amount > 0) {
+      message =
+          '+${_formatFan(amount)} FAN';
+    } else if (type == 'mining_boost') {
+      final duration =
+          _spinService.boostDurationMinutes(
+        result,
+      );
+
+      final rate =
+          _spinService.boostRatePerHour(
+        result,
+      );
+
+      message =
+          '+${rate.toStringAsFixed(2)} FAN/H '
+          'for $duration minutes';
+    } else {
+      message = title.isEmpty
+          ? 'Reward received!'
+          : title;
     }
+
+    _showMessage(
+      message,
+      isError: false,
+    );
+  }
+
+  void _showMessage(
+    String message, {
+    required bool isError,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration:
+              const Duration(seconds: 3),
+        ),
+      );
+  }
+
+  String _cleanError(Object error) {
+    final text = error
+        .toString()
+        .replaceFirst(
+          'Exception: ',
+          '',
+        );
+
+    return text.isEmpty
+        ? 'Something went wrong.'
+        : text;
+  }
+
+  String _formatFan(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+
+    return value
+        .toStringAsFixed(8)
+        .replaceFirst(
+          RegExp(r'0+$'),
+          '',
+        );
   }
 
   @override
   Widget build(BuildContext context) {
-    final rewards =
-        PowerFanGrowthSystem.dailySpinRewards;
-
     return Scaffold(
       backgroundColor:
-          const Color(0xFFF7F3FF),
+          const Color(0xFFF5F1FF),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor:
-            const Color(0xFF6A1B9A),
-        foregroundColor: Colors.white,
-        centerTitle: true,
         title: const Text(
           'Daily Spin',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w800,
           ),
         ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor:
+            const Color(0xFFF5F1FF),
+        foregroundColor:
+            const Color(0xFF35136B),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(),
+              )
+            : RefreshIndicator(
+                onRefresh: _loadStatus,
+                child: ListView(
+                  padding:
+                      const EdgeInsets.all(20),
+                  children: [
+                    const SizedBox(height: 10),
 
-              _buildHeaderCard(),
+                    _buildHeader(),
 
-              const SizedBox(height: 22),
+                    const SizedBox(height: 24),
 
-              _buildWheel(rewards),
+                    _buildWheel(),
 
-              const SizedBox(height: 18),
+                    const SizedBox(height: 28),
 
-              _buildSpinButton(),
+                    _buildRewardResult(),
 
-              const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
-              if (_selectedReward != null)
-                _buildResultCard(
-                  _selectedReward!,
+                    _buildSpinButton(),
+
+                    const SizedBox(height: 20),
+
+                    _buildStatusCard(),
+
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      _buildErrorCard(),
+                    ],
+
+                    const SizedBox(height: 30),
+                  ],
                 ),
+              ),
+      ),
+    );
+  }
 
-              const SizedBox(height: 20),
+  Widget _buildHeader() {
+    return Column(
+      children: const [
+        Text(
+          'DAILY SPIN',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF35136B),
+            letterSpacing: 1.5,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Spin once every day and receive a real reward.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.black54,
+          ),
+        ),
+      ],
+    );
+  }
 
-              _buildRewardsCard(rewards),
-
-              const SizedBox(height: 20),
-
-              _buildRulesCard(),
+  Widget _buildWheel() {
+    return Center(
+      child: RotationTransition(
+        turns: Tween<double>(
+          begin: 0,
+          end: 6,
+        ).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Curves.easeOutCubic,
+          ),
+        ),
+        child: Container(
+          width: 260,
+          height: 260,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: const SweepGradient(
+              colors: [
+                Color(0xFF7B2FF7),
+                Color(0xFFFFC107),
+                Color(0xFFFF5F6D),
+                Color(0xFF00C6FF),
+                Color(0xFF7B2FF7),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    Colors.deepPurple.withOpacity(
+                  0.25,
+                ),
+                blurRadius: 25,
+                spreadRadius: 5,
+              ),
             ],
+          ),
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.casino_rounded,
+                size: 90,
+                color: Color(0xFF6A1B9A),
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeaderCard() {
+  Widget _buildRewardResult() {
+    if (_result == null) {
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius:
+              BorderRadius.circular(18),
+        ),
+        child: const Text(
+          'Your reward will appear here after the spin.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.black54,
+          ),
+        ),
+      );
+    }
+
+    final title =
+        _spinService.rewardTitle(_result!);
+
+    final amount =
+        _spinService.fanAmount(_result!);
+
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
             Color(0xFF6A1B9A),
-            Color(0xFF8E24AA),
+            Color(0xFF9C27B0),
           ],
         ),
         borderRadius:
-            BorderRadius.circular(22),
+            BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.purple
-                .withValues(alpha: 0.20),
-            blurRadius: 14,
-            offset: const Offset(0, 7),
+            color:
+                Colors.deepPurple.withOpacity(
+              0.20,
+            ),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(
-            Icons.casino_rounded,
-            size: 48,
-            color: Color(0xFFFFD54F),
-          ),
-          SizedBox(height: 10),
-          Text(
-            'DAILY LUCKY SPIN',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 21,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-            ),
-          ),
-          SizedBox(height: 6),
-          Text(
-            'Spin once every day and win FAN or boosts.',
-            textAlign: TextAlign.center,
+          const Text(
+            'YOU WON',
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 14,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWheel(
-    List<DailySpinReward> rewards,
-  ) {
-    return SizedBox(
-      width: 310,
-      height: 310,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          AnimatedRotation(
-            turns: _displayRotation /
-                (2 * pi),
-            duration: const Duration(
-              milliseconds: 3600,
-            ),
-            curve: Curves.easeOutCubic,
-            child: CustomPaint(
-              size: const Size(
-                290,
-                290,
-              ),
-              painter: _SpinWheelPainter(
-                rewards: rewards,
-              ),
-            ),
-          ),
-
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
+          const SizedBox(height: 8),
+          Text(
+            title.isEmpty
+                ? 'Reward'
+                : title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
               color: Colors.white,
-              border: Border.all(
-                color: const Color(0xFFFFD54F),
-                width: 5,
+              fontSize: 25,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          if (amount > 0) ...[
+            const SizedBox(height: 6),
+            Text(
+              '+${_formatFan(amount)} FAN',
+              style: const TextStyle(
+                color: Color(0xFFFFD54F),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black
-                      .withValues(alpha: 0.15),
-                  blurRadius: 10,
-                ),
-              ],
             ),
-            child: const Icon(
-              Icons.star_rounded,
-              color: Color(0xFFFFB300),
-              size: 38,
-            ),
-          ),
-
-          Positioned(
-            top: 0,
-            child: CustomPaint(
-              size: const Size(30, 34),
-              painter: _PointerPainter(),
-            ),
-          ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildSpinButton() {
-    final disabled =
-        _isSpinning || _hasSpunToday;
+    final canSpin =
+        _spinService.canSpin(_status);
 
     return SizedBox(
-      width: double.infinity,
       height: 58,
-      child: ElevatedButton.icon(
+      child: ElevatedButton(
         onPressed:
-            disabled ? null : _spin,
-        icon: Icon(
-          _isSpinning
-              ? Icons.autorenew
-              : Icons.casino,
-        ),
-        label: Text(
-          _isSpinning
-              ? 'SPINNING...'
-              : _hasSpunToday
-                  ? 'SPIN USED TODAY'
-                  : 'SPIN NOW',
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+            _spinning || !canSpin
+                ? null
+                : _spin,
         style: ElevatedButton.styleFrom(
           backgroundColor:
               const Color(0xFF6A1B9A),
-          foregroundColor: Colors.white,
           disabledBackgroundColor:
               Colors.grey.shade400,
-          disabledForegroundColor:
-              Colors.white,
+          foregroundColor: Colors.white,
+          elevation: 5,
           shape: RoundedRectangleBorder(
             borderRadius:
                 BorderRadius.circular(18),
           ),
         ),
+        child: _spinning
+            ? const SizedBox(
+                width: 25,
+                height: 25,
+                child:
+                    CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                canSpin
+                    ? 'SPIN NOW'
+                    : 'SPIN USED TODAY',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
+              ),
       ),
     );
   }
 
-  Widget _buildResultCard(
-    DailySpinReward reward,
-  ) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFFFC107),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black
-                .withValues(alpha: 0.06),
-            blurRadius: 10,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          const Icon(
-            Icons.emoji_events_rounded,
-            color: Color(0xFFFFB300),
-            size: 46,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'YOU WON!',
-            style: TextStyle(
-              color: Color(0xFF6A1B9A),
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            reward.title,
-            style: const TextStyle(
-              fontSize: 25,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _rewardDescription(reward),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
+  Widget _buildStatusCard() {
+    final alreadySpun =
+        _spinService.alreadySpun(
+      _status,
     );
-  }
 
-  Widget _buildRewardsCard(
-    List<DailySpinReward> rewards,
-  ) {
+    final balance =
+        _spinService.fanBalance(
+      _status,
+    );
+
     return Container(
-      width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(18),
+        border: Border.all(
+          color:
+              Colors.deepPurple.shade100,
+        ),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Spin Rewards',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.w900,
-            ),
+          Row(
+            children: [
+              const Icon(
+                Icons.account_balance_wallet,
+                color: Color(0xFF6A1B9A),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'FAN Balance',
+                  style: TextStyle(
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                '${_formatFan(balance)} FAN',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color:
+                      Color(0xFF6A1B9A),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
-          ...rewards.map(
-            (reward) => Padding(
-              padding:
-                  const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(
-                        0xFFF3E5F5,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      _rewardIcon(reward),
-                      color:
-                          const Color(0xFF6A1B9A),
-                      size: 21,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      reward.title,
-                      style: const TextStyle(
-                        fontWeight:
-                            FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${reward.weight}%',
-                    style: TextStyle(
-                      color:
-                          Colors.grey.shade600,
-                      fontWeight:
-                          FontWeight.w600,
-                    ),
-                  ),
-                ],
+          const Divider(),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                alreadySpun
+                    ? Icons.check_circle
+                    : Icons.access_time,
+                color: alreadySpun
+                    ? Colors.green
+                    : Colors.orange,
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  alreadySpun
+                      ? 'Daily Spin completed today'
+                      : 'Daily Spin is available',
+                  style: const TextStyle(
+                    fontWeight:
+                        FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRulesCard() {
+  Widget _buildErrorCard() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3E5F5),
+        color: Colors.red.shade50,
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.red.shade200,
+        ),
       ),
-      child: const Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Text(
-            'How it works',
-            style: TextStyle(
-              color: Color(0xFF6A1B9A),
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          SizedBox(height: 10),
-          _RuleRow(
-            icon: Icons.looks_one_rounded,
-            text: 'You get 1 free spin every day.',
-          ),
-          _RuleRow(
-            icon: Icons.looks_two_rounded,
-            text: 'Spin to receive a reward.',
-          ),
-          _RuleRow(
-            icon: Icons.looks_3_rounded,
-            text: 'Your next free spin is tomorrow.',
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _rewardIcon(
-    DailySpinReward reward,
-  ) {
-    switch (reward.type) {
-      case DailySpinRewardType.fan:
-        return Icons.monetization_on_rounded;
-
-      case DailySpinRewardType.miningBoost:
-        return Icons.bolt_rounded;
-
-      case DailySpinRewardType.streakBoost:
-        return Icons.local_fire_department_rounded;
-
-      case DailySpinRewardType.taskBonus:
-        return Icons.task_alt_rounded;
-
-      case DailySpinRewardType.tryAgain:
-        return Icons.refresh_rounded;
-    }
-  }
-}
-
-class _RuleRow extends StatelessWidget {
-  const _RuleRow({
-    required this.icon,
-    required this.text,
-  });
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding:
-          const EdgeInsets.only(bottom: 9),
       child: Row(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           Icon(
-            icon,
-            size: 20,
-            color: const Color(0xFF6A1B9A),
+            Icons.error_outline,
+            color: Colors.red.shade700,
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 14,
+              _error!,
+              style: TextStyle(
+                color: Colors.red.shade800,
               ),
             ),
           ),
         ],
       ),
     );
-  }
-}
-
-class _SpinWheelPainter
-    extends CustomPainter {
-  _SpinWheelPainter({
-    required this.rewards,
-  });
-
-  final List<DailySpinReward> rewards;
-
-  @override
-  void paint(
-    Canvas canvas,
-    Size size,
-  ) {
-    final center =
-        Offset(size.width / 2, size.height / 2);
-
-    final radius =
-        min(size.width, size.height) / 2;
-
-    final totalWeight =
-        rewards.fold<int>(
-      0,
-      (sum, reward) => sum + reward.weight,
-    );
-
-    double startAngle = -pi / 2;
-
-    for (var i = 0; i < rewards.length; i++) {
-      final reward = rewards[i];
-
-      final sweepAngle =
-          (reward.weight / totalWeight) *
-              2 *
-              pi;
-
-      final paint = Paint()
-        ..style = PaintingStyle.fill
-        ..color = _segmentColor(i);
-
-      canvas.drawArc(
-        Rect.fromCircle(
-          center: center,
-          radius: radius,
-        ),
-        startAngle,
-        sweepAngle,
-        true,
-        paint,
-      );
-
-      final borderPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = Colors.white;
-
-      canvas.drawArc(
-        Rect.fromCircle(
-          center: center,
-          radius: radius,
-        ),
-        startAngle,
-        sweepAngle,
-        true,
-        borderPaint,
-      );
-
-      final textAngle =
-          startAngle + sweepAngle / 2;
-
-      final textRadius =
-          radius * 0.67;
-
-      final textPosition = Offset(
-        center.dx +
-            cos(textAngle) *
-                textRadius,
-        center.dy +
-            sin(textAngle) *
-                textRadius,
-      );
-
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: reward.title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        textAlign: TextAlign.center,
-      );
-
-      textPainter.layout(
-        maxWidth: 72,
-      );
-
-      textPainter.paint(
-        canvas,
-        Offset(
-          textPosition.dx -
-              textPainter.width / 2,
-          textPosition.dy -
-              textPainter.height / 2,
-        ),
-      );
-
-      startAngle += sweepAngle;
-    }
-
-    final outerBorder = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..color = Colors.white;
-
-    canvas.drawCircle(
-      center,
-      radius,
-      outerBorder,
-    );
-  }
-
-  Color _segmentColor(int index) {
-    const colors = [
-      Color(0xFF7B1FA2),
-      Color(0xFF9C27B0),
-      Color(0xFFBA68C8),
-      Color(0xFF6A1B9A),
-      Color(0xFF8E24AA),
-      Color(0xFFAB47BC),
-      Color(0xFFCE93D8),
-      Color(0xFF4A148C),
-    ];
-
-    return colors[index % colors.length];
-  }
-
-  @override
-  bool shouldRepaint(
-    covariant _SpinWheelPainter oldDelegate,
-  ) {
-    return oldDelegate.rewards != rewards;
-  }
-}
-
-class _PointerPainter extends CustomPainter {
-  @override
-  void paint(
-    Canvas canvas,
-    Size size,
-  ) {
-    final path = Path()
-      ..moveTo(size.width / 2, size.height)
-      ..lineTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..close();
-
-    final paint = Paint()
-      ..color = const Color(0xFFFFC107)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawPath(path, paint);
-
-    final border = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawPath(path, border);
-  }
-
-  @override
-  bool shouldRepaint(
-    covariant CustomPainter oldDelegate,
-  ) {
-    return false;
   }
 }
