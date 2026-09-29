@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../localization/app_localizations.dart';
+import 'daily_spin_screen.dart';
 import 'home_screen.dart';
 import 'referral_screen.dart';
 import 'wallet_screen.dart';
@@ -18,13 +19,17 @@ class _MainNavigationScreenState
     extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
-  static const Color primaryPurple = Color(0xFF3B159B);
-  static const Color background = Color(0xFFF8F8FC);
+  static const Color primaryPurple =
+      Color(0xFF3B159B);
+
+  static const Color background =
+      Color(0xFFF8F8FC);
 
   @override
   Widget build(BuildContext context) {
     final screens = <Widget>[
       const HomeScreen(),
+      const DailySpinScreen(),
       const ReferralScreen(),
       const WalletScreen(),
       const SettingsScreen(),
@@ -49,7 +54,9 @@ class _MainNavigationScreenState
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
+            color: Colors.black.withValues(
+              alpha: 0.07,
+            ),
             blurRadius: 18,
             offset: const Offset(0, -4),
           ),
@@ -58,9 +65,9 @@ class _MainNavigationScreenState
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
+            4,
             8,
-            8,
-            8,
+            4,
             7,
           ),
           child: Row(
@@ -75,21 +82,27 @@ class _MainNavigationScreenState
               ),
               _navItem(
                 context,
+                Icons.casino_rounded,
+                'Daily Spin',
+                1,
+              ),
+              _navItem(
+                context,
                 Icons.people_alt_rounded,
                 'referral',
-                1,
+                2,
               ),
               _navItem(
                 context,
                 Icons.account_balance_wallet_rounded,
                 'wallet',
-                2,
+                3,
               ),
               _navItem(
                 context,
                 Icons.settings_rounded,
                 'settings',
-                3,
+                4,
               ),
             ],
           ),
@@ -104,45 +117,67 @@ class _MainNavigationScreenState
     String key,
     int index,
   ) {
-    final selected = _currentIndex == index;
+    final selected =
+        _currentIndex == index;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () {
-        setState(() {
-          _currentIndex = index;
-        });
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 3,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 27,
-              color: selected
-                  ? primaryPurple
-                  : const Color(0xFF60616C),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              AppLocalizations.of(context)
-                  .translate(key),
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: selected
-                    ? FontWeight.w800
-                    : FontWeight.w500,
+    final isDailySpin =
+        key == 'Daily Spin';
+
+    final label = isDailySpin
+        ? 'Daily Spin'
+        : AppLocalizations.of(context)
+            .translate(key);
+
+    return Expanded(
+      child: InkWell(
+        borderRadius:
+            BorderRadius.circular(16),
+        onTap: () {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 3,
+          ),
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 27,
                 color: selected
                     ? primaryPurple
-                    : const Color(0xFF60616C),
+                    : const Color(
+                        0xFF60616C,
+                      ),
               ),
-            ),
-          ],
+              const SizedBox(height: 3),
+              Text(
+                label,
+                maxLines: 1,
+                overflow:
+                    TextOverflow.ellipsis,
+                textAlign:
+                    TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: selected
+                      ? FontWeight.w800
+                      : FontWeight.w500,
+                  color: selected
+                      ? primaryPurple
+                      : const Color(
+                          0xFF60616C,
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
