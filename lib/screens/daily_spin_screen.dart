@@ -275,30 +275,19 @@ class _DailySpinScreenState
                       const EdgeInsets.all(20),
                   children: [
                     const SizedBox(height: 10),
-
                     _buildHeader(),
-
                     const SizedBox(height: 24),
-
                     _buildWheel(),
-
                     const SizedBox(height: 28),
-
                     _buildRewardResult(),
-
                     const SizedBox(height: 24),
-
                     _buildSpinButton(),
-
                     const SizedBox(height: 20),
-
                     _buildStatusCard(),
-
                     if (_error != null) ...[
                       const SizedBox(height: 16),
                       _buildErrorCard(),
                     ],
-
                     const SizedBox(height: 30),
                   ],
                 ),
@@ -308,8 +297,8 @@ class _DailySpinScreenState
   }
 
   Widget _buildHeader() {
-    return Column(
-      children: const [
+    return const Column(
+      children: [
         Text(
           'DAILY SPIN',
           textAlign: TextAlign.center,
@@ -361,10 +350,8 @@ class _DailySpinScreenState
             ),
             boxShadow: [
               BoxShadow(
-                color:
-                    Colors.deepPurple.withOpacity(
-                  0.25,
-                ),
+                color: Colors.deepPurple
+                    .withValues(alpha: 0.25),
                 blurRadius: 25,
                 spreadRadius: 5,
               ),
@@ -427,10 +414,8 @@ class _DailySpinScreenState
             BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.deepPurple.withOpacity(
-              0.20,
-            ),
+            color: Colors.deepPurple
+                .withValues(alpha: 0.20),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
