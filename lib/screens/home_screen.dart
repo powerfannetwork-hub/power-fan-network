@@ -6,6 +6,7 @@ import '../pages/kyc_page.dart';
 import '../services/kyc_service.dart';
 import '../services/levelplay_ads_service.dart';
 import '../services/mining_service.dart';
+import '../services/notification_service.dart';
 import '../services/social_task_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,7 +16,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color pageBackground = Color(0xFFF8F8FC);
@@ -112,18 +113,76 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
+    WidgetsBinding.instance.addObserver(this);
+
     unawaited(_loadInitial());
     unawaited(_initializeAds());
+    unawaited(_initializeNotifications());
 
     _startSocialTaskPolling();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
     _timer?.cancel();
     _socialTaskTimer?.cancel();
     _socialCountdownTimer?.cancel();
     super.dispose();
+  }
+
+  // ============================================================
+  // NOTIFICATIONS
+  // ============================================================
+
+  Future<void> _initializeNotifications() async {
+    try {
+      await NotificationService.instance.initialize();
+      await NotificationService.instance.requestPermission();
+    } catch (e) {
+      debugPrint(
+        'POWER FAN notification initialization error: $e',
+      );
+    }
+  }
+
+  Future<void> _syncMiningNotifications() async {
+    if (!mounted) return;
+
+    try {
+      await NotificationService.instance.syncMiningNotifications(
+        isMining: _isMining,
+        remainingSeconds:
+            _isMining ? _remaining.inSeconds : 0,
+      );
+    } catch (e) {
+      debugPrint(
+        'POWER FAN mining notification sync error: $e',
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(
+    AppLifecycleState state,
+  ) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_handleAppResumed());
+    }
+  }
+
+  Future<void> _handleAppResumed() async {
+    if (!mounted) return;
+
+    try {
+      await _loadMining();
+      await _loadProfile();
+    } catch (e) {
+      if (mounted) {
+        _message(_error(e));
+      }
+    }
   }
 
   // ============================================================
@@ -252,6 +311,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _rate = MiningService.defaultMiningRate;
       });
 
+      unawaited(_syncMiningNotifications());
+
       return;
     }
 
@@ -274,6 +335,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _adsWatched = 0;
         _rate = MiningService.defaultMiningRate;
       });
+
+      unawaited(_syncMiningNotifications());
 
       return;
     }
@@ -406,6 +469,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isMining) {
       _startTimer();
     }
+
+    unawaited(_syncMiningNotifications());
   }
 
   bool _isClaimableStatus(String? status) {
@@ -467,6 +532,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _adsWatched = 0;
           _rate = MiningService.defaultMiningRate;
         });
+
+        unawaited(_syncMiningNotifications());
       }
 
       return true;
@@ -484,6 +551,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _remaining = Duration.zero;
           _readyToStart = false;
         });
+
+        unawaited(_syncMiningNotifications());
       }
 
       return true;
@@ -570,6 +639,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isMining) {
       _startTimer();
     }
+
+    unawaited(_syncMiningNotifications());
 
     return true;
   }
@@ -895,6 +966,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       await _loadProfile();
+      await _syncMiningNotifications();
 
       if (!mounted) return;
 
