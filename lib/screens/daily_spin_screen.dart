@@ -254,8 +254,8 @@ class _DailySpinScreenState
         (2 * math.pi) / 8;
 
     /*
-     * Each segment starts with its CENTER
-     * aligned to the top arrow.
+     * Each segment is centered on the
+     * fixed pointer tip at the top.
      *
      * We add 5 full rotations so the wheel
      * visibly spins several times before
@@ -502,13 +502,24 @@ class _DailySpinScreenState
         child: Stack(
           alignment: Alignment.center,
           children: [
+            /*
+             * FIXED POINTER
+             *
+             * This stays completely still.
+             * Only the wheel below it rotates.
+             */
             Positioned(
               top: 0,
+              left: 0,
+              right: 0,
               child: _buildPointer(),
             ),
 
+            /*
+             * ROTATING WHEEL
+             */
             Positioned(
-              top: 20,
+              top: 34,
               left: 0,
               right: 0,
               child: AnimatedBuilder(
@@ -537,8 +548,11 @@ class _DailySpinScreenState
               ),
             ),
 
+            /*
+             * WHEEL CENTER
+             */
             Positioned(
-              top: 143,
+              top: 157,
               child: _buildWheelCenter(),
             ),
           ],
@@ -548,15 +562,10 @@ class _DailySpinScreenState
   }
 
   Widget _buildPointer() {
-    return Container(
-      width: 0,
-      height: 0,
-      decoration: const BoxDecoration(),
+    return SizedBox(
+      width: 54,
+      height: 70,
       child: CustomPaint(
-        size: const Size(
-          46,
-          54,
-        ),
         painter: _PointerPainter(),
       ),
     );
@@ -936,8 +945,9 @@ class _SpinWheelPainter
         i++) {
       /*
        * Segment 0 is centered at the top.
-       * The wheel itself is then rotated during
-       * the real spin.
+       *
+       * The wheel rotates underneath
+       * the fixed pointer.
        */
       final startAngle =
           -math.pi / 2 -
@@ -957,7 +967,8 @@ class _SpinWheelPainter
 
       final borderPaint = Paint()
         ..color = Colors.white
-        ..style = PaintingStyle.stroke
+        ..style =
+            PaintingStyle.stroke
         ..strokeWidth = 3;
 
       canvas.drawArc(
@@ -1069,6 +1080,18 @@ class _SpinWheelPainter
   }
 }
 
+/*
+ * ============================================================
+ * FIXED DAILY SPIN POINTER
+ * ============================================================
+ *
+ * This pointer DOES NOT rotate.
+ *
+ * The wheel rotates underneath it.
+ *
+ * The bottom pointed tip is the exact visual
+ * reference for the selected reward.
+ */
 class _PointerPainter
     extends CustomPainter {
   @override
@@ -1076,45 +1099,141 @@ class _PointerPainter
     Canvas canvas,
     Size size,
   ) {
-    final path = Path();
+    final centerX =
+        size.width / 2;
 
-    path.moveTo(
-      size.width / 2,
-      size.height,
+    /*
+     * Long thin pencil-like shaft.
+     */
+    final shaft =
+        RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        centerX - 7,
+        2,
+        14,
+        52,
+      ),
+      const Radius.circular(7),
     );
 
-    path.lineTo(
-      3,
-      4,
-    );
-
-    path.quadraticBezierTo(
-      size.width / 2,
-      -4,
-      size.width - 3,
-      4,
-    );
-
-    path.close();
-
-    final paint = Paint()
+    final shaftPaint = Paint()
       ..color =
           const Color(0xFFE53935)
-      ..style = PaintingStyle.fill;
+      ..style =
+          PaintingStyle.fill;
 
-    canvas.drawPath(
-      path,
-      paint,
+    canvas.drawRRect(
+      shaft,
+      shaftPaint,
     );
 
+    /*
+     * Small white highlight inside
+     * the red pointer.
+     */
+    final highlightPaint = Paint()
+      ..color =
+          Colors.white.withValues(
+        alpha: 0.38,
+      )
+      ..style =
+          PaintingStyle.fill;
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          centerX - 3,
+          6,
+          4,
+          43,
+        ),
+        const Radius.circular(2),
+      ),
+      highlightPaint,
+    );
+
+    /*
+     * Pencil-like pointed tip.
+     *
+     * THIS is the exact point that
+     * visually indicates the winning
+     * wheel segment.
+     */
+    final tip = Path()
+      ..moveTo(
+        centerX - 10,
+        51,
+      )
+      ..lineTo(
+        centerX + 10,
+        51,
+      )
+      ..lineTo(
+        centerX,
+        69,
+      )
+      ..close();
+
+    final tipPaint = Paint()
+      ..color =
+          const Color(0xFFD32F2F)
+      ..style =
+          PaintingStyle.fill;
+
+    canvas.drawPath(
+      tip,
+      tipPaint,
+    );
+
+    /*
+     * White outline makes the pointer
+     * clearly visible against the wheel.
+     */
     final borderPaint = Paint()
       ..color = Colors.white
       ..style =
           PaintingStyle.stroke
-      ..strokeWidth = 3;
+      ..strokeWidth = 2.5;
+
+    canvas.drawRRect(
+      shaft,
+      borderPaint,
+    );
 
     canvas.drawPath(
-      path,
+      tip,
+      borderPaint,
+    );
+
+    /*
+     * Purple cap at the top gives
+     * the pointer a clean pencil-like
+     * appearance and matches the app theme.
+     */
+    final cap =
+        RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        centerX - 10,
+        0,
+        20,
+        9,
+      ),
+      const Radius.circular(5),
+    );
+
+    final capPaint = Paint()
+      ..color =
+          const Color(0xFF6A1B9A)
+      ..style =
+          PaintingStyle.fill;
+
+    canvas.drawRRect(
+      cap,
+      capPaint,
+    );
+
+    canvas.drawRRect(
+      cap,
       borderPaint,
     );
   }
