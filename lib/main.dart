@@ -105,7 +105,7 @@ class _PowerFanMaterialApp extends StatelessWidget {
                 ),
               ),
             ),
-            cardTheme: CardTheme(
+            cardTheme: CardThemeData(
               elevation: 0,
               color: Colors.white,
               shape: RoundedRectangleBorder(
