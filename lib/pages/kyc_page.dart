@@ -56,8 +56,7 @@ class _KycPageState extends State<KycPage> {
 
       setState(() {
         _status = results[0] as KycStatus;
-        _migrationStatus =
-            results[1] as MigrationStatus;
+        _migrationStatus = results[1] as MigrationStatus;
         _loading = false;
       });
     } catch (error) {
@@ -198,38 +197,6 @@ class _KycPageState extends State<KycPage> {
         isError: true,
       );
     }
-  }
-
-  Future<void> _refreshMigrationStatus() async {
-    try {
-      final migrationStatus =
-          await _kycService.getMigrationStatus();
-
-      if (!mounted) return;
-
-      setState(() {
-        _migrationStatus = migrationStatus;
-      });
-    } catch (_) {
-      // Migration status refresh must not interrupt KYC UI.
-    }
-  }
-
-  Future<void> _migrateFanToAfam() async {
-    if (!_migrationStatus.migrationAvailable) {
-      _showMessage(
-        _migrationStatus.message.isNotEmpty
-            ? _migrationStatus.message
-            : 'AFAM migration is not available yet.',
-        isError: true,
-      );
-      return;
-    }
-
-    _showMessage(
-      'AFAM migration is coming soon.',
-      isError: true,
-    );
   }
 
   String _cleanError(Object error) {
