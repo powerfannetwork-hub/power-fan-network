@@ -20,18 +20,24 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FlutterActivity() {
 
-    private val deviceChannelName = "power_fan/device"
-    private val kycChannelName = "power_fan/didit"
+    private val deviceChannelName =
+        "power_fan/device"
+
+    private val kycChannelName =
+        "power_fan/didit"
 
     private val mainScope =
         CoroutineScope(
-            SupervisorJob() + Dispatchers.Main.immediate
+            SupervisorJob() +
+                Dispatchers.Main.immediate
         )
 
     override fun configureFlutterEngine(
         flutterEngine: FlutterEngine
     ) {
-        super.configureFlutterEngine(flutterEngine)
+        super.configureFlutterEngine(
+            flutterEngine
+        )
 
         // ============================================================
         // DEVICE CHANNEL
@@ -45,7 +51,9 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
 
                 "getAndroidId" -> {
+
                     try {
+
                         val androidId =
                             Settings.Secure.getString(
                                 contentResolver,
@@ -53,20 +61,26 @@ class MainActivity : FlutterActivity() {
                             )
 
                         if (androidId.isNullOrBlank()) {
+
                             result.error(
                                 "ANDROID_ID_UNAVAILABLE",
                                 "Android device ID is unavailable.",
                                 null
                             )
+
                         } else {
-                            result.success(androidId)
+
+                            result.success(
+                                androidId
+                            )
                         }
 
                     } catch (e: Exception) {
 
                         result.error(
                             "ANDROID_ID_ERROR",
-                            e.message,
+                            e.message
+                                ?: "Unable to read Android device ID.",
                             null
                         )
                     }
@@ -90,6 +104,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
 
                 "startVerificationWithWorkflow" -> {
+
                     startDiditVerification(
                         call,
                         result
@@ -107,14 +122,17 @@ class MainActivity : FlutterActivity() {
         // ============================================================
 
         try {
+
             if (!DiditSdk.isInitialized()) {
+
                 DiditSdk.initialize(
                     applicationContext
                 )
             }
-        } catch (e: Exception) {
-            // The actual error will also be returned when
-            // verification is requested.
+
+        } catch (_: Exception) {
+            // The request path reports the actual
+            // initialization error to Flutter.
         }
     }
 
@@ -128,14 +146,18 @@ class MainActivity : FlutterActivity() {
     ) {
 
         val workflowId =
-            call.argument<String>("workflowId")
+            call.argument<String>(
+                "workflowId"
+            )
 
         val vendorData =
-            call.argument<String>("vendorData")
+            call.argument<String>(
+                "vendorData"
+            )
 
-        // ------------------------------------------------------------
+        // ============================================================
         // VALIDATE WORKFLOW
-        // ------------------------------------------------------------
+        // ============================================================
 
         if (workflowId.isNullOrBlank()) {
 
@@ -148,9 +170,9 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        // ------------------------------------------------------------
-        // VALIDATE USER ID
-        // ------------------------------------------------------------
+        // ============================================================
+        // VALIDATE USER
+        // ============================================================
 
         if (vendorData.isNullOrBlank()) {
 
@@ -163,13 +185,14 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        // ------------------------------------------------------------
+        // ============================================================
         // INITIALIZE SDK
-        // ------------------------------------------------------------
+        // ============================================================
 
         try {
 
             if (!DiditSdk.isInitialized()) {
+
                 DiditSdk.initialize(
                     applicationContext
                 )
@@ -187,18 +210,23 @@ class MainActivity : FlutterActivity() {
             return
         }
 
-        // ------------------------------------------------------------
-        // PREVENT DOUBLE RESULT
-        // ------------------------------------------------------------
+        // ============================================================
+        // RESULT GUARD
+        // ============================================================
 
         val delivered =
             AtomicBoolean(false)
 
+        // Prevent Didit UI from being launched
+        // more than once for one request.
+        val uiLaunched =
+            AtomicBoolean(false)
+
         var stateJob: Job? = null
 
-        // ------------------------------------------------------------
-        // SUCCESS RESULT
-        // ------------------------------------------------------------
+        // ============================================================
+        // SUCCESS
+        // ============================================================
 
         fun deliverSuccess(
             value: Map<String, Any?>
@@ -219,9 +247,9 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ------------------------------------------------------------
-        // ERROR RESULT
-        // ------------------------------------------------------------
+        // ============================================================
+        // ERROR
+        // ============================================================
 
         fun deliverError(
             code: String,
@@ -248,59 +276,68 @@ class MainActivity : FlutterActivity() {
         try {
 
             // ========================================================
-            // WATCH DIDIT SDK STATE
+            // OBSERVE DIDIT STATE
             // ========================================================
 
-            stateJob = mainScope.launch {
+            stateJob =
+                mainScope.launch {
 
-                DiditSdk.state.collect { state ->
+                    DiditSdk.state.collect { state ->
 
-                    when (state) {
+                        when (state) {
 
-                        // ------------------------------------------------
-                        // DIDIT READY
-                        // ------------------------------------------------
+                            // ==================================================
+                            // READY
+                            // ==================================================
 
-                        is DiditSdkState.Ready -> {
+                            is DiditSdkState.Ready -> {
 
-                            try {
+                                if (
+                                    uiLaunched.compareAndSet(
+                                        false,
+                                        true
+                                    )
+                                ) {
 
-                                DiditSdk.launchVerificationUI(
-                                    this@MainActivity
-                                )
+                                    try {
 
-                            } catch (e: Exception) {
+                                        DiditSdk.launchVerificationUI(
+                                            this@MainActivity
+                                        )
+
+                                    } catch (e: Exception) {
+
+                                        deliverError(
+                                            "DIDIT_UI_ERROR",
+                                            e.message
+                                                ?: "Unable to open Didit verification UI."
+                                        )
+                                    }
+                                }
+                            }
+
+                            // ==================================================
+                            // SDK ERROR
+                            // ==================================================
+
+                            is DiditSdkState.Error -> {
 
                                 deliverError(
-                                    "DIDIT_UI_ERROR",
-                                    e.message
-                                        ?: "Unable to open Didit verification UI."
+                                    "DIDIT_SDK_ERROR",
+                                    state.message
                                 )
                             }
-                        }
 
-                        // ------------------------------------------------
-                        // DIDIT SDK ERROR
-                        // ------------------------------------------------
+                            // ==================================================
+                            // LOADING / IDLE / CREATING SESSION
+                            // ==================================================
 
-                        is DiditSdkState.Error -> {
-
-                            deliverError(
-                                "DIDIT_SDK_ERROR",
-                                state.message
-                            )
-                        }
-
-                        // ------------------------------------------------
-                        // LOADING / IDLE / CREATING SESSION
-                        // ------------------------------------------------
-
-                        else -> {
-                            // Wait for Ready or Error.
+                            else -> {
+                                // Wait for Ready or Error.
+                            }
                         }
                     }
                 }
-            }
 
             // ========================================================
             // CREATE DIDIT SESSION
@@ -316,15 +353,16 @@ class MainActivity : FlutterActivity() {
 
                 when (verificationResult) {
 
-                    // --------------------------------------------------
+                    // ==================================================
                     // COMPLETED
-                    // --------------------------------------------------
+                    // ==================================================
 
                     is VerificationResult.Completed -> {
 
                         deliverSuccess(
                             mapOf(
-                                "type" to "completed",
+                                "type" to
+                                    "completed",
 
                                 "sessionId" to
                                     verificationResult
@@ -340,15 +378,16 @@ class MainActivity : FlutterActivity() {
                         )
                     }
 
-                    // --------------------------------------------------
+                    // ==================================================
                     // CANCELLED
-                    // --------------------------------------------------
+                    // ==================================================
 
                     is VerificationResult.Cancelled -> {
 
                         deliverSuccess(
                             mapOf(
-                                "type" to "cancelled",
+                                "type" to
+                                    "cancelled",
 
                                 "sessionId" to
                                     verificationResult
@@ -364,15 +403,16 @@ class MainActivity : FlutterActivity() {
                         )
                     }
 
-                    // --------------------------------------------------
+                    // ==================================================
                     // FAILED
-                    // --------------------------------------------------
+                    // ==================================================
 
                     is VerificationResult.Failed -> {
 
                         deliverSuccess(
                             mapOf(
-                                "type" to "failed",
+                                "type" to
+                                    "failed",
 
                                 "errorType" to
                                     verificationResult
