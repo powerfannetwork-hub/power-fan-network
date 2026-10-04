@@ -23,8 +23,7 @@ class _KycPageState extends State<KycPage> {
   final KycService _kycService = KycService();
 
   KycStatus _status = KycStatus.initial();
-  MigrationStatus _migrationStatus =
-      MigrationStatus.initial();
+  MigrationStatus _migrationStatus = MigrationStatus.initial();
 
   bool _loading = true;
   bool _checkingIn = false;
@@ -137,17 +136,48 @@ class _KycPageState extends State<KycPage> {
     });
 
     try {
+      /*
+       * Didit handles Android camera permission internally.
+       *
+       * We explicitly configure the document camera as the
+       * rear camera and the liveness camera as the front camera.
+       *
+       * The timeout prevents the app from remaining stuck forever
+       * on "OPENING VERIFICATION..." if the native SDK cannot
+       * create/open the verification session.
+       */
       final result =
           await DiditSdk.startVerificationWithWorkflow(
         _diditWorkflowId,
         vendorData: 'powerfan-kyc',
         config: const DiditConfig(
-          loggingEnabled: false,
+          /*
+           * Keep logging enabled temporarily while we test
+           * the camera/verification problem.
+           *
+           * Set this back to false after successful testing.
+           */
+          loggingEnabled: true,
+
           showLanguageSelector: true,
           showCloseButton: true,
           showExitConfirmation: true,
           closeOnComplete: false,
+
+          defaultDocumentCamera: CameraLens.back,
+          defaultLivenessCamera: CameraLens.front,
+
+          showDocumentCameraSwitchButton: true,
+          showLivenessCameraSwitchButton: true,
         ),
+      ).timeout(
+        const Duration(seconds: 90),
+        onTimeout: () {
+          throw Exception(
+            'Didit verification did not open within 90 seconds. '
+            'Please check your internet connection and try again.',
+          );
+        },
       );
 
       if (!mounted) return;
@@ -156,31 +186,76 @@ class _KycPageState extends State<KycPage> {
         _startingVerification = false;
       });
 
-      final resultText =
-          result.toString().toLowerCase();
+      switch (result) {
+        case VerificationCompleted(:final session):
+          final String status =
+              session.status.name.toLowerCase();
 
-      if (resultText.contains('cancel') ||
-          resultText.contains('cancelled') ||
-          resultText.contains('canceled')) {
-        _showMessage(
-          'KYC verification was cancelled.',
-          isError: true,
-        );
-        return;
+          if (status == 'approved') {
+            _showMessage(
+              'Verification completed. Your KYC will be updated after secure confirmation.',
+            );
+          } else if (status == 'declined') {
+            _showMessage(
+              'Verification was declined. Please try again.',
+              isError: true,
+            );
+          } else {
+            _showMessage(
+              'Verification submitted. Your KYC status will update after secure confirmation.',
+            );
+          }
+
+          await _loadKyc();
+          break;
+
+        case VerificationCancelled():
+          _showMessage(
+            'KYC verification was cancelled.',
+            isError: true,
+          );
+          break;
+
+        case VerificationFailed(:final error):
+          final String errorType =
+              error.type.name.toLowerCase();
+
+          final String errorMessage =
+              error.message.trim();
+
+          String message;
+
+          if (errorType == 'cameraaccessdenied') {
+            message =
+                'Camera permission was denied. Open Android Settings and allow Camera permission for Power Fan Network, then try again.';
+          } else if (errorType == 'networkerror') {
+            message =
+                'Network connection failed while opening KYC. Check your internet connection and try again.';
+          } else if (errorType == 'notinitialized') {
+            message =
+                'Didit verification SDK is not initialized correctly. Please restart the app and try again.';
+          } else if (errorType == 'sessionexpired') {
+            message =
+                'The verification session expired. Please start KYC again.';
+          } else if (errorType == 'apierror') {
+            message =
+                errorMessage.isNotEmpty
+                    ? 'Didit API error: $errorMessage'
+                    : 'Didit could not create the verification session. Please try again.';
+          } else if (errorMessage.isNotEmpty) {
+            message =
+                'Didit verification failed: $errorMessage';
+          } else {
+            message =
+                'KYC verification could not be started. Please try again.';
+          }
+
+          _showMessage(
+            message,
+            isError: true,
+          );
+          break;
       }
-
-      if (resultText.contains('error') ||
-          resultText.contains('failed')) {
-        _showMessage(
-          'KYC verification could not be completed. Please try again.',
-          isError: true,
-        );
-        return;
-      }
-
-      _showMessage(
-        'Verification submitted. Your KYC status will update after verification is confirmed.',
-      );
 
       await _loadKyc();
     } catch (error) {
@@ -282,16 +357,22 @@ class _KycPageState extends State<KycPage> {
                 children: [
                   _buildHeaderCard(),
                   const SizedBox(height: 16),
+
                   if (_errorMessage != null)
                     _buildErrorCard(),
+
                   if (_errorMessage != null)
                     const SizedBox(height: 16),
+
                   _buildRequirementsCard(),
                   const SizedBox(height: 16),
+
                   _buildFaceVerificationCard(),
                   const SizedBox(height: 16),
+
                   _buildMigrationCard(),
                   const SizedBox(height: 16),
+
                   _buildSecurityCard(),
                 ],
               ),
@@ -302,6 +383,7 @@ class _KycPageState extends State<KycPage> {
   Widget _buildHeaderCard() {
     final bool verified =
         _status.faceVerified;
+
     final bool ready =
         _status.requirementsComplete;
 
@@ -447,7 +529,9 @@ class _KycPageState extends State<KycPage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color:
-            Colors.red.withValues(alpha: 0.07),
+            Colors.red.withValues(
+          alpha: 0.07,
+        ),
         borderRadius:
             BorderRadius.circular(15),
         border: Border.all(
@@ -482,12 +566,6 @@ class _KycPageState extends State<KycPage> {
   }
 
   Widget _buildRequirementsCard() {
-    final double checkInProgress =
-        _status.checkInProgress;
-
-    final double boostProgress =
-        _status.boostProgress;
-
     return _card(
       child: Column(
         crossAxisAlignment:
@@ -511,31 +589,38 @@ class _KycPageState extends State<KycPage> {
             ),
           ),
           const SizedBox(height: 20),
+
           _buildProgressItem(
             icon:
                 Icons.calendar_today_rounded,
             title: 'Daily Check-in',
             current: _status.checkInDays,
             total: 30,
-            progress: checkInProgress,
+            progress:
+                _status.checkInProgress,
             completed:
                 _status.checkInDays >= 30,
             todayDone:
                 _status.checkedInToday,
           ),
+
           const SizedBox(height: 22),
+
           _buildProgressItem(
             icon: Icons.bolt_rounded,
             title: 'Daily Boost',
             current: _status.boostDays,
             total: 30,
-            progress: boostProgress,
+            progress:
+                _status.boostProgress,
             completed:
                 _status.boostDays >= 30,
             todayDone:
                 _status.boostedToday,
           ),
+
           const SizedBox(height: 20),
+
           _buildCheckInButton(),
         ],
       ),
@@ -791,6 +876,7 @@ class _KycPageState extends State<KycPage> {
             ],
           ),
           const SizedBox(height: 15),
+
           Text(
             verified
                 ? 'Your identity has been verified.'
@@ -803,7 +889,9 @@ class _KycPageState extends State<KycPage> {
               color: Colors.grey.shade700,
             ),
           ),
+
           const SizedBox(height: 16),
+
           if (verified)
             _statusBox(
               icon:
@@ -836,7 +924,9 @@ class _KycPageState extends State<KycPage> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color:
-            primaryColor.withValues(alpha: 0.06),
+            primaryColor.withValues(
+          alpha: 0.06,
+        ),
         borderRadius:
             BorderRadius.circular(15),
         border: Border.all(
@@ -889,7 +979,9 @@ class _KycPageState extends State<KycPage> {
               ),
             ],
           ),
+
           const SizedBox(height: 14),
+
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -945,7 +1037,9 @@ class _KycPageState extends State<KycPage> {
               ),
             ),
           ),
+
           const SizedBox(height: 9),
+
           Text(
             'Camera and identity checks will be handled securely by the verification provider.',
             textAlign:
@@ -972,12 +1066,16 @@ class _KycPageState extends State<KycPage> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color:
-            color.withValues(alpha: 0.07),
+            color.withValues(
+          alpha: 0.07,
+        ),
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
           color:
-              color.withValues(alpha: 0.12),
+              color.withValues(
+            alpha: 0.12,
+          ),
         ),
       ),
       child: Row(
@@ -1070,25 +1168,33 @@ class _KycPageState extends State<KycPage> {
               ),
             ],
           ),
+
           const SizedBox(height: 14),
+
           _balanceRow(
             label: 'FAN Balance',
             value:
                 '${fanBalance.toStringAsFixed(4)} FAN',
           ),
+
           const SizedBox(height: 8),
+
           _balanceRow(
             label: 'AFAM Balance',
             value:
                 '${afamBalance.toStringAsFixed(4)} AFAM',
           ),
+
           const SizedBox(height: 8),
+
           _balanceRow(
             label: 'Conversion',
             value:
                 '${conversion.toStringAsFixed(0)} FAN = 1 AFAM',
           ),
+
           const SizedBox(height: 14),
+
           _statusBox(
             icon: Icons.schedule_rounded,
             title: 'COMING SOON',
