@@ -18,6 +18,13 @@ android {
     namespace = "com.fanmining.app"
     compileSdk = 36
 
+    packaging {
+        resources {
+            excludes +=
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.fanmining.app"
 
@@ -33,12 +40,19 @@ android {
     signingConfigs {
         create("release") {
             if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = file(
-                    keystoreProperties["storeFile"] as String
-                )
-                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias =
+                    keystoreProperties["keyAlias"] as String
+
+                keyPassword =
+                    keystoreProperties["keyPassword"] as String
+
+                storeFile =
+                    file(
+                        keystoreProperties["storeFile"] as String
+                    )
+
+                storePassword =
+                    keystoreProperties["storePassword"] as String
             }
         }
     }
@@ -56,7 +70,8 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig =
+                signingConfigs.getByName("release")
 
             isMinifyEnabled = true
             isShrinkResources = true
@@ -86,7 +101,7 @@ dependencies {
     )
 
     // ============================================================
-    // LEVELPLAY / GOOGLE PLAY SERVICES
+    // GOOGLE PLAY SERVICES
     // ============================================================
 
     implementation(
@@ -102,8 +117,7 @@ dependencies {
     )
 
     // ============================================================
-    // YANDEX ADS - UNITY LEVELPLAY ADAPTER
-    // Adapter 5.14.0 includes the compatible Yandex Ads SDK 8.4.0
+    // YANDEX / LEVELPLAY
     // ============================================================
 
     implementation(
@@ -112,7 +126,6 @@ dependencies {
 
     // ============================================================
     // CORE LIBRARY DESUGARING
-    // Required by flutter_local_notifications
     // ============================================================
 
     coreLibraryDesugaring(
