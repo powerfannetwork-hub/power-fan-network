@@ -82,8 +82,8 @@ class KycStatus {
     /*
      * KYC requirements are the primary unlock condition.
      *
-     * The server flag is still accepted for compatibility with
-     * the existing database/RPC response.
+     * The server flag is still accepted for compatibility
+     * with the existing database/RPC response.
      */
     final bool faceUnlocked =
         requirementsComplete ||
@@ -378,6 +378,17 @@ class KycService {
 
   final SupabaseClient _supabase;
 
+  /*
+   * Expose the Supabase client only through this service.
+   *
+   * This is used by the KYC page to confirm that an
+   * authenticated user exists before starting Didit.
+   */
+  SupabaseClient get client => _supabase;
+
+  User? get currentUser =>
+      _supabase.auth.currentUser;
+
   // ==========================================================
   // KYC PROGRESS
   // ==========================================================
@@ -570,11 +581,14 @@ class KycService {
     }
 
     /*
-     * This RPC only records that the user has entered
-     * the verification stage.
+     * This RPC records that the authenticated user
+     * has entered the face-verification stage.
      *
-     * It must NOT be treated as proof that the user
-     * passed biometric verification.
+     * IMPORTANT:
+     *
+     * It does NOT verify the user's identity.
+     * The secure backend/Didit result must remain
+     * the source of truth for KYC verification.
      */
     final dynamic response =
         await _supabase.rpc(
@@ -653,13 +667,11 @@ class KycService {
    * a user as KYC verified after simply opening/completing
    * the camera screen.
    *
-   * Didit should verify the session on its side and the
-   * secure backend/webhook should update the user's KYC
-   * status.
+   * Didit verifies the session and the secure backend/
+   * webhook should update the user's actual KYC status.
    *
-   * This method is retained only for compatibility with
-   * existing code. It does not automatically claim that
-   * biometric verification was successful.
+   * This method remains for compatibility with existing
+   * code. It does not automatically mark the user verified.
    */
   Future<KycStatus>
       completeFaceVerification({
@@ -672,8 +684,8 @@ class KycService {
     }
 
     /*
-     * Do not call complete_face_verification() from the
-     * client as proof of identity.
+     * Do not call complete_face_verification()
+     * from the client as proof of identity.
      *
      * Refresh the backend status instead.
      */
