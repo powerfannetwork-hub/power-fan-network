@@ -42,6 +42,13 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+
+        // Didit Identity Verification SDK
+        maven {
+            url = uri(
+                "https://raw.githubusercontent.com/didit-protocol/sdk-android/main/repository"
+            )
+        }
     }
 }
 
