@@ -1,7 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Internet -->
+    <!-- Internet / Didit network communication -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Network state detection -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Explicit camera permission for KYC -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- Android 13+ notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
