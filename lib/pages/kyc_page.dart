@@ -1,5 +1,5 @@
-import 'package:didit_sdk_autodetection/sdk_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/kyc_service.dart';
@@ -21,10 +21,14 @@ class _KycPageState extends State<KycPage> {
   static const String _diditWorkflowId =
       'cf608b75-86b5-4d03-80ac-9ffc0371dde6';
 
+  static const MethodChannel _diditChannel =
+      MethodChannel('power_fan/didit');
+
   final KycService _kycService = KycService();
 
   KycStatus _status = KycStatus.initial();
-  MigrationStatus _migrationStatus = MigrationStatus.initial();
+  MigrationStatus _migrationStatus =
+      MigrationStatus.initial();
 
   bool _loading = true;
   bool _checkingIn = false;
@@ -60,7 +64,8 @@ class _KycPageState extends State<KycPage> {
 
       setState(() {
         _status = results[0] as KycStatus;
-        _migrationStatus = results[1] as MigrationStatus;
+        _migrationStatus =
+            results[1] as MigrationStatus;
         _loading = false;
       });
     } catch (error) {
@@ -123,6 +128,22 @@ class _KycPageState extends State<KycPage> {
 
   // ============================================================
   // DIDIT FACE VERIFICATION
+  //
+  // IMPORTANT:
+  // The Flutter Didit SDK start call is intentionally NOT used
+  // here anymore.
+  //
+  // The verification is started through the native Android
+  // MethodChannel:
+  //
+  // power_fan/didit
+  //
+  // MainActivity.kt is responsible for:
+  // 1. Initializing Didit.
+  // 2. Starting the workflow.
+  // 3. Waiting for Didit Ready state.
+  // 4. Opening the native verification UI.
+  // 5. Returning Completed / Cancelled / Failed.
   // ============================================================
 
   Future<void> _startFaceVerification() async {
@@ -154,10 +175,11 @@ class _KycPageState extends State<KycPage> {
 
     try {
       // ----------------------------------------------------------
-      // CHECK AUTHENTICATION
+      // AUTHENTICATION
       // ----------------------------------------------------------
 
-      final User? user = _kycService.currentUser;
+      final User? user =
+          _kycService.currentUser;
 
       if (user == null) {
         throw Exception(
@@ -166,53 +188,16 @@ class _KycPageState extends State<KycPage> {
       }
 
       // ----------------------------------------------------------
-      // IMPORTANT:
-      //
-      // DO NOT CALL:
-      //
-      // await _kycService.startFaceVerification();
-      //
-      // BEFORE DIDIT.
-      //
-      // That RPC could hang and prevent Didit from opening.
-      //
-      // Didit creates the verification session directly from
-      // the workflow ID and vendorData.
+      // START NATIVE DIDIT VERIFICATION
       // ----------------------------------------------------------
 
-      final result =
-          await DiditSdk.startVerificationWithWorkflow(
-        _diditWorkflowId,
-        vendorData: user.id,
-        config: const DiditConfig(
-          loggingEnabled: true,
-
-          showLanguageSelector: true,
-
-          showCloseButton: true,
-
-          showExitConfirmation: true,
-
-          closeOnComplete: false,
-
-          // Document camera.
-          defaultDocumentCamera: CameraLens.back,
-
-          // Face/liveness camera.
-          defaultLivenessCamera: CameraLens.front,
-
-          // Allow camera switching where supported.
-          showDocumentCameraSwitchButton: true,
-
-          showLivenessCameraSwitchButton: true,
-        ),
-      ).timeout(
-        const Duration(seconds: 90),
-        onTimeout: () {
-          throw Exception(
-            'Didit verification did not open within 90 seconds. '
-            'Please check your internet connection and try again.',
-          );
+      final Map<dynamic, dynamic>? response =
+          await _diditChannel.invokeMethod<
+              Map<dynamic, dynamic>>(
+        'startVerificationWithWorkflow',
+        <String, dynamic>{
+          'workflowId': _diditWorkflowId,
+          'vendorData': user.id,
         },
       );
 
@@ -223,13 +208,34 @@ class _KycPageState extends State<KycPage> {
       });
 
       // ----------------------------------------------------------
-      // VERIFICATION COMPLETED
+      // READ NATIVE RESULT
       // ----------------------------------------------------------
 
-      switch (result) {
-        case VerificationCompleted(:final session):
+      final String type =
+          response?['type']
+                  ?.toString()
+                  .toLowerCase()
+                  .trim() ??
+              'failed';
+
+      final String errorMessage =
+          response?['errorMessage']
+                  ?.toString()
+                  .trim() ??
+              '';
+
+      switch (type) {
+        // --------------------------------------------------------
+        // COMPLETED
+        // --------------------------------------------------------
+
+        case 'completed':
           final String status =
-              session.status.name.toLowerCase();
+              response?['status']
+                      ?.toString()
+                      .toLowerCase()
+                      .trim() ??
+                  '';
 
           if (status == 'approved') {
             _showMessage(
@@ -249,86 +255,106 @@ class _KycPageState extends State<KycPage> {
           break;
 
         // --------------------------------------------------------
-        // USER CANCELLED
+        // CANCELLED
         // --------------------------------------------------------
 
-        case VerificationCancelled():
+        case 'cancelled':
           _showMessage(
             'KYC verification was cancelled.',
             isError: true,
           );
+
           break;
 
         // --------------------------------------------------------
-        // DIDIT FAILED
+        // FAILED
         // --------------------------------------------------------
 
-        case VerificationFailed(:final error):
-          final String errorType =
-              error.type.name.toLowerCase();
-
-          final String errorMessage =
-              error.message.trim();
-
-          String message;
-
-          if (errorType == 'cameraaccessdenied') {
-            message =
-                'Camera permission was denied. '
-                'Open Android Settings and allow Camera permission '
-                'for Power Fan Network, then try again.';
-          } else if (errorType == 'networkerror') {
-            message =
-                'Network connection failed while opening KYC. '
-                'Check your internet connection and try again.';
-          } else if (errorType == 'notinitialized') {
-            message =
-                'Didit verification SDK is not initialized correctly. '
-                'Please restart the app and try again.';
-          } else if (errorType == 'sessionexpired') {
-            message =
-                'The verification session expired. '
-                'Please start KYC again.';
-          } else if (errorType == 'apierror') {
-            message = errorMessage.isNotEmpty
-                ? 'Didit API error: $errorMessage'
-                : 'Didit could not create the verification session. '
-                    'Please try again.';
-          } else if (errorMessage.isNotEmpty) {
-            message =
-                'Didit verification failed: $errorMessage';
-          } else {
-            message =
-                'KYC verification could not be started. '
-                'Please try again.';
-          }
-
+        case 'failed':
+        default:
           _showMessage(
-            message,
+            errorMessage.isNotEmpty
+                ? 'Didit verification failed: $errorMessage'
+                : 'KYC verification could not be started. Please try again.',
             isError: true,
           );
+
           break;
       }
 
       // ----------------------------------------------------------
-      // REFRESH FROM SUPABASE
+      // REFRESH BACKEND STATUS
       //
-      // Backend / Didit confirmation remains the source of truth.
-      // We do NOT mark the user verified from the client.
+      // We do NOT mark KYC verified directly from Flutter.
+      // Supabase / server-side Didit confirmation remains the
+      // source of truth.
       // ----------------------------------------------------------
 
       await _loadKyc();
-    } catch (error) {
+    } on PlatformException catch (error) {
       if (!mounted) return;
+
+      final String code =
+          error.code.toLowerCase().trim();
+
+      final String message =
+          (error.message ?? '').trim();
+
+      String displayMessage;
+
+      if (code == 'cameraaccessdenied') {
+        displayMessage =
+            'Camera permission was denied. '
+            'Please allow Camera permission for Power Fan Network '
+            'in Android Settings and try again.';
+      } else if (code == 'networkerror') {
+        displayMessage =
+            'Network connection failed while opening KYC. '
+            'Check your internet connection and try again.';
+      } else if (code == 'notinitialized') {
+        displayMessage =
+            'Didit verification is not initialized correctly. '
+            'Please restart the app and try again.';
+      } else if (code == 'didit_sdk_error') {
+        displayMessage = message.isNotEmpty
+            ? 'Didit: $message'
+            : 'Didit SDK could not start verification.';
+      } else if (code == 'didit_ui_error') {
+        displayMessage = message.isNotEmpty
+            ? 'Unable to open KYC camera: $message'
+            : 'Unable to open the KYC verification screen.';
+      } else if (code == 'didit_start_error') {
+        displayMessage = message.isNotEmpty
+            ? 'Unable to start KYC: $message'
+            : 'Unable to start KYC verification.';
+      } else {
+        displayMessage = message.isNotEmpty
+            ? message
+            : 'Unable to start KYC verification. Please try again.';
+      }
 
       setState(() {
         _startingVerification = false;
-        _errorMessage = _cleanError(error);
+        _errorMessage = displayMessage;
       });
 
       _showMessage(
-        _errorMessage ??
-            'Unable to start face verification. Please try again.',
+        displayMessage,
+        isError: true,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      final String message =
+          _cleanError(error);
+
+      setState(() {
+        _startingVerification = false;
+        _errorMessage = message;
+      });
+
+      _showMessage(
+        message,
         isError: true,
       );
     }
@@ -347,6 +373,17 @@ class _KycPageState extends State<KycPage> {
 
     if (text.startsWith('PostgrestException: ')) {
       text = text.substring(19);
+    }
+
+    if (text.startsWith('PlatformException(')) {
+      final int firstComma =
+          text.indexOf(',');
+
+      if (firstComma > 0) {
+        text = text.substring(
+          firstComma + 1,
+        );
+      }
     }
 
     final String cleaned = text.trim();
@@ -374,8 +411,11 @@ class _KycPageState extends State<KycPage> {
         SnackBar(
           content: Text(message),
           backgroundColor:
-              isError ? Colors.red.shade700 : greenColor,
-          behavior: SnackBarBehavior.floating,
+              isError
+                  ? Colors.red.shade700
+                  : greenColor,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
   }
@@ -401,7 +441,8 @@ class _KycPageState extends State<KycPage> {
         ),
         actions: [
           IconButton(
-            onPressed: _loading ? null : _loadKyc,
+            onPressed:
+                _loading ? null : _loadKyc,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
@@ -410,7 +451,8 @@ class _KycPageState extends State<KycPage> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(
+              child:
+                  CircularProgressIndicator(
                 color: primaryColor,
               ),
             )
@@ -420,7 +462,8 @@ class _KycPageState extends State<KycPage> {
               child: ListView(
                 physics:
                     const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
+                padding:
+                    const EdgeInsets.fromLTRB(
                   16,
                   10,
                   16,
@@ -461,8 +504,11 @@ class _KycPageState extends State<KycPage> {
   // ============================================================
 
   Widget _buildHeaderCard() {
-    final bool verified = _status.faceVerified;
-    final bool ready = _status.requirementsComplete;
+    final bool verified =
+        _status.faceVerified;
+
+    final bool ready =
+        _status.requirementsComplete;
 
     String subtitle;
 
@@ -488,10 +534,12 @@ class _KycPageState extends State<KycPage> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius:
+            BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withValues(
+            color:
+                primaryColor.withValues(
               alpha: 0.20,
             ),
             blurRadius: 18,
@@ -505,7 +553,8 @@ class _KycPageState extends State<KycPage> {
             width: 70,
             height: 70,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(
+              color:
+                  Colors.white.withValues(
                 alpha: 0.15,
               ),
               shape: BoxShape.circle,
@@ -538,7 +587,8 @@ class _KycPageState extends State<KycPage> {
             subtitle,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(
+              color:
+                  Colors.white.withValues(
                 alpha: 0.90,
               ),
               fontSize: 13,
@@ -572,17 +622,21 @@ class _KycPageState extends State<KycPage> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 8,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(
+        color:
+            Colors.white.withValues(
           alpha: 0.14,
         ),
-        borderRadius: BorderRadius.circular(30),
+        borderRadius:
+            BorderRadius.circular(30),
         border: Border.all(
-          color: Colors.white.withValues(
+          color:
+              Colors.white.withValues(
             alpha: 0.25,
           ),
         ),
@@ -607,12 +661,15 @@ class _KycPageState extends State<KycPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(
+        color:
+            Colors.red.withValues(
           alpha: 0.07,
         ),
-        borderRadius: BorderRadius.circular(15),
+        borderRadius:
+            BorderRadius.circular(15),
         border: Border.all(
-          color: Colors.red.withValues(
+          color:
+              Colors.red.withValues(
             alpha: 0.15,
           ),
         ),
@@ -674,11 +731,14 @@ class _KycPageState extends State<KycPage> {
           const SizedBox(height: 20),
 
           _buildProgressItem(
-            icon: Icons.calendar_today_rounded,
+            icon:
+                Icons.calendar_today_rounded,
             title: 'Daily Check-in',
-            current: _status.checkInDays,
+            current:
+                _status.checkInDays,
             total: 30,
-            progress: _status.checkInProgress,
+            progress:
+                _status.checkInProgress,
             completed:
                 _status.checkInDays >= 30,
             todayDone:
@@ -690,9 +750,11 @@ class _KycPageState extends State<KycPage> {
           _buildProgressItem(
             icon: Icons.bolt_rounded,
             title: 'Daily Boost',
-            current: _status.boostDays,
+            current:
+                _status.boostDays,
             total: 30,
-            progress: _status.boostProgress,
+            progress:
+                _status.boostProgress,
             completed:
                 _status.boostDays >= 30,
             todayDone:
@@ -798,7 +860,8 @@ class _KycPageState extends State<KycPage> {
         ClipRRect(
           borderRadius:
               BorderRadius.circular(10),
-          child: LinearProgressIndicator(
+          child:
+              LinearProgressIndicator(
             value: progress,
             minHeight: 9,
             backgroundColor:
@@ -836,12 +899,14 @@ class _KycPageState extends State<KycPage> {
     if (_status.checkedInToday) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(
+        padding:
+            const EdgeInsets.symmetric(
           vertical: 13,
           horizontal: 14,
         ),
         decoration: BoxDecoration(
-          color: greenColor.withValues(
+          color:
+              greenColor.withValues(
             alpha: 0.08,
           ),
           borderRadius:
@@ -876,10 +941,15 @@ class _KycPageState extends State<KycPage> {
       height: 50,
       child: ElevatedButton.icon(
         onPressed:
-            _checkingIn ? null : _claimCheckIn,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
+            _checkingIn
+                ? null
+                : _claimCheckIn,
+        style:
+            ElevatedButton.styleFrom(
+          backgroundColor:
+              primaryColor,
+          foregroundColor:
+              Colors.white,
           shape:
               RoundedRectangleBorder(
             borderRadius:
@@ -897,7 +967,8 @@ class _KycPageState extends State<KycPage> {
                 ),
               )
             : const Icon(
-                Icons.event_available_rounded,
+                Icons
+                    .event_available_rounded,
               ),
         label: Text(
           _checkingIn
@@ -916,7 +987,9 @@ class _KycPageState extends State<KycPage> {
   // ============================================================
 
   Widget _buildFaceVerificationCard() {
-    final bool verified = _status.faceVerified;
+    final bool verified =
+        _status.faceVerified;
+
     final bool ready =
         _status.requirementsComplete;
 
@@ -1003,7 +1076,8 @@ class _KycPageState extends State<KycPage> {
               title: 'KYC LOCKED',
               message:
                   'Complete both 30-day requirements first.',
-              color: Colors.grey.shade700,
+              color:
+                  Colors.grey.shade700,
             ),
         ],
       ),
@@ -1011,7 +1085,7 @@ class _KycPageState extends State<KycPage> {
   }
 
   // ============================================================
-  // READY VERIFICATION
+  // READY VERIFICATION BOX
   // ============================================================
 
   Widget _buildReadyVerificationBox() {
@@ -1019,13 +1093,15 @@ class _KycPageState extends State<KycPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: primaryColor.withValues(
+        color:
+            primaryColor.withValues(
           alpha: 0.06,
         ),
         borderRadius:
             BorderRadius.circular(15),
         border: Border.all(
-          color: primaryColor.withValues(
+          color:
+              primaryColor.withValues(
             alpha: 0.13,
           ),
         ),
@@ -1159,13 +1235,15 @@ class _KycPageState extends State<KycPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withValues(
+        color:
+            color.withValues(
           alpha: 0.07,
         ),
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
-          color: color.withValues(
+          color:
+              color.withValues(
             alpha: 0.12,
           ),
         ),
@@ -1422,7 +1500,8 @@ class _KycPageState extends State<KycPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
+            color:
+                Colors.black.withValues(
               alpha: 0.025,
             ),
             blurRadius: 8,
