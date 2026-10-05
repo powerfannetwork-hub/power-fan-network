@@ -430,10 +430,7 @@ class _KycPageState extends State<KycPage> {
       );
 
       await _loadKyc();
-    } on TimeoutException catch (
-      error,
-      stackTrace,
-    ) {
+    } on TimeoutException catch (error, stackTrace) {
       _log(
         'DIDIT TIMEOUT: Didit did not return within '
         '${_diditTimeout.inSeconds} seconds.',
