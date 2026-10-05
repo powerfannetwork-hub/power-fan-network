@@ -23,12 +23,12 @@ dependencies:
   share_plus: 11.1.0
   crypto: ^3.0.5
 
+  # Camera / manual KYC
+  image_picker: ^1.1.2
+
   # Existing Ads / Boost system
   unity_levelplay_mediation: ^9.2.0
   yandex_mobileads: ^8.4.0
-
-  # Didit Identity Verification
-  didit_sdk_autodetection: ^4.9.0
 
 dev_dependencies:
   flutter_test:
