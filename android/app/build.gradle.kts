@@ -16,7 +16,16 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.fanmining.app"
+
     compileSdk = 36
+
+    /*
+     * Required by the native dependencies used by the project.
+     *
+     * The previous GitHub Actions build reported that a dependency
+     * requires NDK 28.2.13676358 while the project was using NDK 27.
+     */
+    ndkVersion = "28.2.13676358"
 
     packaging {
         resources {
@@ -39,7 +48,9 @@ android {
 
     signingConfigs {
         create("release") {
+
             if (keystorePropertiesFile.exists()) {
+
                 keyAlias =
                     keystoreProperties["keyAlias"] as String
 
@@ -69,7 +80,9 @@ android {
     }
 
     buildTypes {
+
         release {
+
             signingConfig =
                 signingConfigs.getByName("release")
 
@@ -92,17 +105,9 @@ flutter {
 
 dependencies {
 
-    // ============================================================
-    // MULTIDEX
-    // ============================================================
-
     implementation(
         "androidx.multidex:multidex:2.0.1"
     )
-
-    // ============================================================
-    // GOOGLE PLAY SERVICES
-    // ============================================================
 
     implementation(
         "com.google.android.gms:play-services-appset:16.0.2"
@@ -116,17 +121,9 @@ dependencies {
         "com.google.android.gms:play-services-basement:18.3.0"
     )
 
-    // ============================================================
-    // YANDEX / LEVELPLAY
-    // ============================================================
-
     implementation(
         "com.unity3d.ads-mediation:yandex-adapter:5.14.0"
     )
-
-    // ============================================================
-    // CORE LIBRARY DESUGARING
-    // ============================================================
 
     coreLibraryDesugaring(
         "com.android.tools:desugar_jdk_libs:2.1.5"
