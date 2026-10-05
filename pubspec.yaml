@@ -1,7 +1,6 @@
 name: powerfannetwork
 description: "Power Fan Network App"
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -14,44 +13,26 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # Supabase
   supabase_flutter: 2.15.4
-
-  # State management
   provider: ^6.1.2
-
-  # Notifications
   flutter_local_notifications: ^17.2.2
-
-  # Networking
   http: ^1.2.2
-
-  # App/package information
   package_info_plus: ^8.0.2
-
-  # URLs
   url_launcher: ^6.3.0
-
-  # Local storage
   shared_preferences: ^2.3.2
-
-  # Sharing
   share_plus: 11.1.0
-
-  # Cryptography
   crypto: ^3.0.5
 
-  # Unity LevelPlay
-  unity_levelplay_mediation: '>=9.1.0 <9.2.0'
+  # Existing Ads / Boost system
+  unity_levelplay_mediation: ^9.2.0
+  yandex_mobileads: ^8.4.0
 
   # Didit Identity Verification
-  # Automatic document/face capture without NFC.
   didit_sdk_autodetection: ^4.9.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^4.0.0
 
 dependency_overrides:
