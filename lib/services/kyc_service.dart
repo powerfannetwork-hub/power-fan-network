@@ -15,6 +15,9 @@ class KycStatus {
   final bool faceVerified;
   final bool faceVerificationStarted;
 
+  final String submissionStatus;
+  final DateTime? submittedAt;
+
   const KycStatus({
     required this.available,
     required this.comingSoon,
@@ -26,6 +29,8 @@ class KycStatus {
     required this.faceVerificationUnlocked,
     required this.faceVerified,
     required this.faceVerificationStarted,
+    required this.submissionStatus,
+    required this.submittedAt,
   });
 
   factory KycStatus.initial() {
@@ -40,6 +45,8 @@ class KycStatus {
       faceVerificationUnlocked: false,
       faceVerified: false,
       faceVerificationStarted: false,
+      submissionStatus: 'none',
+      submittedAt: null,
     );
   }
 
@@ -79,22 +86,35 @@ class KycStatus {
         checkInDays >= 30 &&
         boostDays >= 30;
 
-    /*
-     * KYC requirements are the primary unlock condition.
-     *
-     * The server flag is still accepted for compatibility
-     * with the existing database/RPC response.
-     */
+    final String submissionStatus =
+        (map['submission_status'] ?? 'none')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+    final DateTime? submittedAt =
+        map['submitted_at'] == null
+            ? null
+            : DateTime.tryParse(
+                map['submitted_at'].toString(),
+              );
+
+    final bool verifiedBySubmission =
+        submissionStatus == 'verified';
+
+    final bool faceIsVerified =
+        faceVerified || verifiedBySubmission;
+
     final bool faceUnlocked =
         requirementsComplete ||
         faceUnlockedFromServer ||
-        faceVerified;
+        faceIsVerified;
 
     return KycStatus(
       available:
           requirementsComplete ||
           faceUnlocked ||
-          faceVerified,
+          faceIsVerified,
       comingSoon: _toBool(
         map['coming_soon'],
       ),
@@ -114,9 +134,15 @@ class KycStatus {
       ),
       faceVerificationUnlocked:
           faceUnlocked,
-      faceVerified: faceVerified,
+      faceVerified:
+          faceIsVerified,
       faceVerificationStarted:
           faceStarted,
+      submissionStatus:
+          submissionStatus.isEmpty
+              ? 'none'
+              : submissionStatus,
+      submittedAt: submittedAt,
     );
   }
 
@@ -125,15 +151,25 @@ class KycStatus {
         boostDays >= 30;
   }
 
-  bool get canStartFaceVerification {
-    return requirementsComplete &&
-        faceVerificationUnlocked &&
-        !faceVerified &&
-        !faceVerificationStarted;
+  bool get isInReview {
+    return submissionStatus == 'in_review' ||
+        submissionStatus == 'pending';
+  }
+
+  bool get isRejected {
+    return submissionStatus == 'rejected';
   }
 
   bool get isVerified {
-    return faceVerified;
+    return faceVerified ||
+        submissionStatus == 'verified';
+  }
+
+  bool get canStartFaceVerification {
+    return requirementsComplete &&
+        faceVerificationUnlocked &&
+        !isVerified &&
+        !isInReview;
   }
 
   double get checkInProgress {
@@ -149,12 +185,15 @@ class KycStatus {
   }
 
   String get statusLabel {
-    if (faceVerified) {
+    if (isVerified) {
       return 'KYC VERIFIED';
     }
 
-    if (requirementsComplete &&
-        faceVerificationUnlocked) {
+    if (isInReview) {
+      return 'VERIFICATION IN REVIEW';
+    }
+
+    if (requirementsComplete) {
       return 'KYC READY';
     }
 
@@ -162,7 +201,7 @@ class KycStatus {
   }
 
   String get verificationMethod {
-    return 'Live Face Verification';
+    return 'Manual Face Verification';
   }
 
   KycStatus copyWith({
@@ -176,6 +215,8 @@ class KycStatus {
     bool? faceVerificationUnlocked,
     bool? faceVerified,
     bool? faceVerificationStarted,
+    String? submissionStatus,
+    DateTime? submittedAt,
   }) {
     return KycStatus(
       available:
@@ -203,6 +244,11 @@ class KycStatus {
       faceVerificationStarted:
           faceVerificationStarted ??
               this.faceVerificationStarted,
+      submissionStatus:
+          submissionStatus ??
+              this.submissionStatus,
+      submittedAt:
+          submittedAt ?? this.submittedAt,
     );
   }
 
@@ -298,28 +344,21 @@ class MigrationStatus {
         _toDouble(map['fan_per_afam']);
 
     return MigrationStatus(
-      success: _toBool(
-        map['success'],
-      ),
-      migrationOpen: _toBool(
-        map['migration_open'],
-      ),
-      migrationAvailable: _toBool(
-        map['migration_available'],
-      ),
+      success: _toBool(map['success']),
+      migrationOpen:
+          _toBool(map['migration_open']),
+      migrationAvailable:
+          _toBool(map['migration_available']),
       faceVerified: _toBool(
         map['face_verified'] ??
             map['kyc_face_verified'],
       ),
-      migrationCompleted: _toBool(
-        map['migration_completed'],
-      ),
-      fanBalance: _toDouble(
-        map['fan_balance'],
-      ),
-      afamBalance: _toDouble(
-        map['afam_balance'],
-      ),
+      migrationCompleted:
+          _toBool(map['migration_completed']),
+      fanBalance:
+          _toDouble(map['fan_balance']),
+      afamBalance:
+          _toDouble(map['afam_balance']),
       fanPerAfam:
           rate <= 0 ? 100 : rate,
       message:
@@ -378,12 +417,6 @@ class KycService {
 
   final SupabaseClient _supabase;
 
-  /*
-   * Expose the Supabase client only through this service.
-   *
-   * This is used by the KYC page to confirm that an
-   * authenticated user exists before starting Didit.
-   */
   SupabaseClient get client => _supabase;
 
   User? get currentUser =>
@@ -418,10 +451,57 @@ class KycService {
         return KycStatus.initial();
       }
 
-      return KycStatus.fromMap(data);
+      final Map<String, dynamic>
+          progress =
+          Map<String, dynamic>.from(data);
+
+      final Map<String, dynamic>
+          submission =
+          await getSubmissionStatus();
+
+      progress['submission_status'] =
+          submission['status'] ?? 'none';
+
+      progress['submitted_at'] =
+          submission['submitted_at'];
+
+      return KycStatus.fromMap(
+        progress,
+      );
     } on PostgrestException {
       rethrow;
     }
+  }
+
+  // ==========================================================
+  // SUBMISSION STATUS
+  // ==========================================================
+
+  Future<Map<String, dynamic>>
+      getSubmissionStatus() async {
+    final user =
+        _supabase.auth.currentUser;
+
+    if (user == null) {
+      return const {
+        'success': false,
+        'status': 'none',
+      };
+    }
+
+    final dynamic response =
+        await _supabase.rpc(
+      'get_kyc_submission_status',
+    );
+
+    final Map<String, dynamic>? data =
+        _mapFromResponse(response);
+
+    return data ??
+        const {
+          'success': false,
+          'status': 'none',
+        };
   }
 
   // ==========================================================
@@ -481,7 +561,73 @@ class KycService {
   }
 
   // ==========================================================
-  // VALIDATE KYC RPC RESPONSE
+  // SUBMIT MANUAL KYC
+  // ==========================================================
+
+  Future<KycStatus>
+      submitManualKyc({
+    required Map<String, String>
+        photoPaths,
+  }) async {
+    final user =
+        _supabase.auth.currentUser;
+
+    if (user == null) {
+      throw Exception(
+        'User is not signed in.',
+      );
+    }
+
+    const requiredKeys = [
+      'front',
+      'left',
+      'right',
+      'up',
+      'down',
+      'eyes',
+    ];
+
+    for (final String key in requiredKeys) {
+      final String? path =
+          photoPaths[key];
+
+      if (path == null ||
+          path.trim().isEmpty) {
+        throw Exception(
+          'All six KYC photos are required.',
+        );
+      }
+    }
+
+    final dynamic response =
+        await _supabase.rpc(
+      'submit_manual_kyc',
+      params: {
+        'p_front_path':
+            photoPaths['front'],
+        'p_left_path':
+            photoPaths['left'],
+        'p_right_path':
+            photoPaths['right'],
+        'p_up_path':
+            photoPaths['up'],
+        'p_down_path':
+            photoPaths['down'],
+        'p_eyes_path':
+            photoPaths['eyes'],
+      },
+    );
+
+    _validateActionResponse(
+      response,
+      actionName: 'KYC submission',
+    );
+
+    return getProgress();
+  }
+
+  // ==========================================================
+  // VALIDATE RPC RESPONSE
   // ==========================================================
 
   void _validateActionResponse(
@@ -521,8 +667,7 @@ class KycService {
   Map<String, dynamic>? _mapFromResponse(
     dynamic response,
   ) {
-    if (response
-        is Map<String, dynamic>) {
+    if (response is Map<String, dynamic>) {
       return response;
     }
 
@@ -537,8 +682,7 @@ class KycService {
       final dynamic first =
           response.first;
 
-      if (first
-          is Map<String, dynamic>) {
+      if (first is Map<String, dynamic>) {
         return first;
       }
 
@@ -553,7 +697,7 @@ class KycService {
   }
 
   // ==========================================================
-  // START FACE VERIFICATION
+  // LEGACY FACE VERIFICATION
   // ==========================================================
 
   Future<String?>
@@ -576,20 +720,10 @@ class KycService {
       );
     }
 
-    if (status.faceVerified) {
+    if (status.isVerified) {
       return null;
     }
 
-    /*
-     * This RPC records that the authenticated user
-     * has entered the face-verification stage.
-     *
-     * IMPORTANT:
-     *
-     * It does NOT verify the user's identity.
-     * The secure backend/Didit result must remain
-     * the source of truth for KYC verification.
-     */
     final dynamic response =
         await _supabase.rpc(
       'start_face_verification',
@@ -644,10 +778,6 @@ class KycService {
     return null;
   }
 
-  // ==========================================================
-  // FACE VERIFICATION STATUS
-  // ==========================================================
-
   Future<bool>
       isFaceVerificationStarted() async {
     final status =
@@ -656,23 +786,6 @@ class KycService {
     return status.faceVerificationStarted;
   }
 
-  // ==========================================================
-  // FACE VERIFICATION COMPLETION
-  // ==========================================================
-
-  /*
-   * IMPORTANT:
-   *
-   * The app must NOT use this method as a way to mark
-   * a user as KYC verified after simply opening/completing
-   * the camera screen.
-   *
-   * Didit verifies the session and the secure backend/
-   * webhook should update the user's actual KYC status.
-   *
-   * This method remains for compatibility with existing
-   * code. It does not automatically mark the user verified.
-   */
   Future<KycStatus>
       completeFaceVerification({
     required String verificationId,
@@ -683,12 +796,6 @@ class KycService {
       );
     }
 
-    /*
-     * Do not call complete_face_verification()
-     * from the client as proof of identity.
-     *
-     * Refresh the backend status instead.
-     */
     return getProgress();
   }
 
@@ -750,8 +857,7 @@ class KycService {
       'migrate_fan_to_afam',
     );
 
-    if (response
-        is Map<String, dynamic>) {
+    if (response is Map<String, dynamic>) {
       return response;
     }
 
@@ -775,7 +881,7 @@ class KycService {
   }
 
   // ==========================================================
-  // KYC HELPERS
+  // HELPERS
   // ==========================================================
 
   Future<bool>
@@ -790,7 +896,7 @@ class KycService {
     final KycStatus status =
         await getProgress();
 
-    return status.faceVerified;
+    return status.isVerified;
   }
 
   Future<bool>
