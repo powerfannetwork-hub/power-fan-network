@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:didit_sdk_autodetection/sdk_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,6 +24,9 @@ class _KycPageState extends State<KycPage> {
   static const String _diditWorkflowId =
       'cf608b75-86b5-4d03-80ac-9ffc0371dde6';
 
+  static const Duration _diditTimeout =
+      Duration(seconds: 60);
+
   final KycService _kycService = KycService();
 
   KycStatus _status = KycStatus.initial();
@@ -37,7 +43,29 @@ class _KycPageState extends State<KycPage> {
   @override
   void initState() {
     super.initState();
+
+    _log(
+      'KYC page initialized.',
+    );
+
     _loadKyc();
+  }
+
+  // ============================================================
+  // LOGGING
+  // ============================================================
+
+  void _log(
+    String message, {
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    developer.log(
+      message,
+      name: 'PowerFan.KYC',
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 
   // ============================================================
@@ -46,6 +74,10 @@ class _KycPageState extends State<KycPage> {
 
   Future<void> _loadKyc() async {
     if (!mounted) return;
+
+    _log(
+      'Loading KYC progress and migration status.',
+    );
 
     setState(() {
       _loading = true;
@@ -60,17 +92,41 @@ class _KycPageState extends State<KycPage> {
 
       if (!mounted) return;
 
+      final KycStatus kycStatus =
+          results[0] as KycStatus;
+
+      final MigrationStatus migrationStatus =
+          results[1] as MigrationStatus;
+
+      _log(
+        'KYC loaded successfully. '
+        'checkInDays=${kycStatus.checkInDays}, '
+        'boostDays=${kycStatus.boostDays}, '
+        'requirementsComplete=${kycStatus.requirementsComplete}, '
+        'faceUnlocked=${kycStatus.faceVerificationUnlocked}, '
+        'faceVerified=${kycStatus.faceVerified}',
+      );
+
       setState(() {
-        _status = results[0] as KycStatus;
-        _migrationStatus = results[1] as MigrationStatus;
+        _status = kycStatus;
+        _migrationStatus = migrationStatus;
         _loading = false;
       });
-    } catch (error) {
+    } catch (error, stackTrace) {
+      _log(
+        'Failed to load KYC data.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+
       if (!mounted) return;
+
+      final String message =
+          _cleanError(error);
 
       setState(() {
         _loading = false;
-        _errorMessage = _cleanError(error);
+        _errorMessage = message;
       });
     }
   }
@@ -80,11 +136,16 @@ class _KycPageState extends State<KycPage> {
   // ============================================================
 
   Future<void> _claimCheckIn() async {
-    if (_checkingIn || _status.checkedInToday) {
+    if (_checkingIn ||
+        _status.checkedInToday) {
       return;
     }
 
     if (!mounted) return;
+
+    _log(
+      'Starting daily check-in.',
+    );
 
     setState(() {
       _checkingIn = true;
@@ -93,6 +154,10 @@ class _KycPageState extends State<KycPage> {
 
     try {
       await _kycService.claimDailyCheckIn();
+
+      _log(
+        'Daily check-in RPC completed successfully.',
+      );
 
       if (!mounted) return;
 
@@ -107,17 +172,25 @@ class _KycPageState extends State<KycPage> {
       _showMessage(
         'Daily Check-in completed successfully.',
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
+      _log(
+        'Daily check-in failed.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+
       if (!mounted) return;
+
+      final String message =
+          _cleanError(error);
 
       setState(() {
         _checkingIn = false;
-        _errorMessage = _cleanError(error);
+        _errorMessage = message;
       });
 
       _showMessage(
-        _errorMessage ??
-            'Unable to complete Daily Check-in.',
+        message,
         isError: true,
       );
     }
@@ -126,43 +199,70 @@ class _KycPageState extends State<KycPage> {
   // ============================================================
   // DIDIT FACE VERIFICATION
   //
-  // Didit is started directly through the official Flutter SDK.
+  // IMPORTANT:
+  //
+  // Didit is launched directly through the official Flutter SDK.
   //
   // No Android MethodChannel is used here.
   //
-  // The workflow ID creates the Didit verification session.
+  // The workflow ID creates the verification flow.
+  //
   // The authenticated Supabase user ID is passed as vendorData.
   //
-  // The Didit SDK handles the camera permission/runtime flow.
+  // A timeout is used so the UI cannot remain stuck forever on
+  // "OPENING VERIFICATION...".
   // ============================================================
 
   Future<void> _startFaceVerification() async {
     if (_startingVerification) {
+      _log(
+        'Verification launch ignored because another launch '
+        'is already in progress.',
+      );
       return;
     }
 
     if (!_status.requirementsComplete) {
+      _log(
+        'Verification blocked because KYC requirements are incomplete. '
+        'checkInDays=${_status.checkInDays}, '
+        'boostDays=${_status.boostDays}',
+      );
+
       _showMessage(
         'Complete 30 days of Daily Check-in and 30 days of Daily Boost first.',
         isError: true,
       );
+
       return;
     }
 
     if (_status.faceVerified) {
+      _log(
+        'Verification launch blocked because KYC is already verified.',
+      );
+
       _showMessage(
         'Your KYC is already verified.',
       );
+
       return;
     }
 
-    final User? user = _kycService.currentUser;
+    final User? user =
+        _kycService.currentUser;
 
     if (user == null) {
+      _log(
+        'Verification launch failed because Supabase user session '
+        'is unavailable.',
+      );
+
       _showMessage(
         'User session is not available. Please login again.',
         isError: true,
       );
+
       return;
     }
 
@@ -173,71 +273,200 @@ class _KycPageState extends State<KycPage> {
       _errorMessage = null;
     });
 
+    final String shortUserId =
+        user.id.length > 8
+            ? user.id.substring(0, 8)
+            : user.id;
+
+    _log(
+      'Starting Didit verification. '
+      'workflowId=$_diditWorkflowId, '
+      'userIdPrefix=$shortUserId, '
+      'timeout=${_diditTimeout.inSeconds}s',
+    );
+
     try {
+      _log(
+        'Calling DiditSdk.startVerificationWithWorkflow().',
+      );
+
       final VerificationResult result =
-          await DiditSdk.startVerificationWithWorkflow(
-        _diditWorkflowId,
-        vendorData: user.id,
-        config: const DiditConfig(
-          loggingEnabled: true,
-        ),
+          await DiditSdk
+              .startVerificationWithWorkflow(
+                _diditWorkflowId,
+                vendorData: user.id,
+                config: const DiditConfig(
+                  loggingEnabled: true,
+                ),
+              )
+              .timeout(
+                _diditTimeout,
+                onTimeout: () {
+                  throw TimeoutException(
+                    'Didit verification did not return '
+                    'within ${_diditTimeout.inSeconds} seconds.',
+                  );
+                },
+              );
+
+      _log(
+        'Didit SDK returned a VerificationResult: '
+        '${result.runtimeType}',
       );
 
       if (!mounted) return;
 
       switch (result) {
-        case VerificationCompleted(:final session):
+        // --------------------------------------------------------
+        // COMPLETED
+        // --------------------------------------------------------
+
+        case VerificationCompleted(
+            :final session,
+          ):
+          _log(
+            'Didit VerificationCompleted received. '
+            'sessionId=${session.sessionId}, '
+            'status=${session.status}',
+          );
+
           switch (session.status) {
             case VerificationStatus.approved:
+              _log(
+                'Didit verification status is APPROVED. '
+                'Refreshing KYC status.',
+              );
+
               _showMessage(
-                'Verification completed successfully. Your KYC status will update after secure confirmation.',
+                'Verification completed successfully. '
+                'Refreshing your KYC status...',
               );
               break;
 
             case VerificationStatus.pending:
+              _log(
+                'Didit verification status is PENDING.',
+              );
+
               _showMessage(
-                'Verification submitted. Your KYC status will update after secure confirmation.',
+                'Verification submitted. '
+                'Your KYC status will update after secure confirmation.',
               );
               break;
 
             case VerificationStatus.declined:
+              _log(
+                'Didit verification status is DECLINED.',
+              );
+
               _showMessage(
                 'Verification was declined. Please try again.',
                 isError: true,
               );
               break;
           }
+
           break;
 
+        // --------------------------------------------------------
+        // CANCELLED
+        // --------------------------------------------------------
+
         case VerificationCancelled():
+          _log(
+            'User cancelled Didit verification.',
+          );
+
           _showMessage(
             'KYC verification was cancelled.',
             isError: true,
           );
+
           break;
 
-        case VerificationFailed(:final error):
+        // --------------------------------------------------------
+        // FAILED
+        // --------------------------------------------------------
+
+        case VerificationFailed(
+            :final error,
+          ):
+          final String diditError =
+              _formatDiditError(error);
+
+          _log(
+            'Didit VerificationFailed received. '
+            'type=${error.type}, '
+            'message=${error.message}',
+            error: error,
+          );
+
+          setState(() {
+            _errorMessage =
+                diditError;
+          });
+
           _showMessage(
-            'Didit verification failed: ${error.message}',
+            diditError,
             isError: true,
           );
+
           break;
       }
 
       /*
-       * Important:
+       * IMPORTANT:
        *
        * Flutter does NOT directly mark the user as KYC verified.
        *
-       * The secure backend remains the source of truth.
+       * Didit/backend remains the source of truth.
+       *
        * We only refresh the current KYC state after the Didit
        * verification flow returns.
        */
+
+      _log(
+        'Refreshing KYC state after Didit returned.',
+      );
+
       await _loadKyc();
-    } catch (error) {
+    } on TimeoutException catch (
+      error,
+      stackTrace,
+    ) {
+      _log(
+        'DIDIT TIMEOUT: Didit did not return within '
+        '${_diditTimeout.inSeconds} seconds.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+
       if (!mounted) return;
 
-      final String message = _cleanError(error);
+      const String message =
+          'Didit verification timed out. '
+          'The verification screen did not respond within 60 seconds. '
+          'Check your internet connection and try again.';
+
+      setState(() {
+        _errorMessage = message;
+      });
+
+      _showMessage(
+        message,
+        isError: true,
+      );
+    } catch (error, stackTrace) {
+      _log(
+        'Unexpected exception while starting Didit.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+
+      if (!mounted) return;
+
+      final String message =
+          _cleanError(error);
 
       setState(() {
         _errorMessage = message;
@@ -252,7 +481,71 @@ class _KycPageState extends State<KycPage> {
         setState(() {
           _startingVerification = false;
         });
+
+        _log(
+          'Didit verification launch state reset. '
+          'Button is available again.',
+        );
       }
+    }
+  }
+
+  // ============================================================
+  // DIDIT ERROR FORMAT
+  // ============================================================
+
+  String _formatDiditError(
+    VerificationError error,
+  ) {
+    final String type =
+        error.type.toString().contains('.')
+            ? error.type
+                .toString()
+                .split('.')
+                .last
+            : error.type.toString();
+
+    final String message =
+        error.message.trim();
+
+    _log(
+      'Formatting Didit error. '
+      'type=$type, message=$message',
+    );
+
+    switch (type) {
+      case 'networkError':
+        return 'Didit Network Error: '
+            '${message.isEmpty ? 'Unable to connect to Didit.' : message} '
+            'Please check your internet connection and try again.';
+
+      case 'cameraAccessDenied':
+        return 'Didit Camera Error: '
+            'Camera permission was denied. '
+            'Please allow camera permission for Power Fan Network '
+            'in Android Settings and try again.';
+
+      case 'notInitialized':
+        return 'Didit SDK Error: '
+            'The Didit SDK was not initialized correctly. '
+            'Please restart the app and try again.';
+
+      case 'apiError':
+        return 'Didit API Error: '
+            '${message.isEmpty ? 'Didit API request failed.' : message}';
+
+      case 'sessionExpired':
+        return 'Didit Session Expired: '
+            '${message.isEmpty ? 'The verification session expired.' : message} '
+            'Please start verification again.';
+
+      case 'unknown':
+        return 'Didit Error: '
+            '${message.isEmpty ? 'An unknown verification error occurred.' : message}';
+
+      default:
+        return 'Didit Error [$type]: '
+            '${message.isEmpty ? 'Verification could not be started.' : message}';
     }
   }
 
@@ -260,18 +553,28 @@ class _KycPageState extends State<KycPage> {
   // ERROR CLEANUP
   // ============================================================
 
-  String _cleanError(Object error) {
-    var text = error.toString();
+  String _cleanError(
+    Object error,
+  ) {
+    var text =
+        error.toString();
 
-    if (text.startsWith('Exception: ')) {
-      text = text.substring(11);
+    if (text.startsWith(
+      'Exception: ',
+    )) {
+      text =
+          text.substring(11);
     }
 
-    if (text.startsWith('PostgrestException: ')) {
-      text = text.substring(19);
+    if (text.startsWith(
+      'PostgrestException: ',
+    )) {
+      text =
+          text.substring(19);
     }
 
-    final String cleaned = text.trim();
+    final String cleaned =
+        text.trim();
 
     if (cleaned.isEmpty) {
       return 'Something went wrong. Please try again.';
@@ -299,7 +602,11 @@ class _KycPageState extends State<KycPage> {
               isError
                   ? Colors.red.shade700
                   : greenColor,
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
+          duration: Duration(
+            seconds: isError ? 6 : 4,
+          ),
         ),
       );
   }
@@ -309,24 +616,32 @@ class _KycPageState extends State<KycPage> {
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: lightBackground,
+      backgroundColor:
+          lightBackground,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: lightBackground,
-        foregroundColor: deepPurple,
+        backgroundColor:
+            lightBackground,
+        foregroundColor:
+            deepPurple,
         title: const Text(
           'KYC Verification',
           style: TextStyle(
-            fontWeight: FontWeight.w800,
+            fontWeight:
+                FontWeight.w800,
             fontSize: 21,
           ),
         ),
         actions: [
           IconButton(
             onPressed:
-                _loading ? null : _loadKyc,
+                _loading
+                    ? null
+                    : _loadKyc,
             icon: const Icon(
               Icons.refresh_rounded,
             ),
@@ -335,13 +650,17 @@ class _KycPageState extends State<KycPage> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(
-                color: primaryColor,
+              child:
+                  CircularProgressIndicator(
+                color:
+                    primaryColor,
               ),
             )
           : RefreshIndicator(
-              color: primaryColor,
-              onRefresh: _loadKyc,
+              color:
+                  primaryColor,
+              onRefresh:
+                  _loadKyc,
               child: ListView(
                 physics:
                     const AlwaysScrollableScrollPhysics(),
@@ -355,25 +674,37 @@ class _KycPageState extends State<KycPage> {
                 children: [
                   _buildHeaderCard(),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 16,
+                  ),
 
-                  if (_errorMessage != null)
+                  if (_errorMessage !=
+                      null)
                     _buildErrorCard(),
 
-                  if (_errorMessage != null)
-                    const SizedBox(height: 16),
+                  if (_errorMessage !=
+                      null)
+                    const SizedBox(
+                      height: 16,
+                    ),
 
                   _buildRequirementsCard(),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 16,
+                  ),
 
                   _buildFaceVerificationCard(),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 16,
+                  ),
 
                   _buildMigrationCard(),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 16,
+                  ),
 
                   _buildSecurityCard(),
                 ],
@@ -407,26 +738,35 @@ class _KycPageState extends State<KycPage> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding:
+          const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient:
+            const LinearGradient(
           colors: [
             primaryColor,
             deepPurple,
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
         ),
         borderRadius:
             BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
             color:
-                primaryColor.withValues(
+                primaryColor
+                    .withValues(
               alpha: 0.20,
             ),
             blurRadius: 18,
-            offset: const Offset(0, 8),
+            offset:
+                const Offset(
+              0,
+              8,
+            ),
           ),
         ],
       ),
@@ -435,43 +775,58 @@ class _KycPageState extends State<KycPage> {
           Container(
             width: 70,
             height: 70,
-            decoration: BoxDecoration(
+            decoration:
+                BoxDecoration(
               color:
-                  Colors.white.withValues(
+                  Colors.white
+                      .withValues(
                 alpha: 0.15,
               ),
-              shape: BoxShape.circle,
+              shape:
+                  BoxShape.circle,
             ),
             child: Icon(
               verified
-                  ? Icons.verified_rounded
+                  ? Icons
+                      .verified_rounded
                   : ready
-                      ? Icons.lock_open_rounded
-                      : Icons.verified_user_rounded,
-              color: Colors.white,
+                      ? Icons
+                          .lock_open_rounded
+                      : Icons
+                          .verified_user_rounded,
+              color:
+                  Colors.white,
               size: 38,
             ),
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
 
           const Text(
             'POWER FAN KYC',
             style: TextStyle(
-              color: Colors.white,
+              color:
+                  Colors.white,
               fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontWeight:
+                  FontWeight.w800,
             ),
           ),
 
-          const SizedBox(height: 7),
+          const SizedBox(
+            height: 7,
+          ),
 
           Text(
             subtitle,
-            textAlign: TextAlign.center,
+            textAlign:
+                TextAlign.center,
             style: TextStyle(
               color:
-                  Colors.white.withValues(
+                  Colors.white
+                      .withValues(
                 alpha: 0.90,
               ),
               fontSize: 13,
@@ -479,10 +834,13 @@ class _KycPageState extends State<KycPage> {
             ),
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(
+            height: 15,
+          ),
 
           _buildHeaderStatus(
-            verified: verified,
+            verified:
+                verified,
             ready: ready,
           ),
         ],
@@ -510,26 +868,32 @@ class _KycPageState extends State<KycPage> {
         horizontal: 16,
         vertical: 8,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color:
-            Colors.white.withValues(
+            Colors.white
+                .withValues(
           alpha: 0.14,
         ),
         borderRadius:
             BorderRadius.circular(30),
         border: Border.all(
           color:
-              Colors.white.withValues(
+              Colors.white
+                  .withValues(
             alpha: 0.25,
           ),
         ),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: Colors.white,
+        style:
+            const TextStyle(
+          color:
+              Colors.white,
           fontSize: 11,
-          fontWeight: FontWeight.w800,
+          fontWeight:
+              FontWeight.w800,
           letterSpacing: 0.6,
         ),
       ),
@@ -542,18 +906,22 @@ class _KycPageState extends State<KycPage> {
 
   Widget _buildErrorCard() {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      padding:
+          const EdgeInsets.all(14),
+      decoration:
+          BoxDecoration(
         color:
-            Colors.red.withValues(
+            Colors.red
+                .withValues(
           alpha: 0.07,
         ),
         borderRadius:
             BorderRadius.circular(15),
         border: Border.all(
           color:
-              Colors.red.withValues(
-            alpha: 0.15,
+              Colors.red
+                  .withValues(
+            alpha: 0.20,
           ),
         ),
       ),
@@ -561,19 +929,104 @@ class _KycPageState extends State<KycPage> {
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.error_outline_rounded,
-            color: Colors.red.shade700,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _errorMessage ?? '',
-              style: TextStyle(
-                color: Colors.red.shade800,
-                fontSize: 12,
-                height: 1.4,
+          Container(
+            width: 38,
+            height: 38,
+            decoration:
+                BoxDecoration(
+              color:
+                  Colors.red
+                      .withValues(
+                alpha: 0.10,
               ),
+              shape:
+                  BoxShape.circle,
+            ),
+            child: Icon(
+              Icons
+                  .error_outline_rounded,
+              color:
+                  Colors.red.shade700,
+              size: 23,
+            ),
+          ),
+
+          const SizedBox(
+            width: 10,
+          ),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'VERIFICATION ERROR',
+                  style: TextStyle(
+                    color:
+                        Colors.red.shade800,
+                    fontSize: 12,
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 5,
+                ),
+
+                Text(
+                  _errorMessage ?? '',
+                  style: TextStyle(
+                    color:
+                        Colors.red.shade800,
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 10,
+                ),
+
+                TextButton(
+                  onPressed: () {
+                    if (!mounted) {
+                      return;
+                    }
+
+                    setState(() {
+                      _errorMessage =
+                          null;
+                    });
+                  },
+                  style:
+                      TextButton.styleFrom(
+                    padding:
+                        EdgeInsets.zero,
+                    minimumSize:
+                        const Size(
+                      0,
+                      30,
+                    ),
+                    tapTargetSize:
+                        MaterialTapTargetSize
+                            .shrinkWrap,
+                  ),
+                  child:
+                      const Text(
+                    'DISMISS',
+                    style:
+                        TextStyle(
+                      fontSize: 11,
+                      fontWeight:
+                          FontWeight.w800,
+                      color:
+                          primaryColor,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -595,56 +1048,72 @@ class _KycPageState extends State<KycPage> {
             'KYC Requirements',
             style: TextStyle(
               fontSize: 19,
-              fontWeight: FontWeight.w800,
-              color: deepPurple,
+              fontWeight:
+                  FontWeight.w800,
+              color:
+                  deepPurple,
             ),
           ),
 
-          const SizedBox(height: 6),
+          const SizedBox(
+            height: 6,
+          ),
 
           Text(
             'Both requirements must reach 30 days.',
             style: TextStyle(
-              color: Colors.grey.shade700,
+              color:
+                  Colors.grey.shade700,
               fontSize: 13,
               height: 1.4,
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 20,
+          ),
 
           _buildProgressItem(
             icon:
                 Icons.calendar_today_rounded,
-            title: 'Daily Check-in',
+            title:
+                'Daily Check-in',
             current:
                 _status.checkInDays,
             total: 30,
             progress:
                 _status.checkInProgress,
             completed:
-                _status.checkInDays >= 30,
+                _status.checkInDays >=
+                    30,
             todayDone:
                 _status.checkedInToday,
           ),
 
-          const SizedBox(height: 22),
+          const SizedBox(
+            height: 22,
+          ),
 
           _buildProgressItem(
-            icon: Icons.bolt_rounded,
-            title: 'Daily Boost',
+            icon:
+                Icons.bolt_rounded,
+            title:
+                'Daily Boost',
             current:
                 _status.boostDays,
             total: 30,
             progress:
                 _status.boostProgress,
             completed:
-                _status.boostDays >= 30,
+                _status.boostDays >=
+                    30,
             todayDone:
                 _status.boostedToday,
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 20,
+          ),
 
           _buildCheckInButton(),
         ],
@@ -674,16 +1143,21 @@ class _KycPageState extends State<KycPage> {
             Container(
               width: 44,
               height: 44,
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 color: completed
-                    ? greenColor.withValues(
+                    ? greenColor
+                        .withValues(
                         alpha: 0.10,
                       )
-                    : primaryColor.withValues(
+                    : primaryColor
+                        .withValues(
                         alpha: 0.08,
                       ),
                 borderRadius:
-                    BorderRadius.circular(12),
+                    BorderRadius.circular(
+                  12,
+                ),
               ),
               child: Icon(
                 completed
@@ -695,7 +1169,9 @@ class _KycPageState extends State<KycPage> {
               ),
             ),
 
-            const SizedBox(width: 12),
+            const SizedBox(
+              width: 12,
+            ),
 
             Expanded(
               child: Column(
@@ -704,18 +1180,22 @@ class _KycPageState extends State<KycPage> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       fontWeight:
                           FontWeight.w800,
                       fontSize: 15,
                     ),
                   ),
 
-                  const SizedBox(height: 3),
+                  const SizedBox(
+                    height: 3,
+                  ),
 
                   Text(
                     '$current / $total days',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       color:
                           Colors.grey.shade600,
                       fontSize: 12,
@@ -728,22 +1208,30 @@ class _KycPageState extends State<KycPage> {
             if (completed)
               const Icon(
                 Icons.verified_rounded,
-                color: greenColor,
+                color:
+                    greenColor,
               )
             else if (todayDone)
               const Icon(
-                Icons.check_circle_rounded,
-                color: greenColor,
+                Icons
+                    .check_circle_rounded,
+                color:
+                    greenColor,
               ),
           ],
         ),
 
-        const SizedBox(height: 10),
+        const SizedBox(
+          height: 10,
+        ),
 
         ClipRRect(
           borderRadius:
-              BorderRadius.circular(10),
-          child: LinearProgressIndicator(
+              BorderRadius.circular(
+            10,
+          ),
+          child:
+              LinearProgressIndicator(
             value: progress,
             minHeight: 9,
             backgroundColor:
@@ -754,7 +1242,9 @@ class _KycPageState extends State<KycPage> {
           ),
         ),
 
-        const SizedBox(height: 7),
+        const SizedBox(
+          height: 7,
+        ),
 
         Text(
           completed
@@ -762,7 +1252,8 @@ class _KycPageState extends State<KycPage> {
               : todayDone
                   ? 'Today completed'
                   : 'Complete today to continue',
-          style: TextStyle(
+          style:
+              TextStyle(
             fontSize: 12,
             color: completed
                 ? greenColor
@@ -780,34 +1271,45 @@ class _KycPageState extends State<KycPage> {
   Widget _buildCheckInButton() {
     if (_status.checkedInToday) {
       return Container(
-        width: double.infinity,
+        width:
+            double.infinity,
         padding:
             const EdgeInsets.symmetric(
           vertical: 13,
           horizontal: 14,
         ),
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color:
-              greenColor.withValues(
+              greenColor
+                  .withValues(
             alpha: 0.08,
           ),
           borderRadius:
-              BorderRadius.circular(13),
+              BorderRadius.circular(
+            13,
+          ),
         ),
-        child: const Row(
+        child:
+            const Row(
           mainAxisAlignment:
               MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.check_circle_rounded,
-              color: greenColor,
+              Icons
+                  .check_circle_rounded,
+              color:
+                  greenColor,
               size: 20,
             ),
-            SizedBox(width: 8),
+            SizedBox(
+              width: 8,
+            ),
             Text(
               'TODAY CHECK-IN COMPLETED',
               style: TextStyle(
-                color: greenColor,
+                color:
+                    greenColor,
                 fontWeight:
                     FontWeight.w800,
                 fontSize: 12,
@@ -819,9 +1321,11 @@ class _KycPageState extends State<KycPage> {
     }
 
     return SizedBox(
-      width: double.infinity,
+      width:
+          double.infinity,
       height: 50,
-      child: ElevatedButton.icon(
+      child:
+          ElevatedButton.icon(
         onPressed:
             _checkingIn
                 ? null
@@ -835,7 +1339,9 @@ class _KycPageState extends State<KycPage> {
           shape:
               RoundedRectangleBorder(
             borderRadius:
-                BorderRadius.circular(13),
+                BorderRadius.circular(
+              13,
+            ),
           ),
         ),
         icon: _checkingIn
@@ -845,18 +1351,22 @@ class _KycPageState extends State<KycPage> {
                 child:
                     CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Colors.white,
+                  color:
+                      Colors.white,
                 ),
               )
             : const Icon(
-                Icons.event_available_rounded,
+                Icons
+                    .event_available_rounded,
               ),
         label: Text(
           _checkingIn
               ? 'CHECKING IN...'
               : 'DAILY CHECK-IN',
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
       ),
@@ -884,15 +1394,19 @@ class _KycPageState extends State<KycPage> {
               Container(
                 width: 50,
                 height: 50,
-                decoration: BoxDecoration(
+                decoration:
+                    BoxDecoration(
                   color: verified
-                      ? greenColor.withValues(
+                      ? greenColor
+                          .withValues(
                           alpha: 0.10,
                         )
-                      : primaryColor.withValues(
+                      : primaryColor
+                          .withValues(
                           alpha: 0.08,
                         ),
-                  shape: BoxShape.circle,
+                  shape:
+                      BoxShape.circle,
                 ),
                 child: Icon(
                   verified
@@ -906,7 +1420,9 @@ class _KycPageState extends State<KycPage> {
                 ),
               ),
 
-              const SizedBox(width: 14),
+              const SizedBox(
+                width: 14,
+              ),
 
               const Expanded(
                 child: Text(
@@ -915,14 +1431,17 @@ class _KycPageState extends State<KycPage> {
                     fontSize: 18,
                     fontWeight:
                         FontWeight.w800,
-                    color: deepPurple,
+                    color:
+                        deepPurple,
                   ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(
+            height: 15,
+          ),
 
           Text(
             verified
@@ -930,23 +1449,29 @@ class _KycPageState extends State<KycPage> {
                 : ready
                     ? 'Your KYC requirements are complete. You can now start real identity verification.'
                     : 'Face verification unlocks after completing 30 days of Daily Check-in and 30 days of Daily Boost.',
-            style: TextStyle(
+            style:
+                TextStyle(
               fontSize: 13,
               height: 1.5,
-              color: Colors.grey.shade700,
+              color:
+                  Colors.grey.shade700,
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(
+            height: 16,
+          ),
 
           if (verified)
             _statusBox(
               icon:
                   Icons.check_circle_rounded,
-              title: 'KYC VERIFIED',
+              title:
+                  'KYC VERIFIED',
               message:
                   'Face verification completed successfully.',
-              color: greenColor,
+              color:
+                  greenColor,
             )
           else if (ready)
             _buildReadyVerificationBox()
@@ -954,7 +1479,8 @@ class _KycPageState extends State<KycPage> {
             _statusBox(
               icon:
                   Icons.lock_outline_rounded,
-              title: 'KYC LOCKED',
+              title:
+                  'KYC LOCKED',
               message:
                   'Complete both 30-day requirements first.',
               color:
@@ -971,18 +1497,25 @@ class _KycPageState extends State<KycPage> {
 
   Widget _buildReadyVerificationBox() {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.all(15),
+      decoration:
+          BoxDecoration(
         color:
-            primaryColor.withValues(
+            primaryColor
+                .withValues(
           alpha: 0.06,
         ),
         borderRadius:
-            BorderRadius.circular(15),
+            BorderRadius.circular(
+          15,
+        ),
         border: Border.all(
           color:
-              primaryColor.withValues(
+              primaryColor
+                  .withValues(
             alpha: 0.13,
           ),
         ),
@@ -996,12 +1529,16 @@ class _KycPageState extends State<KycPage> {
                 CrossAxisAlignment.start,
             children: [
               const Icon(
-                Icons.verified_user_rounded,
-                color: primaryColor,
+                Icons
+                    .verified_user_rounded,
+                color:
+                    primaryColor,
                 size: 23,
               ),
 
-              const SizedBox(width: 10),
+              const SizedBox(
+                width: 10,
+              ),
 
               Expanded(
                 child: Column(
@@ -1010,19 +1547,24 @@ class _KycPageState extends State<KycPage> {
                   children: [
                     const Text(
                       'KYC READY',
-                      style: TextStyle(
-                        color: primaryColor,
+                      style:
+                          TextStyle(
+                        color:
+                            primaryColor,
                         fontWeight:
                             FontWeight.w800,
                         fontSize: 12,
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(
+                      height: 4,
+                    ),
 
                     Text(
                       'Your requirements are complete. Start the secure identity verification now.',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         color:
                             Colors.grey.shade700,
                         fontSize: 11,
@@ -1035,12 +1577,16 @@ class _KycPageState extends State<KycPage> {
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
 
           SizedBox(
-            width: double.infinity,
+            width:
+                double.infinity,
             height: 50,
-            child: ElevatedButton.icon(
+            child:
+                ElevatedButton.icon(
               onPressed:
                   _startingVerification
                       ? null
@@ -1052,13 +1598,16 @@ class _KycPageState extends State<KycPage> {
                 foregroundColor:
                     Colors.white,
                 disabledBackgroundColor:
-                    primaryColor.withValues(
+                    primaryColor
+                        .withValues(
                   alpha: 0.45,
                 ),
                 shape:
                     RoundedRectangleBorder(
                   borderRadius:
-                      BorderRadius.circular(13),
+                      BorderRadius.circular(
+                    13,
+                  ),
                 ),
               ),
               icon: _startingVerification
@@ -1068,17 +1617,20 @@ class _KycPageState extends State<KycPage> {
                       child:
                           CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color:
+                            Colors.white,
                       ),
                     )
                   : const Icon(
-                      Icons.camera_alt_rounded,
+                      Icons
+                          .camera_alt_rounded,
                     ),
               label: Text(
                 _startingVerification
                     ? 'OPENING VERIFICATION...'
                     : 'START FACE VERIFICATION',
-                style: const TextStyle(
+                style:
+                    const TextStyle(
                   fontWeight:
                       FontWeight.w800,
                   fontSize: 13,
@@ -1087,13 +1639,18 @@ class _KycPageState extends State<KycPage> {
             ),
           ),
 
-          const SizedBox(height: 9),
+          const SizedBox(
+            height: 9,
+          ),
 
           Text(
             'Camera and identity checks will be handled securely by the verification provider.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey.shade600,
+            textAlign:
+                TextAlign.center,
+            style:
+                TextStyle(
+              color:
+                  Colors.grey.shade600,
               fontSize: 10.5,
             ),
           ),
@@ -1113,15 +1670,20 @@ class _KycPageState extends State<KycPage> {
     required Color color,
   }) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.all(14),
+      decoration:
+          BoxDecoration(
         color:
             color.withValues(
           alpha: 0.07,
         ),
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
         border: Border.all(
           color:
               color.withValues(
@@ -1139,7 +1701,9 @@ class _KycPageState extends State<KycPage> {
             size: 22,
           ),
 
-          const SizedBox(width: 10),
+          const SizedBox(
+            width: 10,
+          ),
 
           Expanded(
             child: Column(
@@ -1148,7 +1712,8 @@ class _KycPageState extends State<KycPage> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     color: color,
                     fontWeight:
                         FontWeight.w800,
@@ -1156,11 +1721,14 @@ class _KycPageState extends State<KycPage> {
                   ),
                 ),
 
-                const SizedBox(height: 4),
+                const SizedBox(
+                  height: 4,
+                ),
 
                 Text(
                   message,
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     color:
                         Colors.grey.shade700,
                     fontSize: 11,
@@ -1199,69 +1767,93 @@ class _KycPageState extends State<KycPage> {
               Container(
                 width: 46,
                 height: 46,
-                decoration: BoxDecoration(
+                decoration:
+                    BoxDecoration(
                   color:
-                      orangeColor.withValues(
+                      orangeColor
+                          .withValues(
                     alpha: 0.10,
                   ),
                   borderRadius:
-                      BorderRadius.circular(12),
+                      BorderRadius.circular(
+                    12,
+                  ),
                 ),
                 child: const Icon(
-                  Icons.swap_horiz_rounded,
-                  color: orangeColor,
+                  Icons
+                      .swap_horiz_rounded,
+                  color:
+                      orangeColor,
                   size: 25,
                 ),
               ),
 
-              const SizedBox(width: 12),
+              const SizedBox(
+                width: 12,
+              ),
 
               const Expanded(
                 child: Text(
                   'AFAM Migration',
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 17,
                     fontWeight:
                         FontWeight.w800,
-                    color: deepPurple,
+                    color:
+                        deepPurple,
                   ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
 
           _balanceRow(
-            label: 'FAN Balance',
+            label:
+                'FAN Balance',
             value:
                 '${fanBalance.toStringAsFixed(4)} FAN',
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
 
           _balanceRow(
-            label: 'AFAM Balance',
+            label:
+                'AFAM Balance',
             value:
                 '${afamBalance.toStringAsFixed(4)} AFAM',
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
 
           _balanceRow(
-            label: 'Conversion',
+            label:
+                'Conversion',
             value:
                 '${conversion.toStringAsFixed(0)} FAN = 1 AFAM',
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
 
           _statusBox(
-            icon: Icons.schedule_rounded,
-            title: 'COMING SOON',
+            icon:
+                Icons.schedule_rounded,
+            title:
+                'COMING SOON',
             message:
                 'AFAM migration is not open yet. Your FAN balance remains safe. Migration will be enabled separately when the migration phase opens.',
-            color: orangeColor,
+            color:
+                orangeColor,
           ),
         ],
       ),
@@ -1281,7 +1873,8 @@ class _KycPageState extends State<KycPage> {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
+            style:
+                TextStyle(
               color:
                   Colors.grey.shade700,
               fontSize: 12,
@@ -1290,10 +1883,13 @@ class _KycPageState extends State<KycPage> {
         ),
         Text(
           value,
-          style: const TextStyle(
-            color: deepPurple,
+          style:
+              const TextStyle(
+            color:
+                deepPurple,
             fontSize: 13,
-            fontWeight: FontWeight.w800,
+            fontWeight:
+                FontWeight.w800,
           ),
         ),
       ],
@@ -1315,42 +1911,55 @@ class _KycPageState extends State<KycPage> {
               Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(
+                decoration:
+                    BoxDecoration(
                   color:
-                      primaryColor.withValues(
+                      primaryColor
+                          .withValues(
                     alpha: 0.08,
                   ),
                   borderRadius:
-                      BorderRadius.circular(12),
+                      BorderRadius.circular(
+                    12,
+                  ),
                 ),
                 child: const Icon(
                   Icons.security_rounded,
-                  color: primaryColor,
+                  color:
+                      primaryColor,
                 ),
               ),
 
-              const SizedBox(width: 12),
+              const SizedBox(
+                width: 12,
+              ),
 
               const Text(
                 'KYC Security',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontSize: 16,
                   fontWeight:
                       FontWeight.w800,
-                  color: deepPurple,
+                  color:
+                      deepPurple,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 13),
+          const SizedBox(
+            height: 13,
+          ),
 
           Text(
             'KYC progress is controlled by the secure backend. '
             'Daily check-ins, boosts, identity verification, '
             'and migration status are protected by server-side checks.',
-            style: TextStyle(
-              color: Colors.grey.shade700,
+            style:
+                TextStyle(
+              color:
+                  Colors.grey.shade700,
               fontSize: 12,
               height: 1.5,
             ),
@@ -1371,21 +1980,28 @@ class _KycPageState extends State<KycPage> {
   }) {
     return Container(
       padding: padding,
-      decoration: BoxDecoration(
-        color: Colors.white,
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.white,
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(
+          18,
+        ),
         border: Border.all(
-          color: Colors.grey.shade100,
+          color:
+              Colors.grey.shade100,
         ),
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withValues(
+                Colors.black
+                    .withValues(
               alpha: 0.025,
             ),
             blurRadius: 8,
-            offset: const Offset(0, 3),
+            offset:
+                const Offset(0, 3),
           ),
         ],
       ),
