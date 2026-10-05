@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:didit_sdk_autodetection/sdk_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/kyc_service.dart';
@@ -21,12 +21,10 @@ class _KycPageState extends State<KycPage> {
   static const String _diditWorkflowId =
       'cf608b75-86b5-4d03-80ac-9ffc0371dde6';
 
-  static const MethodChannel _diditChannel =
-      MethodChannel('power_fan/didit');
-
   final KycService _kycService = KycService();
 
   KycStatus _status = KycStatus.initial();
+
   MigrationStatus _migrationStatus =
       MigrationStatus.initial();
 
@@ -64,8 +62,7 @@ class _KycPageState extends State<KycPage> {
 
       setState(() {
         _status = results[0] as KycStatus;
-        _migrationStatus =
-            results[1] as MigrationStatus;
+        _migrationStatus = results[1] as MigrationStatus;
         _loading = false;
       });
     } catch (error) {
@@ -129,21 +126,14 @@ class _KycPageState extends State<KycPage> {
   // ============================================================
   // DIDIT FACE VERIFICATION
   //
-  // IMPORTANT:
-  // The Flutter Didit SDK start call is intentionally NOT used
-  // here anymore.
+  // Didit is started directly through the official Flutter SDK.
   //
-  // The verification is started through the native Android
-  // MethodChannel:
+  // No Android MethodChannel is used here.
   //
-  // power_fan/didit
+  // The workflow ID creates the Didit verification session.
+  // The authenticated Supabase user ID is passed as vendorData.
   //
-  // MainActivity.kt is responsible for:
-  // 1. Initializing Didit.
-  // 2. Starting the workflow.
-  // 3. Waiting for Didit Ready state.
-  // 4. Opening the native verification UI.
-  // 5. Returning Completed / Cancelled / Failed.
+  // The Didit SDK handles the camera permission/runtime flow.
   // ============================================================
 
   Future<void> _startFaceVerification() async {
@@ -166,6 +156,16 @@ class _KycPageState extends State<KycPage> {
       return;
     }
 
+    final User? user = _kycService.currentUser;
+
+    if (user == null) {
+      _showMessage(
+        'User session is not available. Please login again.',
+        isError: true,
+      );
+      return;
+    }
+
     if (!mounted) return;
 
     setState(() {
@@ -174,182 +174,72 @@ class _KycPageState extends State<KycPage> {
     });
 
     try {
-      // ----------------------------------------------------------
-      // AUTHENTICATION
-      // ----------------------------------------------------------
-
-      final User? user =
-          _kycService.currentUser;
-
-      if (user == null) {
-        throw Exception(
-          'User session is not available. Please login again.',
-        );
-      }
-
-      // ----------------------------------------------------------
-      // START NATIVE DIDIT VERIFICATION
-      // ----------------------------------------------------------
-
-      final Map<dynamic, dynamic>? response =
-          await _diditChannel.invokeMethod<
-              Map<dynamic, dynamic>>(
-        'startVerificationWithWorkflow',
-        <String, dynamic>{
-          'workflowId': _diditWorkflowId,
-          'vendorData': user.id,
-        },
+      final VerificationResult result =
+          await DiditSdk.startVerificationWithWorkflow(
+        _diditWorkflowId,
+        vendorData: user.id,
+        config: const DiditConfig(
+          loggingEnabled: true,
+        ),
       );
 
       if (!mounted) return;
 
-      setState(() {
-        _startingVerification = false;
-      });
+      switch (result) {
+        case VerificationCompleted(:final session):
+          switch (session.status) {
+            case VerificationStatus.approved:
+              _showMessage(
+                'Verification completed successfully. Your KYC status will update after secure confirmation.',
+              );
+              break;
 
-      // ----------------------------------------------------------
-      // READ NATIVE RESULT
-      // ----------------------------------------------------------
+            case VerificationStatus.pending:
+              _showMessage(
+                'Verification submitted. Your KYC status will update after secure confirmation.',
+              );
+              break;
 
-      final String type =
-          response?['type']
-                  ?.toString()
-                  .toLowerCase()
-                  .trim() ??
-              'failed';
-
-      final String errorMessage =
-          response?['errorMessage']
-                  ?.toString()
-                  .trim() ??
-              '';
-
-      switch (type) {
-        // --------------------------------------------------------
-        // COMPLETED
-        // --------------------------------------------------------
-
-        case 'completed':
-          final String status =
-              response?['status']
-                      ?.toString()
-                      .toLowerCase()
-                      .trim() ??
-                  '';
-
-          if (status == 'approved') {
-            _showMessage(
-              'Verification completed. Your KYC will be updated after secure confirmation.',
-            );
-          } else if (status == 'declined') {
-            _showMessage(
-              'Verification was declined. Please try again.',
-              isError: true,
-            );
-          } else {
-            _showMessage(
-              'Verification submitted. Your KYC status will update after secure confirmation.',
-            );
+            case VerificationStatus.declined:
+              _showMessage(
+                'Verification was declined. Please try again.',
+                isError: true,
+              );
+              break;
           }
-
           break;
 
-        // --------------------------------------------------------
-        // CANCELLED
-        // --------------------------------------------------------
-
-        case 'cancelled':
+        case VerificationCancelled():
           _showMessage(
             'KYC verification was cancelled.',
             isError: true,
           );
-
           break;
 
-        // --------------------------------------------------------
-        // FAILED
-        // --------------------------------------------------------
-
-        case 'failed':
-        default:
+        case VerificationFailed(:final error):
           _showMessage(
-            errorMessage.isNotEmpty
-                ? 'Didit verification failed: $errorMessage'
-                : 'KYC verification could not be started. Please try again.',
+            'Didit verification failed: ${error.message}',
             isError: true,
           );
-
           break;
       }
 
-      // ----------------------------------------------------------
-      // REFRESH BACKEND STATUS
-      //
-      // We do NOT mark KYC verified directly from Flutter.
-      // Supabase / server-side Didit confirmation remains the
-      // source of truth.
-      // ----------------------------------------------------------
-
+      /*
+       * Important:
+       *
+       * Flutter does NOT directly mark the user as KYC verified.
+       *
+       * The secure backend remains the source of truth.
+       * We only refresh the current KYC state after the Didit
+       * verification flow returns.
+       */
       await _loadKyc();
-    } on PlatformException catch (error) {
-      if (!mounted) return;
-
-      final String code =
-          error.code.toLowerCase().trim();
-
-      final String message =
-          (error.message ?? '').trim();
-
-      String displayMessage;
-
-      if (code == 'cameraaccessdenied') {
-        displayMessage =
-            'Camera permission was denied. '
-            'Please allow Camera permission for Power Fan Network '
-            'in Android Settings and try again.';
-      } else if (code == 'networkerror') {
-        displayMessage =
-            'Network connection failed while opening KYC. '
-            'Check your internet connection and try again.';
-      } else if (code == 'notinitialized') {
-        displayMessage =
-            'Didit verification is not initialized correctly. '
-            'Please restart the app and try again.';
-      } else if (code == 'didit_sdk_error') {
-        displayMessage = message.isNotEmpty
-            ? 'Didit: $message'
-            : 'Didit SDK could not start verification.';
-      } else if (code == 'didit_ui_error') {
-        displayMessage = message.isNotEmpty
-            ? 'Unable to open KYC camera: $message'
-            : 'Unable to open the KYC verification screen.';
-      } else if (code == 'didit_start_error') {
-        displayMessage = message.isNotEmpty
-            ? 'Unable to start KYC: $message'
-            : 'Unable to start KYC verification.';
-      } else {
-        displayMessage = message.isNotEmpty
-            ? message
-            : 'Unable to start KYC verification. Please try again.';
-      }
-
-      setState(() {
-        _startingVerification = false;
-        _errorMessage = displayMessage;
-      });
-
-      _showMessage(
-        displayMessage,
-        isError: true,
-      );
     } catch (error) {
       if (!mounted) return;
 
-      final String message =
-          _cleanError(error);
+      final String message = _cleanError(error);
 
       setState(() {
-        _startingVerification = false;
         _errorMessage = message;
       });
 
@@ -357,6 +247,12 @@ class _KycPageState extends State<KycPage> {
         message,
         isError: true,
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _startingVerification = false;
+        });
+      }
     }
   }
 
@@ -373,17 +269,6 @@ class _KycPageState extends State<KycPage> {
 
     if (text.startsWith('PostgrestException: ')) {
       text = text.substring(19);
-    }
-
-    if (text.startsWith('PlatformException(')) {
-      final int firstComma =
-          text.indexOf(',');
-
-      if (firstComma > 0) {
-        text = text.substring(
-          firstComma + 1,
-        );
-      }
     }
 
     final String cleaned = text.trim();
@@ -414,8 +299,7 @@ class _KycPageState extends State<KycPage> {
               isError
                   ? Colors.red.shade700
                   : greenColor,
-          behavior:
-              SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.floating,
         ),
       );
   }
@@ -451,8 +335,7 @@ class _KycPageState extends State<KycPage> {
       ),
       body: _loading
           ? const Center(
-              child:
-                  CircularProgressIndicator(
+              child: CircularProgressIndicator(
                 color: primaryColor,
               ),
             )
@@ -860,8 +743,7 @@ class _KycPageState extends State<KycPage> {
         ClipRRect(
           borderRadius:
               BorderRadius.circular(10),
-          child:
-              LinearProgressIndicator(
+          child: LinearProgressIndicator(
             value: progress,
             minHeight: 9,
             backgroundColor:
@@ -967,8 +849,7 @@ class _KycPageState extends State<KycPage> {
                 ),
               )
             : const Icon(
-                Icons
-                    .event_available_rounded,
+                Icons.event_available_rounded,
               ),
         label: Text(
           _checkingIn
@@ -1407,7 +1288,6 @@ class _KycPageState extends State<KycPage> {
             ),
           ),
         ),
-
         Text(
           value,
           style: const TextStyle(
