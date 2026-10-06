@@ -37,6 +37,7 @@ android {
     defaultConfig {
         applicationId = "com.fanmining.app"
 
+        // Android 7.0 (API 24) and newer.
         minSdk = 24
         targetSdk = 36
 
