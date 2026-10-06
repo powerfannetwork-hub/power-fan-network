@@ -50,16 +50,12 @@ jobs:
         shell: bash
         run: |
           set -e
-
           echo "=== Java ==="
           java -version
-
           echo "=== Flutter ==="
           flutter --version
-
           echo "=== Dart ==="
           dart --version
-
           echo "=== Gradle ==="
           gradle --version
 
@@ -248,10 +244,10 @@ jobs:
           set -e
 
           echo "======================================"
-          echo "BUILDING RELEASE APK"
+          echo "BUILDING SPLIT RELEASE APKs"
           echo "======================================"
 
-          flutter build apk --release
+          flutter build apk --release --split-per-abi
 
       - name: Verify APK
         shell: bash
