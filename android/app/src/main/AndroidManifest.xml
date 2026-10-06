@@ -49,10 +49,10 @@
 
                 <data
                     android:scheme="powerfan"
-                    android:host="reset-password" />
+                    android:host="reset_password" />
             </intent-filter>
 
-            <!-- Supabase Google OAuth deep link -->
+            <!-- Supabase Google OAuth login callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
