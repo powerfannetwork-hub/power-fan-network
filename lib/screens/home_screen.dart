@@ -3441,7 +3441,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               Row(
-  children: [
+                   children: [
     const Text(
       'BALANCE',
       style: TextStyle(
@@ -3508,73 +3508,197 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             ),
                             width: 2,
                           ),
-                        ),
-                        alignment:
-                            Alignment.center,
-                        child: const Text(
-                          'F',
-                          style: TextStyle(
-                            color:
-                                Color(
-                              0xFFE58A00,
-                            ),
-                            fontSize: 27,
-                            fontWeight:
-                                FontWeight
-                                    .w900,
-                          ),
-                        ),
-                      ),
+  Widget _buildBalanceCard() {
+  final displayedBalance =
+      _fan +
+      ((_isMining || _canClaim)
+          ? _sessionReward
+          : 0.0);
+
+  return Container(
+    height: 180,
+    decoration: BoxDecoration(
+      gradient:
+          const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF4320B4),
+          Color(0xFF29107A),
+        ],
+      ),
+      borderRadius:
+          BorderRadius.circular(23),
+      boxShadow: [
+        BoxShadow(
+          color:
+              primaryPurple.withValues(
+            alpha: 0.18,
+          ),
+          blurRadius: 14,
+          offset:
+              const Offset(0, 6),
+        ),
+      ],
+    ),
+    child: Stack(
+      children: [
+        Positioned(
+          right: -8,
+          bottom: -16,
+          child: Opacity(
+            opacity: 0.20,
+            child: const Icon(
+              Icons.engineering_rounded,
+              size: 150,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        Padding(
+          padding:
+              const EdgeInsets.fromLTRB(
+            20,
+            17,
+            20,
+            14,
+          ),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    'BALANCE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight:
+                          FontWeight.w700,
                     ),
-                    const SizedBox(width: 11),
-                    Flexible(
-                      child: Text(
-                        displayedBalance
-                            .toStringAsFixed(
-                          8,
-                        ),
-                        maxLines: 1,
-                        overflow:
-                            TextOverflow
-                                .ellipsis,
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.white,
-                          fontSize: 31,
-                          fontWeight:
-                              FontWeight
-                                  .w800,
-                          letterSpacing: -1,
-                        ),
-                      ),
-                    ),
+                  ),
+                  if (_kycStatus.isVerified) ...[
                     const SizedBox(width: 7),
-                    const Text(
-                      'FAN',
-                      style: TextStyle(
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration:
+                          const BoxDecoration(
+                        color:
+                            Color(0xFF22A660),
+                        shape:
+                            BoxShape.circle,
+                      ),
+                      alignment:
+                          Alignment.center,
+                      child: const Icon(
+                        Icons.check,
                         color: Colors.white,
-                        fontSize: 17,
-                        fontWeight:
-                            FontWeight.w700,
+                        size: 14,
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 7),
-                const Text(
-                  '≈ \$0.00',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
+                ],
+              ),
+              const SizedBox(height: 7),
+              Row(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration:
+                        const BoxDecoration(
+                      shape:
+                          BoxShape.circle,
+                      gradient:
+                          LinearGradient(
+                        colors: [
+                          Color(0xFFFFC928),
+                          Color(0xFFFFA800),
+                        ],
+                      ),
+                    ),
+                    alignment:
+                        Alignment.center,
+                    child: Container(
+                      width: 46,
+                      height: 46,
+                      decoration:
+                          BoxDecoration(
+                        shape:
+                            BoxShape.circle,
+                        border:
+                            Border.all(
+                          color:
+                              const Color(
+                            0xFFE89100,
+                          ),
+                          width: 2,
+                        ),
+                      ),
+                      alignment:
+                          Alignment.center,
+                      child: const Text(
+                        'F',
+                        style: TextStyle(
+                          color:
+                              Color(
+                            0xFFE58A00,
+                          ),
+                          fontSize: 27,
+                          fontWeight:
+                              FontWeight.w900,
+                        ),
+                      ),
+                    ),
                   ),
+                  const SizedBox(width: 11),
+                  Flexible(
+                    child: Text(
+                      displayedBalance
+                          .toStringAsFixed(
+                        8,
+                      ),
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(
+                        color: Colors.white,
+                        fontSize: 31,
+                        fontWeight:
+                            FontWeight.w800,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  const Text(
+                    'FAN',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight:
+                          FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              const Text(
+                '≈ \$0.00',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
   }
 
   // ============================================================
