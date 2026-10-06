@@ -3537,6 +3537,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           blurRadius: 14,
           offset:
+   Widget _buildBalanceCard() {
+  final displayedBalance =
+      _fan +
+      ((_isMining || _canClaim)
+          ? _sessionReward
+          : 0.0);
+
+  return Container(
+    height: 180,
+    decoration: BoxDecoration(
+      gradient:
+          const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF4320B4),
+          Color(0xFF29107A),
+        ],
+      ),
+      borderRadius:
+          BorderRadius.circular(23),
+      boxShadow: [
+        BoxShadow(
+          color:
+              primaryPurple.withValues(
+            alpha: 0.18,
+          ),
+          blurRadius: 14,
+          offset:
               const Offset(0, 6),
         ),
       ],
@@ -3665,7 +3694,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           TextOverflow.ellipsis,
                       style:
                           const TextStyle(
-                        color: Colors.white,
+                        color:
+                            Colors.white,
                         fontSize: 31,
                         fontWeight:
                             FontWeight.w800,
@@ -3699,7 +3729,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ],
     ),
   );
-  }
+   }
 
   // ============================================================
   // MINING CARD
