@@ -50,12 +50,16 @@ jobs:
         shell: bash
         run: |
           set -e
+
           echo "=== Java ==="
           java -version
+
           echo "=== Flutter ==="
           flutter --version
+
           echo "=== Dart ==="
           dart --version
+
           echo "=== Gradle ==="
           gradle --version
 
@@ -106,8 +110,10 @@ jobs:
 
           cp "$TEMP_GRADLE_DIR/gradlew" android/gradlew
           cp "$TEMP_GRADLE_DIR/gradlew.bat" android/gradlew.bat
+
           cp "$TEMP_GRADLE_DIR/gradle/wrapper/gradle-wrapper.jar" \
             android/gradle/wrapper/gradle-wrapper.jar
+
           cp "$TEMP_GRADLE_DIR/gradle/wrapper/gradle-wrapper.properties" \
             android/gradle/wrapper/gradle-wrapper.properties
 
@@ -238,16 +244,16 @@ jobs:
           set -e
           flutter analyze
 
-      - name: Build Release APK
+      - name: Build Universal Release APK
         shell: bash
         run: |
           set -e
 
           echo "======================================"
-          echo "BUILDING SPLIT RELEASE APKs"
+          echo "BUILDING UNIVERSAL RELEASE APK"
           echo "======================================"
 
-          flutter build apk --release --split-per-abi
+          flutter build apk --release
 
       - name: Verify APK
         shell: bash
@@ -267,13 +273,19 @@ jobs:
             -name "*.apk" \
             | wc -l)
 
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK was generated."
+          if [ "$APK_COUNT" -ne 1 ]; then
+            echo "ERROR: Expected exactly one universal APK."
+            echo "Found: $APK_COUNT APK(s)."
+            find "$APK_DIR" \
+              -maxdepth 1 \
+              -type f \
+              -name "*.apk" \
+              -print
             exit 1
           fi
 
           echo "======================================"
-          echo "APK BUILD SUCCESSFUL"
+          echo "UNIVERSAL APK BUILD SUCCESSFUL"
           echo "======================================"
 
           find "$APK_DIR" \
@@ -283,10 +295,10 @@ jobs:
             -print \
             -exec ls -lh {} \;
 
-      - name: Upload Release APK
+      - name: Upload Universal Release APK
         uses: actions/upload-artifact@v7
         with:
-          name: power-fan-network-release-apk
-          path: build/app/outputs/flutter-apk/*.apk
+          name: power-fan-network-universal-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 1
