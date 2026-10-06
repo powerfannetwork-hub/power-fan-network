@@ -293,4 +293,4 @@ jobs:
           name: power-fan-network-release-apk
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
