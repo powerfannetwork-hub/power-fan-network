@@ -3440,16 +3440,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'BALANCE',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight:
-                        FontWeight.w700,
-                  ),
-                ),
+              Row(
+  children: [
+    const Text(
+      'BALANCE',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    if (_kycStatus.isVerified) ...[
+      const SizedBox(width: 7),
+      Container(
+        width: 20,
+        height: 20,
+        decoration: const BoxDecoration(
+          color: Color(0xFF22A660),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.check,
+          color: Colors.white,
+          size: 14,
+        ),
+      ),
+    ],
+  ],
+),
                 const SizedBox(height: 7),
                 Row(
                   children: [
