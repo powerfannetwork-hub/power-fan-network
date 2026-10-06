@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/kyc_service.dart';
 import '../localization/app_localizations.dart';
 import '../localization/language_controller.dart';
 
@@ -15,6 +16,10 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
+
+  final KycService _kyc = KycService();
+
+  KycStatus _kycStatus = KycStatus.initial();
 
   Map<String, dynamic>? _profile;
   bool _loading = true;
@@ -31,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadData();
     _loadNotificationStatus();
+    _loadKyc();
   }
 
   String _t(String key) {
@@ -654,6 +660,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _loadKyc() async {
+    try {
+      final status = await _kyc.getProgress();
+
+      if (!mounted) return;
+
+      setState(() {
+        _kycStatus = status;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _kycStatus = KycStatus.initial();
+      });
+    }
+  }
+
   Future<void> _loadNotificationStatus() async {
     try {
       final enabled =
@@ -837,15 +861,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  children: [
+                    if (_kycStatus.isVerified) ...[
+                      Container(
+                        width: 20,
+                        height: 20,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF22A660),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                    ],
+                    Expanded(
+                      child: Text(
+                        _name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
