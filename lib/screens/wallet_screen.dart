@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/profile_service.dart';
+import '../services/levelplay_ads_service.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -13,76 +17,64 @@ class _WalletScreenState extends State<WalletScreen> {
   static const Color primaryPurple = Color(0xFF3B159B);
   static const Color deepPurple = Color(0xFF241064);
   static const Color background = Color(0xFFF8F8FC);
+  static const double fanPerAfam = 100.0;
+  static const int maxDailyMigrations = 2;
 
   final ProfileService _profileService = ProfileService.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
+  final LevelPlayAdsService _levelPlay = LevelPlayAdsService.instance;
 
-  double _fanBalance = 0.0;
-  double _afamBalance = 0.0;
+  final TextEditingController _usernameController =
+      TextEditingController();
+  final TextEditingController _amountController =
+      TextEditingController();
+
+  double _fanBalance = 0;
+  double _afamBalance = 0;
+
   bool _loading = true;
+  bool _working = false;
+  bool _migrationOpen = false;
+  bool _kycVerified = false;
+  bool _streaksComplete = false;
+
+  int _checkinStreak = 0;
+  int _boostStreak = 0;
+  int _migrationsToday = 0;
+
+  List<Map<String, dynamic>> _transactions = [];
 
   @override
   void initState() {
     super.initState();
-    _loadBalances();
+    _loadWallet();
   }
 
-  Future<void> _loadBalances() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-      });
-    }
-
-    try {
-      final balances = await _profileService.getBalances();
-
-      if (!mounted) return;
-
-      setState(() {
-        _fanBalance = _toDouble(balances['fan']);
-        _afamBalance = _toDouble(balances['afam']);
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
-
-      _showMessage(
-        _cleanError(error),
-        isError: true,
-      );
-    }
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _amountController.dispose();
+    super.dispose();
   }
 
   double _toDouble(dynamic value) {
-    if (value is num) {
-      return value.toDouble();
-    }
-
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
-  String _formatBalance(double value) {
-    return value.toStringAsFixed(4);
+  int _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String _cleanError(Object error) {
     final message = error.toString();
-
-    if (message.startsWith('Exception: ')) {
-      return message.substring(11);
-    }
-
-    return message;
+    return message.startsWith('Exception: ')
+        ? message.substring(11)
+        : message;
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _message(String message, {bool error = false}) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -91,380 +83,145 @@ class _WalletScreenState extends State<WalletScreen> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
-          backgroundColor:
-              isError ? Colors.red.shade700 : deepPurple,
+          backgroundColor: error ? Colors.red.shade700 : deepPurple,
         ),
       );
   }
 
-  void _showComingSoon(String feature) {
-    _showMessage('$feature is coming soon.');
+  Future<void> _loadWallet() async {
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+
+    try {
+      final balances = await _profileService.getBalances();
+
+      Map<String, dynamic> migrationStatus = {};
+      List<Map<String, dynamic>> history = [];
+
+      try {
+        final response =
+            await _supabase.rpc('get_migration_status');
+
+        if (response is Map) {
+          migrationStatus = Map<String, dynamic>.from(response);
+        }
+      } catch (e) {
+        debugPrint('Migration status could not be loaded: $e');
+      }
+
+      try {
+        final response = await _supabase.rpc(
+          'get_afam_wallet_transactions',
+          params: {'p_limit': 50},
+        );
+
+        if (response is Map && response['transactions'] is List) {
+          history = (response['transactions'] as List)
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        }
+      } catch (e) {
+        debugPrint('Wallet history could not be loaded: $e');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _fanBalance = balances['fan'] ?? 0;
+        _afamBalance = balances['afam'] ?? 0;
+
+        _migrationOpen =
+            migrationStatus['migration_open'] == true ||
+            migrationStatus['available'] == true;
+
+        _kycVerified =
+            migrationStatus['kyc_verified'] == true ||
+            migrationStatus['kyc_status'] == 'verified';
+
+        _checkinStreak =
+            _toInt(migrationStatus['kyc_checkin_streak']);
+        _boostStreak =
+            _toInt(migrationStatus['kyc_boost_streak']);
+
+        _streaksComplete =
+            _checkinStreak >= 30 && _boostStreak >= 30;
+
+        _migrationsToday =
+            _toInt(migrationStatus['migrations_today']);
+
+        _transactions = history;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _loading = false);
+      _message(_cleanError(e), error: true);
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: background,
-        foregroundColor: deepPurple,
-        centerTitle: true,
-        title: const Text(
-          'Wallet',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-      body: RefreshIndicator(
-        color: primaryPurple,
-        onRefresh: _loadBalances,
-        child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  color: primaryPurple,
-                ),
-              )
-            : SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  8,
-                  16,
-                  28,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildWalletHeader(),
-                    const SizedBox(height: 18),
-                    _buildFanCard(),
-                    const SizedBox(height: 14),
-                    _buildAfamCard(),
-                    const SizedBox(height: 18),
-                    _buildSolanaCard(),
-                    const SizedBox(height: 18),
-                    _buildActionsCard(),
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
+  Future<void> _migrateFan() async {
+    if (_working) return;
 
-  Widget _buildWalletHeader() {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Your Wallet',
-          style: TextStyle(
-            color: deepPurple,
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        SizedBox(height: 5),
-        Text(
-          'Manage your FAN and AFAM balances.',
-          style: TextStyle(
-            color: Colors.black54,
-            fontSize: 13,
-          ),
-        ),
-      ],
-    );
-  }
+    if (!_migrationOpen) {
+      _message('FAN to AFAM migration is not open yet.', error: true);
+      return;
+    }
 
-  Widget _buildFanCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            primaryPurple,
-            deepPurple,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: primaryPurple.withValues(alpha: 0.20),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.monetization_on_rounded,
-              color: Colors.white,
-              size: 31,
-            ),
-          ),
-          const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'FAN BALANCE',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${_formatBalance(_fanBalance)} FAN',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    if (!_kycVerified || !_streaksComplete) {
+      _message(
+        'You need verified KYC, 30 Daily Check-ins and 30 Daily Boosts.',
+        error: true,
+      );
+      return;
+    }
 
-  Widget _buildAfamCard() {
-    return _balanceCard(
-      icon: Icons.diamond_rounded,
-      title: 'AFAM BALANCE',
-      value: '${_formatBalance(_afamBalance)} AFAM',
-    );
-  }
+    if (_migrationsToday >= maxDailyMigrations) {
+      _message('You have reached the limit of 2 migrations today.',
+          error: true);
+      return;
+    }
 
-  Widget _balanceCard({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1EDFF),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(
-              icon,
-              color: primaryPurple,
-              size: 27,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: deepPurple,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    if (_fanBalance < fanPerAfam) {
+      _message('You need at least 100 FAN to convert to AFAM.',
+          error: true);
+      return;
+    }
 
-  Widget _buildSolanaCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: primaryPurple.withValues(alpha: 0.08),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F2FF),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.account_balance_wallet_rounded,
-              color: primaryPurple,
-              size: 25,
-            ),
-          ),
-          const SizedBox(width: 13),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Solana Wallet',
-                  style: TextStyle(
-                    color: deepPurple,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Wallet connection and \$AFAM transactions '
-                  'will be available soon.',
-                  style: TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(
-            Icons.lock_outline_rounded,
-            color: Colors.black38,
-            size: 21,
-          ),
-        ],
-      ),
-    );
-  }
+    setState(() => _working = true);
 
-  Widget _buildActionsCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Wallet Actions',
-            style: TextStyle(
-              color: deepPurple,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 14),
-          _actionTile(
-            icon: Icons.swap_horiz_rounded,
-            title: 'Transactions',
-            subtitle: 'Transaction history will be available soon.',
-            onTap: () => _showComingSoon('Transaction history'),
-          ),
-        ],
-      ),
-    );
-  }
+    try {
+      // Create a pending ad-reward request on the server first.
+      final request = await _supabase.rpc(
+        'request_afam_migration_ad',
+      );
 
-  Widget _actionTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        vertical: 5,
-      ),
-      onTap: onTap,
-      leading: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F2FF),
-          borderRadius: BorderRadius.circular(13),
-        ),
-        child: Icon(
-          icon,
-          color: primaryPurple,
-          size: 23,
-        ),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          color: deepPurple,
-          fontSize: 15,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(
-          color: Colors.black54,
-          fontSize: 11,
-        ),
-      ),
-      trailing: const Icon(
-        Icons.arrow_forward_ios_rounded,
-        color: Colors.black38,
-        size: 16,
-      ),
-    );
-  }
-}
+      if (request is! Map || request['success'] != true) {
+        final message = request is Map
+            ? (request['message']?.toString() ??
+                'Could not request migration ad.')
+            : 'Could not request migration ad.';
+
+        _message(message, error: true);
+        return;
+      }
+
+      /*
+       * This method will be added when we update
+       * levelplay_ads_service.dart in the next step.
+       *
+       * It must show the AFAM_MIGRATION placement.
+       * The app must NOT grant AFAM from the client-side
+       * rewarded callback alone. LevelPlay S2S must verify it.
+       */
+      final shown = await _levelPlay.showMigrationRewardedAd();
+
+      if (!shown) {
+        _message(
+          'The rewarded ad could not be shown. Please try again.',
+          error: true,
+        );
+        return;
+     
