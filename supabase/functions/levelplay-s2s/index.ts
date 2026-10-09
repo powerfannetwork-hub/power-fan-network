@@ -1,33 +1,19 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import CryptoJS from "npm:crypto-js@4.2.0";
 
-const supabaseUrl =
-  Deno.env.get("SUPABASE_URL") ?? "";
+const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const privateKey = Deno.env.get("LEVELPLAY_S2S_PRIVATE_KEY") ?? "";
+const expectedAppKey = Deno.env.get("LEVELPLAY_APP_KEY") ?? "";
 
-const serviceRoleKey =
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-const privateKey =
-  Deno.env.get("LEVELPLAY_S2S_PRIVATE_KEY") ?? "";
-
-const expectedAppKey =
-  Deno.env.get("LEVELPLAY_APP_KEY") ?? "";
-
-const admin = createClient(
-  supabaseUrl,
-  serviceRoleKey,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
+const admin = createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
   },
-);
+});
 
-function response(
-  body: string,
-  status = 200,
-): Response {
+function response(body: string, status = 200): Response {
   return new Response(body, {
     status,
     headers: {
@@ -41,18 +27,14 @@ function clean(value: string | null): string {
 }
 
 function md5(value: string): string {
-  return CryptoJS.MD5(value)
-    .toString(CryptoJS.enc.Hex)
-    .toLowerCase();
+  return CryptoJS.MD5(value).toString(CryptoJS.enc.Hex).toLowerCase();
 }
 
 function safeEqual(a: string, b: string): boolean {
   const left = a.toLowerCase();
   const right = b.toLowerCase();
 
-  if (left.length !== right.length) {
-    return false;
-  }
+  if (left.length !== right.length) return false;
 
   let result = 0;
 
@@ -66,9 +48,7 @@ function safeEqual(a: string, b: string): boolean {
 function normalizeUuid(value: string): string {
   const trimmed = value.trim();
 
-  if (
-    /^[0-9a-f]{32}$/i.test(trimmed)
-  ) {
+  if (/^[0-9a-f]{32}$/i.test(trimmed)) {
     return [
       trimmed.substring(0, 8),
       trimmed.substring(8, 12),
@@ -87,12 +67,8 @@ function isValidUuid(value: string): boolean {
   );
 }
 
-function isValidLevelPlayTimestamp(
-  timestamp: string,
-): boolean {
-  if (!/^\d{12}$/.test(timestamp)) {
-    return false;
-  }
+function isValidLevelPlayTimestamp(timestamp: string): boolean {
+  if (!/^\d{12}$/.test(timestamp)) return false;
 
   const year = Number(timestamp.substring(0, 4));
   const month = Number(timestamp.substring(4, 6));
@@ -114,13 +90,7 @@ function isValidLevelPlayTimestamp(
   }
 
   const date = new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      hour,
-      minute,
-    ),
+    Date.UTC(year, month - 1, day, hour, minute),
   );
 
   return (
@@ -133,370 +103,315 @@ function isValidLevelPlayTimestamp(
   );
 }
 
-Deno.serve(
-  async (request: Request): Promise<Response> => {
-    if (
-      request.method !== "GET" &&
-      request.method !== "POST"
-    ) {
-      return response("Method not allowed", 405);
-    }
+Deno.serve(async (request: Request): Promise<Response> => {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return response("Method not allowed", 405);
+  }
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error("Supabase environment variables are missing.");
-      return response("Server configuration error", 500);
-    }
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error("Supabase environment variables are missing.");
+    return response("Server configuration error", 500);
+  }
 
-    if (!privateKey || !expectedAppKey) {
-      console.error("LevelPlay S2S environment variables are missing.");
-      return response("Server configuration error", 500);
-    }
+  if (!privateKey || !expectedAppKey) {
+    console.error("LevelPlay S2S environment variables are missing.");
+    return response("Server configuration error", 500);
+  }
 
-    try {
-      const url = new URL(request.url);
-      const queryParams = url.searchParams;
-      const body: Record<string, unknown> = {};
+  try {
+    const url = new URL(request.url);
+    const queryParams = url.searchParams;
+    const body: Record<string, unknown> = {};
 
-      if (request.method === "POST") {
-        const contentType =
-          request.headers.get("content-type") ?? "";
+    if (request.method === "POST") {
+      const contentType = request.headers.get("content-type") ?? "";
+
+      if (contentType.toLowerCase().includes("application/json")) {
+        const json = await request.json().catch(() => ({}));
 
         if (
-          contentType.toLowerCase().includes("application/json")
+          json &&
+          typeof json === "object" &&
+          !Array.isArray(json)
         ) {
-          const json = await request.json().catch(() => ({}));
+          Object.assign(body, json);
+        }
+      } else {
+        const text = await request.text();
+        const form = new URLSearchParams(text);
 
-          if (
-            json &&
-            typeof json === "object" &&
-            !Array.isArray(json)
-          ) {
-            Object.assign(body, json);
-          }
-        } else {
-          const text = await request.text();
-          const form = new URLSearchParams(text);
+        form.forEach((value, key) => {
+          body[key] = value;
+        });
+      }
+    }
 
-          form.forEach((value, key) => {
-            body[key] = value;
-          });
+    const getParam = (...names: string[]): string => {
+      for (const name of names) {
+        const queryValue = queryParams.get(name);
+
+        if (queryValue !== null && queryValue.trim() !== "") {
+          return clean(queryValue);
+        }
+
+        const bodyValue = body[name];
+
+        if (
+          bodyValue !== undefined &&
+          bodyValue !== null &&
+          String(bodyValue).trim() !== ""
+        ) {
+          return clean(String(bodyValue));
         }
       }
 
-      const getParam = (...names: string[]): string => {
-        for (const name of names) {
-          const queryValue = queryParams.get(name);
+      return "";
+    };
 
-          if (
-            queryValue !== null &&
-            queryValue.trim() !== ""
-          ) {
-            return clean(queryValue);
-          }
+    const rawUserId = getParam(
+      "applicationUserId",
+      "appUserId",
+      "dynamicUserId",
+      "userId",
+      "userid",
+      "user_id",
+      "USER_ID",
+    );
 
-          const bodyValue = body[name];
+    const eventId = getParam(
+      "eventId",
+      "eventID",
+      "event_id",
+      "EVENT_ID",
+    );
 
-          if (
-            bodyValue !== undefined &&
-            bodyValue !== null &&
-            String(bodyValue).trim() !== ""
-          ) {
-            return clean(String(bodyValue));
-          }
-        }
+    const rewards = getParam("rewards", "reward", "REWARDS");
+    const timestamp = getParam("timestamp", "TIMESTAMP");
+    const signature = getParam("signature", "SIGNATURE");
+    const appKey = getParam("appKey", "APP_KEY");
 
-        return "";
-      };
+    const placementName = getParam(
+      "placementName",
+      "placement_name",
+      "PLACEMENT_NAME",
+      "placement",
+    );
 
-      const rawUserId = getParam(
-        "applicationUserId",
-        "appUserId",
-        "dynamicUserId",
-        "userId",
-        "userid",
-        "user_id",
-        "USER_ID",
+    if (!rawUserId) return response("Missing user ID", 400);
+    if (!eventId) return response("Missing event ID", 400);
+    if (!rewards) return response("Missing rewards", 400);
+    if (!timestamp) return response("Missing timestamp", 400);
+    if (!signature) return response("Missing signature", 400);
+    if (!appKey) return response("Missing app key", 403);
+
+    if (rawUserId.length < 1 || rawUserId.length > 64) {
+      return response("Invalid user ID", 400);
+    }
+
+    const userId = normalizeUuid(rawUserId);
+
+    if (!isValidUuid(userId)) {
+      return response("Invalid user ID", 400);
+    }
+
+    if (eventId.length < 1 || eventId.length > 255) {
+      return response("Invalid event ID", 400);
+    }
+
+    const rewardNumber = Number(rewards);
+
+    if (!Number.isFinite(rewardNumber) || rewardNumber <= 0) {
+      return response("Invalid reward amount", 400);
+    }
+
+    if (!isValidLevelPlayTimestamp(timestamp)) {
+      return response("Invalid timestamp", 400);
+    }
+
+    if (!safeEqual(appKey, expectedAppKey)) {
+      console.error("LevelPlay app key mismatch.");
+      return response("Invalid app key", 403);
+    }
+
+    // Use rawUserId in the signature to preserve the original callback value.
+    const signaturePayload =
+      timestamp +
+      eventId +
+      rawUserId +
+      rewards +
+      privateKey;
+
+    const expectedSignature = md5(signaturePayload);
+
+    if (!safeEqual(expectedSignature, signature)) {
+      console.error("LevelPlay S2S signature validation failed.");
+      return response("Invalid signature", 403);
+    }
+
+    /*
+     * ACTIVATION:
+     * Acknowledge the authenticated callback without granting
+     * migration, claim, or mining rewards.
+     */
+    if (placementName === "ACTIVATION") {
+      console.log(
+        "LevelPlay ACTIVATION callback acknowledged:",
+        eventId,
       );
 
-      const eventId = getParam(
-        "eventId",
-        "eventID",
-        "event_id",
-        "EVENT_ID",
+      return response(`${eventId}:OK`, 200);
+    }
+
+    /*
+     * AFAM MIGRATION:
+     * Verify the pending migration ad request after signature validation.
+     */
+    if (placementName === "AFAM_MIGRATION") {
+      const {
+        data: migrationData,
+        error: migrationError,
+      } = await admin.rpc(
+        "record_levelplay_afam_migration_reward",
+        {
+          p_user_id: userId,
+          p_event_id: eventId,
+        },
       );
 
-      const rewards = getParam(
-        "rewards",
-        "reward",
-        "REWARDS",
-      );
-
-      const timestamp = getParam(
-        "timestamp",
-        "TIMESTAMP",
-      );
-
-      const signature = getParam(
-        "signature",
-        "SIGNATURE",
-      );
-
-      const appKey = getParam(
-        "appKey",
-        "APP_KEY",
-      );
-
-      const placementName = getParam(
-        "placementName",
-        "placement_name",
-        "PLACEMENT_NAME",
-        "placement",
-      );
-
-      if (!rawUserId) {
-        return response("Missing user ID", 400);
-      }
-
-      if (!eventId) {
-        return response("Missing event ID", 400);
-      }
-
-      if (!rewards) {
-        return response("Missing rewards", 400);
-      }
-
-      if (!timestamp) {
-        return response("Missing timestamp", 400);
-      }
-
-      if (!signature) {
-        return response("Missing signature", 400);
-      }
-
-      if (!appKey) {
-        return response("Missing app key", 403);
-      }
-
-      if (
-        rawUserId.length < 1 ||
-        rawUserId.length > 64
-      ) {
-        return response("Invalid user ID", 400);
-      }
-
-      const userId = normalizeUuid(rawUserId);
-
-      if (!isValidUuid(userId)) {
-        return response("Invalid user ID", 400);
-      }
-
-      if (
-        eventId.length < 1 ||
-        eventId.length > 255
-      ) {
-        return response("Invalid event ID", 400);
-      }
-
-      const rewardNumber = Number(rewards);
-
-      if (
-        !Number.isFinite(rewardNumber) ||
-        rewardNumber <= 0
-      ) {
-        return response("Invalid reward amount", 400);
-      }
-
-      if (!isValidLevelPlayTimestamp(timestamp)) {
-        return response("Invalid timestamp", 400);
-      }
-
-      if (!safeEqual(appKey, expectedAppKey)) {
-        console.error("LevelPlay app key mismatch.");
-        return response("Invalid app key", 403);
-      }
-
-      /*
-       * Muhimmi:
-       * Ana amfani da rawUserId a signature domin kada
-       * normalization ya canza payload ɗin LevelPlay.
-       */
-      const signaturePayload =
-        timestamp +
-        eventId +
-        rawUserId +
-        rewards +
-        privateKey;
-
-      const expectedSignature = md5(signaturePayload);
-
-      if (!safeEqual(expectedSignature, signature)) {
-        console.error("LevelPlay S2S signature validation failed.");
-        return response("Invalid signature", 403);
-      }
-
-      /*
-       * AFAM MIGRATION REWARDED AD
-       *
-       * Ana shiga wannan sashe ne kawai idan callback ya aika
-       * placementName = AFAM_MIGRATION.
-       *
-       * Sauran ads suna ci gaba da tsohon tsarin mining/claim.
-       */
-      if (placementName === "AFAM_MIGRATION") {
-        const {
-          data: migrationData,
-          error: migrationError,
-        } = await admin.rpc(
-          "record_levelplay_afam_migration_reward",
-          {
-            p_user_id: userId,
-            p_event_id: eventId,
-          },
+      if (migrationError) {
+        console.error(
+          "AFAM migration reward verification failed:",
+          migrationError,
         );
 
-        if (migrationError) {
-          console.error(
-            "AFAM migration reward verification failed:",
-            migrationError,
-          );
+        return response("AFAM reward processing failed", 500);
+      }
 
-          return response(
-            "AFAM reward processing failed",
-            500,
-          );
-        }
+      if (
+        !migrationData ||
+        typeof migrationData !== "object"
+      ) {
+        return response("Invalid AFAM reward response", 500);
+      }
 
-        if (
-          !migrationData ||
-          typeof migrationData !== "object"
-        ) {
-          return response(
-            "Invalid AFAM reward response",
-            500,
-          );
-        }
+      const result = migrationData as Record<string, unknown>;
 
-        const result =
-          migrationData as Record<string, unknown>;
+      // The SQL function returns success=true and duplicate=true
+      // for an event that has already been processed.
+      if (result.duplicate === true) {
+        return response(`${eventId}:OK`, 200);
+      }
 
-        if (result.success !== true) {
-          /*
-           * Idan an riga an karɓi event ɗin, a amsa OK
-           * domin LevelPlay kada ya ci gaba da retry.
-           */
-          if (result.duplicate === true) {
-            return response(`${eventId}:OK`, 200);
-          }
+      if (result.success !== true) {
+        console.error(
+          "AFAM migration reward rejected:",
+          JSON.stringify(migrationData),
+        );
 
-          console.error(
-            "AFAM migration reward rejected:",
-            JSON.stringify(migrationData),
-          );
+        return response("AFAM reward rejected", 400);
+      }
 
-          return response("AFAM reward rejected", 400);
-        }
+      console.log("LevelPlay AFAM migration ad verified:", eventId);
 
+      return response(`${eventId}:OK`, 200);
+    }
+
+    /*
+     * Only the explicitly configured Default placement may enter
+     * the existing claim/mining processing path.
+     */
+    if (placementName !== "Default") {
+      console.error(
+        "Unknown or missing LevelPlay placement:",
+        placementName || "(empty)",
+      );
+
+      return response("Unknown or missing placement", 400);
+    }
+
+    /*
+     * CLAIM AD:
+     * Preserve the existing claim verification flow.
+     */
+    const {
+      data: claimData,
+      error: claimError,
+    } = await admin.rpc(
+      "verify_levelplay_claim_ad",
+      {
+        p_user_id: userId,
+        p_event_id: eventId,
+      },
+    );
+
+    if (
+      !claimError &&
+      claimData &&
+      typeof claimData === "object"
+    ) {
+      const claimResult = claimData as Record<string, unknown>;
+
+      if (
+        claimResult.success === true &&
+        claimResult.verified === true
+      ) {
         console.log(
-          "LevelPlay AFAM migration ad verified:",
+          "LevelPlay CLAIM AD verified:",
+          JSON.stringify(claimData),
+        );
+
+        return response(`${eventId}:OK`, 200);
+      }
+
+      if (claimResult.duplicate === true) {
+        console.log("LevelPlay duplicate CLAIM AD:", eventId);
+        return response(`${eventId}:OK`, 200);
+      }
+    }
+
+    /*
+     * NORMAL MINING AD:
+     * Preserve the existing mining reward RPC.
+     */
+    const {
+      data: normalData,
+      error: normalError,
+    } = await admin.rpc(
+      "record_levelplay_reward",
+      {
+        p_user_id: userId,
+        p_event_id: eventId,
+      },
+    );
+
+    if (normalError) {
+      const message = String(normalError.message ?? "");
+
+      if (message.toLowerCase().includes("already processed")) {
+        console.log(
+          "LevelPlay duplicate NORMAL AD acknowledged:",
           eventId,
         );
 
         return response(`${eventId}:OK`, 200);
       }
 
-      /*
-       * CLAIM AD
-       *
-       * Ba ya ƙara FAN kai tsaye.
-       */
-      const {
-        data: claimData,
-        error: claimError,
-      } = await admin.rpc(
-        "verify_levelplay_claim_ad",
-        {
-          p_user_id: userId,
-          p_event_id: eventId,
-        },
+      console.error(
+        "LevelPlay normal ad database error:",
+        normalError,
       );
 
-      if (
-        !claimError &&
-        claimData &&
-        typeof claimData === "object"
-      ) {
-        const claimResult =
-          claimData as Record<string, unknown>;
-
-        if (
-          claimResult.success === true &&
-          claimResult.verified === true
-        ) {
-          console.log(
-            "LevelPlay CLAIM AD verified:",
-            JSON.stringify(claimData),
-          );
-
-          return response(`${eventId}:OK`, 200);
-        }
-
-        if (claimResult.duplicate === true) {
-          console.log(
-            "LevelPlay duplicate CLAIM AD:",
-            eventId,
-          );
-
-          return response(`${eventId}:OK`, 200);
-        }
-      }
-
-      /*
-       * NORMAL MINING AD
-       *
-       * Ana kiyaye tsohon RPC na mining reward.
-       */
-      const {
-        data: normalData,
-        error: normalError,
-      } = await admin.rpc(
-        "record_levelplay_reward",
-        {
-          p_user_id: userId,
-          p_event_id: eventId,
-        },
-      );
-
-      if (normalError) {
-        const message = String(normalError.message ?? "");
-
-        if (
-          message.toLowerCase().includes("already processed")
-        ) {
-          console.log(
-            "LevelPlay duplicate NORMAL AD acknowledged:",
-            eventId,
-          );
-
-          return response(`${eventId}:OK`, 200);
-        }
-
-        console.error(
-          "LevelPlay normal ad database error:",
-          normalError,
-        );
-
-        return response("Reward processing failed", 500);
-      }
-
-      console.log(
-        "LevelPlay NORMAL AD reward processed:",
-        JSON.stringify(normalData),
-      );
-
-      return response(`${eventId}:OK`, 200);
-    } catch (error) {
-      console.error("LevelPlay S2S callback error:", error);
-      return response("Internal server error", 500);
+      return response("Reward processing failed", 500);
     }
-  },
-);
+
+    console.log(
+      "LevelPlay NORMAL AD reward processed:",
+      JSON.stringify(normalData),
+    );
+
+    return response(`${eventId}:OK`, 200);
+  } catch (error) {
+    console.error("LevelPlay S2S callback error:", error);
+    return response("Internal server error", 500);
+  }
+});
