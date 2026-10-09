@@ -224,4 +224,754 @@ class _WalletScreenState extends State<WalletScreen> {
           error: true,
         );
         return;
-     
+      }
+
+      _message(
+        'Ad completed. Waiting for secure reward verification. '
+        'Refresh your wallet shortly.',
+      );
+    } catch (e) {
+      _message(_cleanError(e), error: true);
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+        await _loadWallet();
+      }
+    }
+  }
+
+  Future<void> _sendAfam() async {
+    if (_working) return;
+
+    final username = _usernameController.text.trim();
+    final amount = double.tryParse(_amountController.text.trim());
+
+    if (username.length < 3) {
+      _message('Enter a valid recipient username.', error: true);
+      return;
+    }
+
+    if (amount == null || !amount.isFinite || amount <= 0) {
+      _message('Enter a valid AFAM amount.', error: true);
+      return;
+    }
+
+    if (amount > _afamBalance) {
+      _message('Insufficient AFAM balance.', error: true);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm AFAM Transfer'),
+        content: Text(
+          'Send ${amount.toStringAsFixed(4)} AFAM to @$username?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _working = true);
+
+    try {
+      final response = await _supabase.rpc(
+        'send_afam_by_username',
+        params: {
+          'p_username': username,
+          'p_amount': amount,
+        },
+      );
+
+      if (response is Map && response['success'] == true) {
+        _usernameController.clear();
+        _amountController.clear();
+
+        _message(
+          response['message']?.toString() ??
+              'AFAM transfer completed successfully.',
+        );
+      } else {
+        final message = response is Map
+            ? response['message']?.toString() ??
+                'AFAM transfer failed.'
+            : 'AFAM transfer failed.';
+
+        _message(message, error: true);
+      }
+    } catch (e) {
+      _message(_cleanError(e), error: true);
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+        await _loadWallet();
+      }
+    }
+  }
+
+  Future<void> _openTransferDialog() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Send AFAM',
+                    style: TextStyle(
+                      color: deepPurple,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Available balance: ${_formatBalance(_afamBalance)} AFAM',
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: _usernameController,
+                    textInputAction: TextInputAction.next,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Recipient username',
+                      hintText: 'Enter username',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _amountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'AFAM amount',
+                      hintText: '0.0000',
+                      prefixIcon: Icon(Icons.diamond_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: _working
+                        ? null
+                        : () async {
+                            Navigator.pop(sheetContext);
+                            await _sendAfam();
+                          },
+                    icon: const Icon(Icons.send_rounded),
+                    label: const Text('Confirm Transfer'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: primaryPurple,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatBalance(double value) => value.toStringAsFixed(4);
+
+  String _formatDate(dynamic value) {
+    final date = DateTime.tryParse(value?.toString() ?? '');
+    if (date == null) return 'Date unavailable';
+
+    final local = date.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final year = local.year.toString();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/$year • $hour:$minute';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: background,
+        foregroundColor: deepPurple,
+        centerTitle: true,
+        title: const Text(
+          'Wallet',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        actions: [
+          IconButton(
+            onPressed: _working ? null : _loadWallet,
+            tooltip: 'Refresh wallet',
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        color: primaryPurple,
+        onRefresh: _loadWallet,
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: primaryPurple),
+              )
+            : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+                children: [
+                  _buildWalletHeader(),
+                  const SizedBox(height: 18),
+                  _buildFanCard(),
+                  const SizedBox(height: 14),
+                  _buildAfamCard(),
+                  const SizedBox(height: 18),
+                  _buildMigrationCard(),
+                  const SizedBox(height: 14),
+                  _buildTransferCard(),
+                  const SizedBox(height: 18),
+                  _buildTransactionHistory(),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildWalletHeader() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Your Wallet',
+          style: TextStyle(
+            color: deepPurple,
+            fontSize: 24,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        SizedBox(height: 5),
+        Text(
+          'Manage your FAN and AFAM balances.',
+          style: TextStyle(color: Colors.black54, fontSize: 13),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFanCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [primaryPurple, deepPurple],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: primaryPurple.withValues(alpha: 0.20),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.monetization_on_rounded,
+              color: Colors.white,
+              size: 31,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'FAN BALANCE',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '${_formatBalance(_fanBalance)} FAN',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAfamCard() {
+    return _balanceCard(
+      icon: Icons.diamond_rounded,
+      title: 'AFAM BALANCE',
+      value: '${_formatBalance(_afamBalance)} AFAM',
+    );
+  }
+
+  Widget _balanceCard({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1EDFF),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(icon, color: primaryPurple, size: 27),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: deepPurple,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMigrationCard() {
+    final eligible = _migrationOpen &&
+        _kycVerified &&
+        _streaksComplete &&
+        _fanBalance >= fanPerAfam &&
+        _migrationsToday < maxDailyMigrations;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: primaryPurple.withValues(alpha: 0.10),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.currency_exchange_rounded,
+                  color: primaryPurple, size: 25),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'FAN to AFAM Migration',
+                  style: TextStyle(
+                    color: deepPurple,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Convert 100 FAN into 1 AFAM. Each conversion requires '
+            'a completed rewarded ad verified by the server.',
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _statusRow(
+            'Manual KYC',
+            _kycVerified ? 'Verified' : 'Not verified',
+            _kycVerified,
+          ),
+          const SizedBox(height: 8),
+          _statusRow(
+            'Daily Check-ins',
+            '$_checkinStreak/30',
+            _checkinStreak >= 30,
+          ),
+          const SizedBox(height: 8),
+          _statusRow(
+            'Daily Boosts',
+            '$_boostStreak/30',
+            _boostStreak >= 30,
+          ),
+          const SizedBox(height: 8),
+          _statusRow(
+            'Migrations today',
+            '$_migrationsToday/$maxDailyMigrations',
+            _migrationsToday < maxDailyMigrations,
+          ),
+          const SizedBox(height: 8),
+          _statusRow(
+            'Migration status',
+            _migrationOpen ? 'Open' : 'Closed',
+            _migrationOpen,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _working || !eligible ? null : _migrateFan,
+              icon: _working
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.play_circle_outline_rounded),
+              label: Text(
+                _working ? 'Please wait...' : 'Watch Ad & Convert 100 FAN',
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryPurple,
+                disabledBackgroundColor: Colors.grey.shade300,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          if (!_migrationOpen) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Migration is currently closed by the administrator.',
+              style: TextStyle(color: Colors.black54, fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _statusRow(String title, String value, bool complete) {
+    return Row(
+      children: [
+        Icon(
+          complete ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+          size: 17,
+          color: complete ? Colors.green : Colors.orange,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: complete ? Colors.green.shade700 : Colors.orange.shade800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransferCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.send_rounded, color: primaryPurple, size: 24),
+              SizedBox(width: 9),
+              Text(
+                'AFAM Transfer',
+                style: TextStyle(
+                  color: deepPurple,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Send AFAM to another user using their username.',
+            style: TextStyle(color: Colors.black54, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _working ? null : _openTransferDialog,
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Send AFAM'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primaryPurple,
+                side: const BorderSide(color: primaryPurple),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransactionHistory() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Transaction History',
+                  style: TextStyle(
+                    color: deepPurple,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: _working ? null : _loadWallet,
+                tooltip: 'Refresh history',
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          if (_transactions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.receipt_long_rounded,
+                      size: 38,
+                      color: Colors.black26,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'No AFAM transactions yet.',
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ..._transactions.map(_transactionTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _transactionTile(Map<String, dynamic> transaction) {
+    final type =
+        transaction['transaction_type']?.toString() ?? 'transaction';
+    final coin = transaction['coin']?.toString() ?? 'AFAM';
+    final description =
+        transaction['description']?.toString() ?? type;
+    final amount = _toDouble(transaction['amount']);
+    final date = _formatDate(transaction['created_at']);
+
+    final normalizedType = type.toLowerCase();
+    final outgoing = normalizedType.contains('sent') ||
+        normalizedType.contains('withdrawal');
+
+    final title = normalizedType == 'migration'
+        ? 'FAN to AFAM Migration'
+        : normalizedType == 'transfer_sent'
+            ? 'AFAM Sent'
+            : normalizedType == 'transfer_received'
+                ? 'AFAM Received'
+                : _titleCase(type.replaceAll('_', ' '));
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: outgoing
+            ? Colors.orange.withValues(alpha: 0.12)
+            : const Color(0xFFF1EDFF),
+        child: Icon(
+          outgoing
+              ? Icons.arrow_upward_rounded
+              : Icons.arrow_downward_rounded,
+          color: outgoing ? Colors.orange.shade800 : primaryPurple,
+        ),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: deepPurple,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      subtitle: Text(
+        '$description\n$date',
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.black54,
+          fontSize: 10,
+          height: 1.4,
+        ),
+      ),
+      isThreeLine: true,
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '${outgoing ? '-' : '+'}${amount.toStringAsFixed(4)}',
+            style: TextStyle(
+              color: outgoing ? Colors.orange.shade800 : Colors.green.shade700,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(
+            coin,
+            style: const TextStyle(
+              color: Colors.black45,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _titleCase(String value) {
+    return value
+        .split(' ')
+        .where((word) => word.isNotEmpty)
+        .map((word) =>
+            '${word[0].toUpperCase()}${word.substring(1)}')
+        .join(' ');
+  }
+}
