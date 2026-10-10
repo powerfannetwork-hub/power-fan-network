@@ -132,13 +132,10 @@ class _WalletScreenState extends State<WalletScreen> {
         _fanBalance = balances['fan'] ?? 0;
         _afamBalance = balances['afam'] ?? 0;
 
-        _migrationOpen =
-            migrationStatus['migration_open'] == true ||
-            migrationStatus['available'] == true;
+        // Use the exact fields returned by get_migration_status().
+        _migrationOpen = migrationStatus['migration_open'] == true;
 
-        _kycVerified =
-            migrationStatus['kyc_verified'] == true ||
-            migrationStatus['kyc_status'] == 'verified';
+        _kycVerified = migrationStatus['kyc_verified'] == true;
 
         _checkinStreak =
             _toInt(migrationStatus['kyc_checkin_streak']);
@@ -148,8 +145,9 @@ class _WalletScreenState extends State<WalletScreen> {
         _streaksComplete =
             _checkinStreak >= 30 && _boostStreak >= 30;
 
+        // The RPC exposes this count as conversions_today.
         _migrationsToday =
-            _toInt(migrationStatus['migrations_today']);
+            _toInt(migrationStatus['conversions_today']);
 
         _transactions = history;
         _loading = false;
@@ -208,14 +206,9 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
 
-      /*
-       * This method will be added when we update
-       * levelplay_ads_service.dart in the next step.
-       *
-       * It must show the AFAM_MIGRATION placement.
-       * The app must NOT grant AFAM from the client-side
-       * rewarded callback alone. LevelPlay S2S must verify it.
-       */
+      // The client callback only tells us the ad finished. The server-side
+      // reward verification and the migration RPC decide whether conversion
+      // is allowed; the client never adds AFAM directly.
       final shown = await _levelPlay.showMigrationRewardedAd();
 
       if (!shown) {
@@ -226,10 +219,65 @@ class _WalletScreenState extends State<WalletScreen> {
         return;
       }
 
-      _message(
-        'Ad completed. Waiting for secure reward verification. '
-        'Refresh your wallet shortly.',
-      );
+      var migrationSucceeded = false;
+      var verificationPending = false;
+      String? terminalMessage;
+
+      // S2S verification may arrive a little after the ad callback. Retry the
+      // server RPC for a short period; only a successful RPC counts as success.
+      for (var attempt = 0; attempt < 12; attempt++) {
+        if (attempt > 0) {
+          await Future<void>.delayed(const Duration(seconds: 5));
+        }
+
+        final result = await _supabase.rpc('migrate_fan_to_afam');
+        if (result is Map) {
+          final success = result['success'] == true;
+          final message = (result['message']?.toString() ?? '').trim();
+
+          if (success) {
+            migrationSucceeded = true;
+            terminalMessage = message.isNotEmpty
+                ? message
+                : 'FAN to AFAM migration completed successfully.';
+            break;
+          }
+
+          final normalized = message.toLowerCase();
+          verificationPending = normalized.contains('pending') ||
+              normalized.contains('not verified') ||
+              normalized.contains('not yet') ||
+              normalized.contains('reward not found') ||
+              normalized.contains('reward has not') ||
+              normalized.contains('waiting for') ||
+              normalized.contains('ad reward');
+
+          if (!verificationPending) {
+            terminalMessage = message.isNotEmpty
+                ? message
+                : 'Migration could not be completed. Please refresh and try again.';
+            break;
+          }
+        } else {
+          terminalMessage =
+              'Unexpected migration response from the server. Please refresh your wallet.';
+          break;
+        }
+      }
+
+      if (migrationSucceeded) {
+        _message(terminalMessage!);
+      } else if (verificationPending) {
+        _message(
+          'Ad finished, but secure reward verification is still pending. '
+          'Please refresh your wallet and try again shortly.',
+        );
+      } else {
+        _message(
+          terminalMessage ?? 'Migration could not be completed. Please try again.',
+          error: true,
+        );
+      }
     } catch (e) {
       _message(_cleanError(e), error: true);
     } finally {
