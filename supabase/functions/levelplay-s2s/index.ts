@@ -168,14 +168,15 @@ Deno.serve(async (request: Request): Promise<Response> => {
       return "";
     };
 
+    // Prefer the explicitly configured userid callback parameter.
     const rawUserId = getParam(
+      "userid",
+      "userId",
+      "USER_ID",
+      "user_id",
       "applicationUserId",
       "appUserId",
       "dynamicUserId",
-      "userId",
-      "userid",
-      "user_id",
-      "USER_ID",
     );
 
     const eventId = getParam(
@@ -233,7 +234,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       return response("Invalid app key", 403);
     }
 
-    // Use rawUserId in the signature to preserve the original callback value.
+    // Preserve the exact original user ID in the signature payload.
     const signaturePayload =
       timestamp +
       eventId +
@@ -296,8 +297,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
       const result = migrationData as Record<string, unknown>;
 
-      // The SQL function returns success=true and duplicate=true
-      // for an event that has already been processed.
       if (result.duplicate === true) {
         return response(`${eventId}:OK`, 200);
       }
