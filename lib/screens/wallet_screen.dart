@@ -24,10 +24,8 @@ class _WalletScreenState extends State<WalletScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   final LevelPlayAdsService _levelPlay = LevelPlayAdsService.instance;
 
-  final TextEditingController _usernameController =
-      TextEditingController();
-  final TextEditingController _amountController =
-      TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
 
   double _fanBalance = 0;
   double _afamBalance = 0;
@@ -100,9 +98,7 @@ class _WalletScreenState extends State<WalletScreen> {
       List<Map<String, dynamic>> history = [];
 
       try {
-        final response =
-            await _supabase.rpc('get_migration_status');
-
+        final response = await _supabase.rpc('get_migration_status');
         if (response is Map) {
           migrationStatus = Map<String, dynamic>.from(response);
         }
@@ -131,30 +127,17 @@ class _WalletScreenState extends State<WalletScreen> {
       setState(() {
         _fanBalance = balances['fan'] ?? 0;
         _afamBalance = balances['afam'] ?? 0;
-
-        // Use the exact fields returned by get_migration_status().
         _migrationOpen = migrationStatus['migration_open'] == true;
-
         _kycVerified = migrationStatus['kyc_verified'] == true;
-
-        _checkinStreak =
-            _toInt(migrationStatus['kyc_checkin_streak']);
-        _boostStreak =
-            _toInt(migrationStatus['kyc_boost_streak']);
-
-        _streaksComplete =
-            _checkinStreak >= 30 && _boostStreak >= 30;
-
-        // The RPC exposes this count as conversions_today.
-        _migrationsToday =
-            _toInt(migrationStatus['conversions_today']);
-
+        _checkinStreak = _toInt(migrationStatus['kyc_checkin_streak']);
+        _boostStreak = _toInt(migrationStatus['kyc_boost_streak']);
+        _streaksComplete = _checkinStreak >= 30 && _boostStreak >= 30;
+        _migrationsToday = _toInt(migrationStatus['conversions_today']);
         _transactions = history;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
-
       setState(() => _loading = false);
       _message(_cleanError(e), error: true);
     }
@@ -191,24 +174,18 @@ class _WalletScreenState extends State<WalletScreen> {
     setState(() => _working = true);
 
     try {
-      // Create a pending ad-reward request on the server first.
-      final request = await _supabase.rpc(
-        'request_afam_migration_ad',
-      );
+      final request = await _supabase.rpc('request_afam_migration_ad');
 
       if (request is! Map || request['success'] != true) {
         final message = request is Map
             ? (request['message']?.toString() ??
                 'Could not request migration ad.')
             : 'Could not request migration ad.';
-
         _message(message, error: true);
         return;
       }
 
-      // The client callback only tells us the ad finished. The server-side
-      // reward verification and the migration RPC decide whether conversion
-      // is allowed; the client never adds AFAM directly.
+      // LevelPlay S2S is authoritative. The client does not add AFAM itself.
       final shown = await _levelPlay.showMigrationRewardedAd();
 
       if (!shown) {
@@ -223,45 +200,66 @@ class _WalletScreenState extends State<WalletScreen> {
       var verificationPending = false;
       String? terminalMessage;
 
-      // S2S verification may arrive a little after the ad callback. Retry the
-      // server RPC for a short period; only a successful RPC counts as success.
+      // Keep polling even when the RPC temporarily throws a verification error.
+      // This is important because the LevelPlay server callback can arrive late.
       for (var attempt = 0; attempt < 12; attempt++) {
         if (attempt > 0) {
           await Future<void>.delayed(const Duration(seconds: 5));
         }
 
-        final result = await _supabase.rpc('migrate_fan_to_afam');
-        if (result is Map) {
-          final success = result['success'] == true;
-          final message = (result['message']?.toString() ?? '').trim();
+        try {
+          final result = await _supabase.rpc('migrate_fan_to_afam');
 
-          if (success) {
-            migrationSucceeded = true;
-            terminalMessage = message.isNotEmpty
-                ? message
-                : 'FAN to AFAM migration completed successfully.';
+          if (result is Map) {
+            final success = result['success'] == true;
+            final message = (result['message']?.toString() ?? '').trim();
+
+            if (success) {
+              migrationSucceeded = true;
+              terminalMessage = message.isNotEmpty
+                  ? message
+                  : 'FAN to AFAM migration completed successfully.';
+              break;
+            }
+
+            final normalized = message.toLowerCase();
+            verificationPending = normalized.contains('pending') ||
+                normalized.contains('not verified') ||
+                normalized.contains('not yet') ||
+                normalized.contains('reward not found') ||
+                normalized.contains('reward has not') ||
+                normalized.contains('waiting for') ||
+                normalized.contains('ad reward') ||
+                normalized.contains('verified migration rewarded ad');
+
+            if (!verificationPending) {
+              terminalMessage = message.isNotEmpty
+                  ? message
+                  : 'Migration could not be completed. Please refresh and try again.';
+              break;
+            }
+          } else {
+            terminalMessage =
+                'Unexpected migration response from the server. Please refresh your wallet.';
             break;
           }
-
-          final normalized = message.toLowerCase();
+        } catch (e) {
+          final normalized = _cleanError(e).toLowerCase();
           verificationPending = normalized.contains('pending') ||
               normalized.contains('not verified') ||
               normalized.contains('not yet') ||
               normalized.contains('reward not found') ||
               normalized.contains('reward has not') ||
               normalized.contains('waiting for') ||
-              normalized.contains('ad reward');
+              normalized.contains('ad reward') ||
+              normalized.contains('verified migration rewarded ad');
 
           if (!verificationPending) {
-            terminalMessage = message.isNotEmpty
-                ? message
-                : 'Migration could not be completed. Please refresh and try again.';
+            terminalMessage = _cleanError(e);
             break;
           }
-        } else {
-          terminalMessage =
-              'Unexpected migration response from the server. Please refresh your wallet.';
-          break;
+
+          debugPrint('AFAM reward verification still pending: $e');
         }
       }
 
@@ -274,7 +272,8 @@ class _WalletScreenState extends State<WalletScreen> {
         );
       } else {
         _message(
-          terminalMessage ?? 'Migration could not be completed. Please try again.',
+          terminalMessage ??
+              'Migration could not be completed. Please try again.',
           error: true,
         );
       }
@@ -345,17 +344,14 @@ class _WalletScreenState extends State<WalletScreen> {
       if (response is Map && response['success'] == true) {
         _usernameController.clear();
         _amountController.clear();
-
         _message(
           response['message']?.toString() ??
               'AFAM transfer completed successfully.',
         );
       } else {
         final message = response is Map
-            ? response['message']?.toString() ??
-                'AFAM transfer failed.'
+            ? response['message']?.toString() ?? 'AFAM transfer failed.'
             : 'AFAM transfer failed.';
-
         _message(message, error: true);
       }
     } catch (e) {
@@ -941,8 +937,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final type =
         transaction['transaction_type']?.toString() ?? 'transaction';
     final coin = transaction['coin']?.toString() ?? 'AFAM';
-    final description =
-        transaction['description']?.toString() ?? type;
+    final description = transaction['description']?.toString() ?? type;
     final amount = _toDouble(transaction['amount']);
     final date = _formatDate(transaction['created_at']);
 
@@ -1018,8 +1013,7 @@ class _WalletScreenState extends State<WalletScreen> {
     return value
         .split(' ')
         .where((word) => word.isNotEmpty)
-        .map((word) =>
-            '${word[0].toUpperCase()}${word.substring(1)}')
+        .map((word) => '${word[0].toUpperCase()}${word.substring(1)}')
         .join(' ');
   }
 }
