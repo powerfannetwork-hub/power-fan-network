@@ -316,10 +316,18 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
 
     /*
-     * Only the explicitly configured Default placement may enter
-     * the existing claim/mining processing path.
+     * NORMAL BOOST / CLAIM / MINING:
+     * Accept the new Home_Screen placement and keep legacy placement
+     * names working while the LevelPlay dashboard/config is updated.
+     * Activation and AFAM migration have already been handled above.
      */
-    if (placementName !== "Default") {
+    const normalBoostPlacements = new Set([
+      "Home_Screen",
+      "Default",
+      "DefaultRewardedVideo",
+    ]);
+
+    if (!normalBoostPlacements.has(placementName)) {
       console.error(
         "Unknown or missing LevelPlay placement:",
         placementName || "(empty)",
