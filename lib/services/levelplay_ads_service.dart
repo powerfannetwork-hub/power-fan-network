@@ -11,7 +11,11 @@ class LevelPlayAdsService with LevelPlayInitListener {
 
   static const String appKey = '27f58cf85';
   static const String rewardedAdUnitId = 'z69e4fg6emi98mbu';
-  static const String placementName = 'Default';
+
+  // Normal Boost placement in Unity LevelPlay.
+  static const String placementName = 'Home_Screen';
+
+  // Keep these existing placements unchanged.
   static const String activationPlacementName = 'ACTIVATION';
   static const String migrationPlacementName = 'AFAM_MIGRATION';
 
@@ -563,7 +567,7 @@ class LevelPlayAdsService with LevelPlayInitListener {
       'amount=${reward.amount}, name=${reward.name}',
     );
 
-    // Only the normal Default placement is a KYC/Boost ad.
+    // Only the normal Boost placement is a KYC/Boost ad.
     // Activation and AFAM migration ads must not increase KYC Boost.
     if (_activePlacementName == placementName) {
       unawaited(
@@ -693,18 +697,14 @@ class _RewardedAdListener with LevelPlayRewardedAdListener {
   void onAdClicked(
     LevelPlayAdInfo adInfo,
   ) {
-    _service._handleAdClicked(
-      adInfo,
-    );
+    _service._handleAdClicked(adInfo);
   }
 
   @override
   void onAdClosed(
     LevelPlayAdInfo adInfo,
   ) {
-    _service._handleAdClosed(
-      adInfo,
-    );
+    _service._handleAdClosed(adInfo);
   }
 
   @override
@@ -722,9 +722,6 @@ class _RewardedAdListener with LevelPlayRewardedAdListener {
   void onAdInfoChanged(
     LevelPlayAdInfo adInfo,
   ) {
-    _service._handleAdInfoChanged(
-      adInfo,
-    );
+    _service._handleAdInfoChanged(adInfo);
   }
 }
-
